@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Temps de trajet SeLoger</title>
+    <link rel="stylesheet" href="../styles/popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>🚗 Trajet SeLoger</h1>
+    </header>
+
+    <!-- Résultat du dernier calcul -->
+    <section id="result-section" class="card hidden">
+      <div class="duration" id="duration">–</div>
+      <div class="distance" id="distance"></div>
+      <div class="labels">
+        <div id="district-row" class="hidden">
+          <span class="tag">Quartier</span> <span id="district-label"></span>
+        </div>
+        <div><span class="tag">Départ</span> <span id="start-label"></span></div>
+        <div><span class="tag">Bien</span> <span id="property-label"></span></div>
+      </div>
+      <div class="timestamp" id="timestamp"></div>
+    </section>
+
+    <section id="empty-section" class="card muted">
+      Ouvrez une annonce SeLoger, le temps de trajet s'affichera ici et sur la
+      page.
+    </section>
+
+    <button id="recompute" class="btn secondary">
+      Recalculer sur l'onglet actif
+    </button>
+
+    <!-- Configuration -->
+    <details id="config" open>
+      <summary>Configuration</summary>
+
+      <label for="start-address">Adresse de départ</label>
+      <input
+        type="text"
+        id="start-address"
+        placeholder="ex : 12 rue de Rivoli, 75001 Paris"
+        autocomplete="off"
+      />
+
+      <label for="api-key">Clé API OpenRouteService</label>
+      <input
+        type="password"
+        id="api-key"
+        placeholder="Collez votre clé ORS"
+        autocomplete="off"
+      />
+      <p class="hint">
+        Clé gratuite sur
+        <a href="https://openrouteservice.org/dev/#/signup" target="_blank"
+          >openrouteservice.org</a
+        >
+      </p>
+
+      <button id="save" class="btn primary">Enregistrer</button>
+      <div id="save-status" class="status"></div>
+    </details>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
