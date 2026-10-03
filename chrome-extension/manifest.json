@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Carnet de recherche immobilière",
+  "short_name": "Carnet",
+  "version": "0.2.0",
+  "description": "Temps de trajet, prix médians et données de la commune sur chaque annonce, puis sauvegarde du bien dans votre carnet.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "activeTab", "identity"],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://geo.api.gouv.fr/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Carnet de recherche",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.seloger.com/*", "*://*.bellesdemeures.com/*"],
+      "js": ["src/inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "*://*.seloger.com/*",
+        "*://*.bellesdemeures.com/*",
+        "*://*.leboncoin.fr/*"
+      ],
+      "js": ["src/listing.js", "src/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+services:
+  carnet:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_PATH: /data/app.db
+      # À définir dans un fichier .env à côté de ce compose.
+      BASE_URL: ${BASE_URL:?BASE_URL est obligatoire}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET est obligatoire}
+      EXTENSION_ORIGINS: ${EXTENSION_ORIGINS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - ./data:/data
+    # Derrière un reverse proxy : on n'expose pas le port sur l'hôte.
+    # Retirer le commentaire pour un accès direct en local.
+    # ports:
+    #   - "3000:3000"
+    networks:
+      - web
+    labels:
+      # Décommenter pour une publication via Traefik.
+      # - "traefik.enable=true"
+      # - "traefik.http.routers.carnet.rule=Host(`carnet.example.com`)"
+      # - "traefik.http.routers.carnet.entrypoints=websecure"
+      # - "traefik.http.routers.carnet.tls.certresolver=letsencrypt"
+      # - "traefik.http.services.carnet.loadbalancer.server.port=3000"
+      - "org.opencontainers.image.title=Carnet de recherche immobilière"
+
+networks:
+  web:
+    # Réseau partagé avec le reverse proxy ; le créer avec :
+    #   docker network create web
+    external: true

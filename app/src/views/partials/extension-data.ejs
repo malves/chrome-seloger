@@ -1,0 +1,128 @@
+<%
+  // Données calculées par l'extension, affichées telles qu'elles sont reçues.
+  const d = data || {};
+  const known = new Set(["travel_times", "political_leaning", "property_tax_index"]);
+  const rest = Object.entries(d).filter(([key]) => !known.has(key));
+  const modes = { car: "voiture", transit: "transports", bike: "vélo", foot: "à pied" };
+
+  // Le bord politique peut arriver en texte (anciennes captures) ou en objet
+  // { label, gauche, centre, droite } pour la barre de répartition.
+  const leaning = d.political_leaning;
+  const leaningLabel =
+    leaning && typeof leaning === "object" ? leaning.label || null : leaning || null;
+
+  function share(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.min(100, Math.round(n)));
+  }
+
+  const politics =
+    leaning && typeof leaning === "object"
+      ? {
+          gauche: share(leaning.gauche),
+          centre: share(leaning.centre),
+          droite: share(leaning.droite),
+        }
+      : null;
+  const hasShares =
+    politics &&
+    politics.gauche !== null &&
+    politics.centre !== null &&
+    politics.droite !== null &&
+    politics.gauche + politics.centre + politics.droite > 0;
+
+  const taxIndex = Number(d.property_tax_index);
+%>
+
+<div class="kv">
+  <% (Array.isArray(d.travel_times) ? d.travel_times : []).forEach(function (trip) { %>
+    <div class="kv__row">
+      <span class="kv__key">
+        Trajet — <%= trip.label || 'destination' %>
+        <% if (trip.mode) { %>(<%= modes[trip.mode] || trip.mode %>)<% } %>
+      </span>
+      <span class="kv__value">
+        <% if (trip.minutes !== undefined && trip.minutes !== null) { %>
+          <%= trip.minutes %> min
+        <% } else { %>—<% } %>
+        <% if (trip.distance_km) { %> · <%= trip.distance_km %> km<% } %>
+      </span>
+    </div>
+  <% }); %>
+
+  <% if (hasShares) { %>
+    <div class="politics">
+      <div class="politics__head">
+        <span class="politics__label">Orientation politique</span>
+        <% if (leaningLabel) { %>
+          <span class="politics__value"><%= leaningLabel %></span>
+        <% } %>
+      </div>
+      <div
+        class="politics__bar"
+        role="img"
+        title="Présidentielle 2022, 1er tour (blocs gauche / centre / droite)"
+        aria-label="Gauche <%= politics.gauche %> %, centre <%= politics.centre %> %, droite <%= politics.droite %> %"
+      >
+        <span class="politics__seg politics__seg--g" style="flex-grow: <%= politics.gauche %>"></span>
+        <span class="politics__seg politics__seg--c" style="flex-grow: <%= politics.centre %>"></span>
+        <span class="politics__seg politics__seg--d" style="flex-grow: <%= politics.droite %>"></span>
+      </div>
+      <div class="politics__legend">
+        <span><span class="politics__dot politics__dot--g"></span>Gauche <%= politics.gauche %>%</span>
+        <span><span class="politics__dot politics__dot--c"></span>Centre <%= politics.centre %>%</span>
+        <span><span class="politics__dot politics__dot--d"></span>Droite <%= politics.droite %>%</span>
+      </div>
+    </div>
+  <% } else if (leaningLabel) { %>
+    <div class="kv__row">
+      <span class="kv__key">Orientation politique</span>
+      <span class="kv__value"><%= leaningLabel %></span>
+    </div>
+  <% } %>
+
+  <% if (Number.isFinite(taxIndex) && taxIndex >= 1 && taxIndex <= 5) {
+       const taxLabels = { 1: 'Très basse', 2: 'Basse', 3: 'Moyenne', 4: 'Élevée', 5: 'Très élevée' };
+       const taxNotes = {
+         1: "Cette ville figure parmi les taxes foncières les plus basses de France.",
+         2: "Cette ville a une taxe foncière plus basse que la moyenne française.",
+         3: "Cette ville se situe dans la moyenne des taxes foncières en France.",
+         4: "Cette ville se positionne parmi les taxes foncières les plus élevées de France.",
+         5: "Cette ville figure parmi les taxes foncières les plus chères de France.",
+       };
+  %>
+    <div class="tax tax--l<%= taxIndex %>">
+      <div class="tax__head">
+        <span class="tax__label">Indice de taxe foncière</span>
+        <span class="tax__verdict">
+          <strong class="tax__score"><%= taxIndex %></strong><span class="tax__max">/5</span>
+          <span class="tax__tag"><%= taxLabels[taxIndex] %></span>
+        </span>
+      </div>
+      <div
+        class="tax__scale"
+        role="img"
+        aria-label="Indice de taxe foncière : <%= taxIndex %> sur 5 (taxe <%= taxLabels[taxIndex].toLowerCase() %>)"
+      >
+        <% for (let i = 1; i <= 5; i++) { %>
+          <span class="tax__step<%= i <= taxIndex ? ' is-on' : '' %>"><%= i %></span>
+        <% } %>
+      </div>
+      <p class="tax__note"><%= taxNotes[taxIndex] %></p>
+    </div>
+  <% } %>
+
+  <% rest.forEach(function ([key, value]) { %>
+    <div class="kv__row">
+      <span class="kv__key"><%= key.replace(/_/g, ' ') %></span>
+      <span class="kv__value">
+        <%= value === null || value === undefined
+          ? '—'
+          : typeof value === 'object'
+            ? JSON.stringify(value)
+            : String(value) %>
+      </span>
+    </div>
+  <% }); %>
+</div>

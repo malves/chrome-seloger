@@ -1,0 +1,46 @@
+<div class="kv kv--grid">
+  <div class="kv__row">
+    <span class="kv__key">Commune</span>
+    <span class="kv__value"><%= data.name || '—' %></span>
+  </div>
+  <div class="kv__row">
+    <span class="kv__key">Code INSEE</span>
+    <span class="kv__value"><%= data.insee_code || '—' %></span>
+  </div>
+  <% if (data.postal_codes && data.postal_codes.length) { %>
+    <div class="kv__row">
+      <span class="kv__key">Code postal</span>
+      <span class="kv__value"><%= data.postal_codes.join(', ') %></span>
+    </div>
+  <% } %>
+  <% if (data.department) { %>
+    <div class="kv__row">
+      <span class="kv__key">Département</span>
+      <span class="kv__value"><%= data.department.name %> (<%= data.department.code %>)</span>
+    </div>
+  <% } %>
+  <% if (data.region) { %>
+    <div class="kv__row">
+      <span class="kv__key">Région</span>
+      <span class="kv__value"><%= data.region.name %></span>
+    </div>
+  <% } %>
+  <% if (data.population !== null && data.population !== undefined) { %>
+    <div class="kv__row">
+      <span class="kv__key">Population</span>
+      <span class="kv__value"><%= fmt.number(data.population) %> hab.</span>
+    </div>
+  <% } %>
+  <% if (data.area_km2) { %>
+    <div class="kv__row">
+      <span class="kv__key">Superficie</span>
+      <span class="kv__value"><%= fmt.number(data.area_km2) %> km²</span>
+    </div>
+  <% } %>
+  <% if (data.population && data.area_km2) { %>
+    <div class="kv__row">
+      <span class="kv__key">Densité</span>
+      <span class="kv__value"><%= fmt.number(Math.round(data.population / data.area_km2)) %> hab./km²</span>
+    </div>
+  <% } %>
+</div>

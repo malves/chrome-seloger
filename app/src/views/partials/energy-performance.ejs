@@ -1,0 +1,57 @@
+<%
+  // Étiquettes réglementaires DPE / GES. On n'affiche que ce qui est connu :
+  // la note (A..G) pilote le surlignage, les valeurs chiffrées sont facultatives.
+  const LETTERS = ["A", "B", "C", "D", "E", "F", "G"];
+
+  // Palette officielle du DPE : vert (sobre) → rouge (énergivore).
+  const DPE_COLORS = ["#319834", "#5faa32", "#a7c62c", "#f2d307", "#eca40c", "#e2691b", "#d63f28"];
+  // Palette du GES : bleu clair → bleu nuit (fort rejet de CO₂).
+  const GES_COLORS = ["#a7cbe8", "#8bb4dd", "#6f9ccf", "#5681bd", "#41619e", "#343a6f", "#231d4f"];
+
+  function gradeIndex(grade) {
+    if (!grade) return -1;
+    return LETTERS.indexOf(String(grade).trim().toUpperCase());
+  }
+
+  function scale({ title, grade, colors, value, unit }) {
+    const active = gradeIndex(grade);
+    if (active < 0) return "";
+
+    const segments = LETTERS.map((letter, i) => {
+      const isOn = i === active;
+      const cls = "dpe-seg" + (isOn ? " is-active" : "");
+      const inner = isOn ? letter : "";
+      return `<span class="${cls}" style="background: ${colors[i]}">${inner}</span>`;
+    }).join("");
+
+    const valueLine =
+      value != null
+        ? `<p class="energy__value">${fmt.number(value)} ${unit}</p>`
+        : "";
+
+    return (
+      `<div class="energy__col">` +
+      `<p class="energy__title">${title}</p>` +
+      `<div class="dpe-scale" role="img" aria-label="${title} : classe ${grade}">${segments}</div>` +
+      valueLine +
+      `</div>`
+    );
+  }
+%>
+
+<div class="energy">
+  <%- scale({
+    title: "Diagnostic de performance énergétique (DPE)",
+    grade: listing.dpe,
+    colors: DPE_COLORS,
+    value: listing.dpe_value,
+    unit: "kWh/m²·an",
+  }) %>
+  <%- scale({
+    title: "Indice d'émission de gaz à effet de serre (GES)",
+    grade: listing.ges,
+    colors: GES_COLORS,
+    value: listing.ges_value,
+    unit: "kg CO₂/m²·an",
+  }) %>
+</div>

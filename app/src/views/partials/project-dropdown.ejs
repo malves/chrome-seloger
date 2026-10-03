@@ -1,0 +1,87 @@
+<%
+  // Dropdown multi-sélection des projets, affichée dans l'en-tête de la fiche.
+  // Contrairement à la dropdown de la liste (un seul projet, pour filtrer),
+  // celle-ci coche plusieurs projets auxquels l'annonce est rattachée.
+  const assigned = listing.projects || [];
+  const assignedIds = new Set(assigned.map((project) => project.id));
+  const isOpen = typeof open !== "undefined" && open;
+  const triggerLabel =
+    assigned.length === 0
+      ? "Aucun projet"
+      : assigned.length === 1
+        ? assigned[0].name
+        : assigned.length + " projets";
+%>
+<div
+  class="project-select project-dropdown"
+  data-project-dropdown
+  <%= isOpen ? "data-open" : "" %>
+>
+  <button
+    type="button"
+    class="project-select__trigger"
+    data-project-dropdown-trigger
+    aria-haspopup="true"
+    aria-expanded="<%= isOpen ? 'true' : 'false' %>"
+    aria-label="Projets de l'annonce"
+  >
+    <% if (assigned.length) { %>
+      <span class="project-dropdown__dots" aria-hidden="true">
+        <% assigned.slice(0, 4).forEach(function (project) { %>
+          <span
+            class="project-dot"
+            style="--project-color: <%= fmt.projectColor(project.color) %>"
+          ></span>
+        <% }); %>
+      </span>
+    <% } else { %>
+      <span class="project-dot project-dot--all" aria-hidden="true"></span>
+    <% } %>
+    <span class="project-select__label"><%= triggerLabel %></span>
+    <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  </button>
+
+  <form
+    class="project-select__menu project-dropdown__menu"
+    data-project-dropdown-menu
+    method="post"
+    action="/listings/<%= listing.id %>/projects"
+    hx-post="/listings/<%= listing.id %>/projects"
+    hx-trigger="change"
+    hx-target="closest [data-project-dropdown]"
+    hx-swap="outerHTML"
+    <%= isOpen ? "" : "hidden" %>
+  >
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+    <p class="project-dropdown__title">Projets de cette annonce</p>
+
+    <% projects.forEach(function (project) { %>
+      <label class="project-select__option project-dropdown__option <%= assignedIds.has(project.id) ? 'is-active' : '' %>">
+        <input
+          type="checkbox"
+          name="project_ids"
+          value="<%= project.id %>"
+          <%= assignedIds.has(project.id) ? "checked" : "" %>
+        />
+        <span
+          class="project-dot"
+          style="--project-color: <%= fmt.projectColor(project.color) %>"
+          aria-hidden="true"
+        ></span>
+        <span class="project-select__option-name"><%= project.name %></span>
+      </label>
+    <% }); %>
+
+    <%# Sans JavaScript, htmx est absent : un bouton assure l'enregistrement. %>
+    <noscript>
+      <button class="btn btn--ghost btn--sm" type="submit">Enregistrer</button>
+    </noscript>
+
+    <p class="project-dropdown__footer">
+      <a href="/projects">Gérer les projets</a>
+    </p>
+  </form>
+</div>

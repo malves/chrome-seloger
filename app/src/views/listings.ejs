@@ -1,0 +1,178 @@
+<div class="page-head">
+  <div>
+    <h1 class="page-title">
+      Votre carnet
+      <span class="page-title__muted">
+        <%= grandTotal %> annonce<%= grandTotal > 1 ? 's' : '' %> · <%= projects.length %> projet<%= projects.length > 1 ? 's' : '' %>
+      </span>
+    </h1>
+    <p class="page-subtitle">
+      <% if (favoriteCount > 0) { %>
+        <%= favoriteCount %> annonce<%= favoriteCount > 1 ? 's' : '' %> en favori
+      <% } else { %>
+        Aucune annonce en favoris
+      <% } %>
+      ·
+      <% if (rejectedCount > 0) { %>
+        <%= rejectedCount %> annonce<%= rejectedCount > 1 ? 's' : '' %> écartée<%= rejectedCount > 1 ? 's' : '' %>
+      <% } else { %>
+        Aucune annonce écartée
+      <% } %>
+    </p>
+  </div>
+</div>
+
+<nav class="filters filters--toolbar" aria-label="Filtrer les annonces">
+  <div class="filters__group" aria-label="Filtrer par statut">
+    <a
+      class="pill <%= !filters.status && !filters.favorite ? 'is-active' : '' %>"
+      href="<%= fmt.listingsUrl(query, { status: null, fav: null }) %>"
+      >Toutes <span class="pill__count"><%= total %></span></a
+    >
+    <% fmt.statusOptions().forEach(function (option) { %>
+      <a
+        class="pill <%= filters.status === option.value ? 'is-active' : '' %>"
+        href="<%= fmt.listingsUrl(query, { status: option.value, fav: null }) %>"
+      >
+        <%= option.label %>
+        <span class="pill__count"><%= statusCounts[option.value] || 0 %></span>
+      </a>
+    <% }); %>
+    <a
+      class="pill <%= filters.favorite ? 'is-active' : '' %>"
+      href="<%= fmt.listingsUrl(query, { fav: '1', status: null }) %>"
+    >
+      ★ Favoris
+    </a>
+  </div>
+
+  <div class="filters__actions">
+    <!-- Sélecteur de projet : chaque option est un lien vers la liste filtrée,
+         donc le filtrage reste côté serveur et fonctionne sans JavaScript. -->
+    <div class="project-select" data-project-select>
+      <button
+        type="button"
+        class="project-select__trigger"
+        data-project-trigger
+        aria-haspopup="listbox"
+        aria-expanded="false"
+        aria-label="Choisir un projet"
+      >
+        <span
+          class="project-dot <%= activeProject ? '' : 'project-dot--all' %>"
+          <% if (activeProject) { %>style="--project-color: <%= fmt.projectColor(activeProject.color) %>"<% } %>
+          aria-hidden="true"
+        ></span>
+        <span class="project-select__label">
+          <%= activeProject ? activeProject.name : 'Tous les projets' %>
+        </span>
+        <span class="pill__count">
+          <%= activeProject ? activeProject.listing_count : grandTotal %>
+        </span>
+        <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+
+      <div class="project-select__menu" data-project-menu role="listbox" hidden>
+        <a
+          class="project-select__option <%= activeProject ? '' : 'is-active' %>"
+          href="<%= fmt.listingsUrl(query, { project: null }) %>"
+          role="option"
+          aria-selected="<%= activeProject ? 'false' : 'true' %>"
+        >
+          <span class="project-dot project-dot--all" aria-hidden="true"></span>
+          <span class="project-select__option-name">Tous les projets</span>
+          <span class="pill__count"><%= grandTotal %></span>
+        </a>
+        <% projects.forEach(function (project) { %>
+          <% const isActive = activeProject && activeProject.id === project.id; %>
+          <a
+            class="project-select__option <%= isActive ? 'is-active' : '' %>"
+            href="<%= fmt.listingsUrl(query, { project: project.slug }) %>"
+            role="option"
+            aria-selected="<%= isActive ? 'true' : 'false' %>"
+            style="--project-color: <%= fmt.projectColor(project.color) %>"
+          >
+            <span class="project-dot" aria-hidden="true"></span>
+            <span class="project-select__option-name"><%= project.name %></span>
+            <span class="pill__count"><%= project.listing_count %></span>
+          </a>
+        <% }); %>
+      </div>
+    </div>
+
+    <div class="filters__divider" aria-hidden="true"></div>
+
+    <div class="field-inline">
+      <span id="sort-label">Tri :</span>
+      <%# Même liste que le statut des cartes : pilule claire et menu flottant.
+          Chaque option est un lien, donc le tri fonctionne sans JavaScript. %>
+      <div class="project-select sort-select" data-sort-select>
+        <button
+          type="button"
+          class="project-select__trigger"
+          data-sort-trigger
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-labelledby="sort-label"
+        >
+          <span class="project-select__label"><%= sorts[filters.sort].label %></span>
+          <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+
+        <div class="project-select__menu" data-sort-menu role="listbox" hidden>
+          <% Object.entries(sorts).forEach(function ([key, sort]) { %>
+            <% const active = filters.sort === key; %>
+            <a
+              class="project-select__option <%= active ? 'is-active' : '' %>"
+              href="<%= fmt.listingsUrl(query, { sort: key }) %>"
+              role="option"
+              aria-selected="<%= active ? 'true' : 'false' %>"
+            >
+              <span class="project-select__option-name"><%= sort.label %></span>
+            </a>
+          <% }); %>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<% if (!listings.length) { %>
+  <% if (grandTotal === 0) { %>
+    <%- include("partials/empty-listings") %>
+  <% } else if (activeProject && total === 0) { %>
+    <div class="empty">
+      <h2 class="empty__title">Aucune annonce dans ce projet</h2>
+      <p class="empty__lead">
+        Ouvrez une annonce et cochez « <%= activeProject.name %> » dans le bloc
+        Projets pour la classer ici.
+      </p>
+      <a class="btn btn--dark" href="/listings">Voir toutes les annonces</a>
+    </div>
+  <% } else { %>
+    <div class="empty">
+      <h2 class="empty__title">Aucune annonce ne correspond</h2>
+      <p class="empty__lead">
+        Aucun bien ne correspond à ces filtres. Élargissez la recherche pour
+        retrouver vos annonces.
+      </p>
+      <a
+        class="btn btn--dark"
+        href="<%= activeProject ? '/listings?project=' + activeProject.slug : '/listings' %>"
+        >Réinitialiser les filtres</a
+      >
+    </div>
+  <% } %>
+<% } else { %>
+  <div class="grid">
+    <% listings.forEach(function (listing) { %>
+      <%- include("partials/listing-card", { listing: listing }) %>
+    <% }); %>
+  </div>
+
+  <%- include("partials/pagination", { pagination: pagination, query: query }) %>
+<% } %>

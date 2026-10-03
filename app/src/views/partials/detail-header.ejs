@@ -1,0 +1,66 @@
+<div class="detail-head" id="detail-header">
+  <div class="detail-head__main">
+    <h1 class="detail-title">
+      <%= listing.title || (fmt.propertyTypeLabel(listing.property_type) || 'Annonce') %>
+    </h1>
+
+    <div class="detail-meta">
+      <% if (listing.city) { %>
+        <span class="badge">📍 <%= listing.city %><%= listing.postal_code ? ' (' + listing.postal_code + ')' : '' %></span>
+      <% } %>
+      <span class="badge badge--<%= fmt.statusTone(listing.status) %>">
+        <%= fmt.statusLabel(listing.status) %>
+      </span>
+      <% if (listing.transaction_type === 'rent') { %>
+        <span class="badge badge--warn">Location</span>
+      <% } %>
+      <% if (listing.is_new_build) { %>
+        <span class="badge badge--accent">Neuf</span>
+      <% } %>
+      <% if (listing.price_change) { %>
+        <span class="badge badge--<%= listing.price_change.direction %>">
+          <%= listing.price_change.direction === 'down' ? 'Baisse' : 'Hausse' %>
+          de <%= fmt.euro(Math.abs(listing.price_change.delta)) %>
+        </span>
+      <% } %>
+      <span class="badge badge--muted">
+        <%= fmt.sourceLabel(listing.source) %>
+      </span>
+    </div>
+
+    <div class="btn-row" style="margin-top: var(--space-4)">
+      <%- include("project-dropdown", { listing: listing, projects: projects }) %>
+      <%- include("status-dropdown", { listing: listing }) %>
+
+      <form
+        hx-post="/listings/<%= listing.id %>"
+        hx-target="#detail-header"
+        hx-swap="outerHTML"
+      >
+        <input type="hidden" name="view" value="header" />
+        <input type="hidden" name="is_favorite" value="<%= listing.is_favorite ? '0' : '1' %>" />
+        <button class="btn <%= listing.is_favorite ? 'btn--lime' : 'btn--ghost' %> btn--sm" type="submit">
+          <%= listing.is_favorite ? '★ Favori' : '☆ Ajouter aux favoris' %>
+        </button>
+      </form>
+
+      <a
+        class="btn btn--ghost btn--sm"
+        href="<%= listing.url %>"
+        target="_blank"
+        rel="noreferrer noopener"
+        >Voir l'annonce d'origine ↗</a
+      >
+    </div>
+  </div>
+
+  <div class="detail-head__price">
+    <p class="detail-price"><%= fmt.euro(listing.price) %></p>
+    <% if (listing.price_per_m2) { %>
+      <span class="detail-price__unit"><%= fmt.euro(listing.price_per_m2) %> / m²</span>
+    <% } %>
+    <span class="detail-price__unit">
+      Enregistrée <%= fmt.relative(listing.first_saved_at) %>
+    </span>
+  </div>
+</div>

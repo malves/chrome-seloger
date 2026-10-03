@@ -1,0 +1,31 @@
+{
+  "name": "carnet-immo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Carnet de recherche immobilière : serveur et site web alimentés par l'extension Chrome",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "seed": "node src/scripts/seed.js",
+    "test": "NODE_ENV=test LOG_LEVEL=silent node --test test/*.test.js"
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "better-sqlite3": "^13.0.3",
+    "dotenv": "^17.0.0",
+    "ejs": "^3.1.10",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "pino": "^10.4.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.1"
+  }
+}

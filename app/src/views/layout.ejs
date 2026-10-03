@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="csrf-token" content="<%= csrfToken %>" />
+    <title><%= title %> · Carnet de recherche</title>
+    <link rel="stylesheet" href="/public/css/app.css" />
+    <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" />
+    <script src="/public/js/htmx.min.js" defer></script>
+    <script src="/public/js/app.js" defer></script>
+  </head>
+  <body>
+    <%- include("partials/nav") %>
+
+    <main class="page">
+      <%- include("partials/flash") %>
+      <%- body %>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Carnet de recherche immobilière — données privées, visibles de vous seul.
+      </p>
+    </footer>
+
+    <!-- Modale de confirmation réutilisable : alimentée par les formulaires
+         portant un attribut `data-confirm` (voir app.js). -->
+    <div class="modal" id="confirm-modal" hidden>
+      <div class="modal__overlay" data-modal-dismiss></div>
+      <div
+        class="modal__dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-modal-title"
+        aria-describedby="confirm-modal-message"
+      >
+        <h2 class="modal__title" id="confirm-modal-title" data-modal-title>
+          Confirmer
+        </h2>
+        <p class="modal__message" id="confirm-modal-message" data-modal-message></p>
+        <div class="modal__actions">
+          <button type="button" class="btn btn--ghost" data-modal-dismiss>
+            Annuler
+          </button>
+          <button type="button" class="btn btn--danger-solid" data-modal-confirm>
+            Supprimer
+          </button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

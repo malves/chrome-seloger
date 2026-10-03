@@ -1,0 +1,22 @@
+<%
+  // Affichage de repli : utilisé tant qu'un provider n'a pas son propre partial.
+  const entries = Object.entries(data || {});
+  const label = (key) => key.replace(/_/g, " ");
+  const display = (value) =>
+    value === null || value === undefined
+      ? "—"
+      : typeof value === "object"
+        ? JSON.stringify(value)
+        : String(value);
+%>
+<div class="kv">
+  <% entries.forEach(function ([key, value]) { %>
+    <div class="kv__row">
+      <span class="kv__key"><%= label(key) %></span>
+      <span class="kv__value"><%= display(value) %></span>
+    </div>
+  <% }); %>
+  <% if (!entries.length) { %>
+    <p class="field__hint">Aucune donnée.</p>
+  <% } %>
+</div>

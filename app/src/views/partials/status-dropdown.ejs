@@ -1,0 +1,58 @@
+<%
+  // Même menu que la dropdown des projets : bouton pilule et panneau flottant.
+  // Ici le choix est unique (statut de suivi), donc des boutons radio.
+  const isOpen = typeof open !== "undefined" && open;
+  const current = fmt.statusLabel(listing.status);
+%>
+<div
+  class="project-select project-dropdown"
+  data-status-dropdown
+  <%= isOpen ? "data-open" : "" %>
+>
+  <button
+    type="button"
+    class="project-select__trigger"
+    data-status-dropdown-trigger
+    aria-haspopup="true"
+    aria-expanded="<%= isOpen ? 'true' : 'false' %>"
+    aria-label="Statut de suivi"
+  >
+    <span class="project-select__label"><%= current %></span>
+    <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  </button>
+
+  <form
+    class="project-select__menu project-dropdown__menu"
+    data-status-dropdown-menu
+    method="post"
+    action="/listings/<%= listing.id %>"
+    hx-post="/listings/<%= listing.id %>"
+    hx-trigger="change"
+    hx-target="#detail-header"
+    hx-swap="outerHTML"
+    <%= isOpen ? "" : "hidden" %>
+  >
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+    <input type="hidden" name="view" value="header" />
+
+    <% fmt.statusOptions().forEach(function (option) { %>
+      <% const active = option.value === listing.status; %>
+      <label class="project-select__option project-dropdown__option <%= active ? 'is-active' : '' %>">
+        <input
+          type="radio"
+          name="status"
+          value="<%= option.value %>"
+          <%= active ? "checked" : "" %>
+        />
+        <span class="project-select__option-name"><%= option.label %></span>
+      </label>
+    <% }); %>
+
+    <%# Sans JavaScript, htmx est absent : un bouton assure l'enregistrement. %>
+    <noscript>
+      <button class="btn btn--ghost btn--sm" type="submit">Enregistrer</button>
+    </noscript>
+  </form>
+</div>

@@ -1,0 +1,192 @@
+<%
+  const params = financing.params;
+  const r = financing.result;
+%>
+<div id="financing-block" class="financing__grid">
+  <!-- Colonne gauche : paramètres de la simulation -->
+  <section class="financing-card financing-card--params">
+    <header class="financing-card__head">
+      <h3 class="financing-card__title">Paramètres</h3>
+      <p class="financing-card__subtitle">Le calcul se met à jour automatiquement.</p>
+    </header>
+
+    <form
+      class="financing-params"
+      hx-post="/listings/<%= listing.id %>/financing"
+      hx-target="#financing-block"
+      hx-swap="outerHTML"
+      hx-trigger="change, submit"
+      hx-sync="this:replace"
+    >
+      <div class="field">
+        <label class="field__label" for="financing-negotiated-price">Prix négocié (€)</label>
+        <%
+          const officialPrice = Number(listing.price) || 0;
+          const negotiated = Number(params.negotiatedPrice) || 0;
+          const gapPct = officialPrice > 0
+            ? Math.round(((negotiated - officialPrice) / officialPrice) * 1000) / 10
+            : null;
+        %>
+        <div class="amount-stepper">
+          <input
+            id="financing-negotiated-price"
+            class="input input--sm"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            name="negotiated_price"
+            data-amount
+            data-step="1000"
+            value="<%= fmt.number(params.negotiatedPrice) %>"
+            <% if (gapPct !== null) { %>aria-describedby="financing-price-gap"<% } %>
+            <% if (officialPrice > 0) { %>data-negotiated-price data-official-price="<%= officialPrice %>"<% } %>
+          />
+          <span class="amount-stepper__controls">
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le prix négocié de 1 000 euros"></button>
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le prix négocié de 1 000 euros"></button>
+          </span>
+        </div>
+        <% if (gapPct !== null) { %>
+          <span id="financing-price-gap" class="price-gap field__hint" data-price-gap>
+            <% if (gapPct < 0) { %>
+              <span class="price-gap__value price-gap__value--down">−<%= Math.abs(gapPct).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) %> %</span>
+              sous le prix officiel (<%= fmt.euro(officialPrice) %>)
+            <% } else if (gapPct > 0) { %>
+              <span class="price-gap__value price-gap__value--up">+<%= gapPct.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) %> %</span>
+              au-dessus du prix officiel (<%= fmt.euro(officialPrice) %>)
+            <% } else { %>
+              Au prix officiel (<%= fmt.euro(officialPrice) %>)
+            <% } %>
+          </span>
+        <% } %>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="financing-works">Travaux (€)</label>
+        <div class="amount-stepper">
+          <input id="financing-works" class="input input--sm" type="text" inputmode="numeric" autocomplete="off" name="works" data-amount data-step="1000" value="<%= fmt.number(params.works) %>" />
+          <span class="amount-stepper__controls">
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter les travaux de 1 000 euros"></button>
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer les travaux de 1 000 euros"></button>
+          </span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="financing-down-payment">Apport (€)</label>
+        <div class="amount-stepper">
+          <input id="financing-down-payment" class="input input--sm" type="text" inputmode="numeric" autocomplete="off" name="down_payment" data-amount data-step="1000" value="<%= fmt.number(params.downPayment) %>" />
+          <span class="amount-stepper__controls">
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter l'apport de 1 000 euros"></button>
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer l'apport de 1 000 euros"></button>
+          </span>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="field__label">Durée (ans)</span>
+        <input class="input input--sm" type="number" name="years" min="1" max="40" value="<%= params.years %>" />
+      </label>
+
+      <label class="field">
+        <span class="field__label">Taux nominal (%)</span>
+        <input class="input input--sm" type="number" name="interest_rate" min="0" max="25" step="0.01" value="<%= (params.interestRate * 100).toFixed(2) %>" />
+      </label>
+
+      <label class="field">
+        <span class="field__label">Assurance (%)</span>
+        <input class="input input--sm" type="number" name="insurance_rate" min="0" max="5" step="0.01" value="<%= (params.insuranceRate * 100).toFixed(2) %>" />
+      </label>
+
+    </form>
+  </section>
+
+  <!-- Colonne droite : résultats du calcul (inchangés) -->
+  <section class="financing-card financing-card--result">
+    <header class="financing-card__head">
+      <h3 class="financing-card__title">Simulation de crédit</h3>
+      <p class="financing-card__subtitle">Coût d'acquisition et mensualités estimés.</p>
+    </header>
+
+    <table class="specs">
+    <tbody>
+      <tr>
+        <th>Prix retenu</th>
+        <td><%= fmt.euro(r.price) %></td>
+      </tr>
+      <tr>
+        <th>
+          Frais de notaire
+          <span class="field__hint">(<%= fmt.percent(r.notaryRate) %>, <%= listing.is_new_build ? 'neuf' : 'ancien' %>)</span>
+        </th>
+        <td><%= fmt.euro(r.notaryFees) %></td>
+      </tr>
+      <tr>
+        <th>
+          Frais d'agence
+          <% if (listing.agency && listing.agency.fees_included !== false) { %>
+            <span class="field__hint">(inclus dans le prix)</span>
+          <% } %>
+        </th>
+        <td><%= fmt.euro(r.agencyFees) %></td>
+      </tr>
+      <tr>
+        <th>Travaux</th>
+        <td><%= fmt.euro(r.works) %></td>
+      </tr>
+      <tr class="specs--total">
+        <th>Coût total du projet</th>
+        <td><%= fmt.euro(r.totalCost) %></td>
+      </tr>
+      <tr>
+        <th>Apport</th>
+        <td>− <%= fmt.euro(r.downPayment) %></td>
+      </tr>
+      <tr>
+        <th>
+          Frais de garantie et de dossier
+          <span class="field__hint">(<%= fmt.percent(r.guaranteeRate) %>)</span>
+        </th>
+        <td><%= fmt.euro(r.guaranteeFees) %></td>
+      </tr>
+      <tr class="specs--total">
+        <th>Montant emprunté</th>
+        <td><%= fmt.euro(r.loanAmount) %></td>
+      </tr>
+      <tr>
+        <th>Mensualité hors assurance</th>
+        <td><%= fmt.euro(r.paymentExcludingInsurance) %></td>
+      </tr>
+      <tr>
+        <th>Assurance mensuelle</th>
+        <td><%= fmt.euro(r.monthlyInsurance) %></td>
+      </tr>
+      <tr class="specs--total">
+        <th>Mensualité totale <span class="field__hint">(sur <%= r.months %> mois)</span></th>
+        <td><%= fmt.euro(r.totalMonthly) %></td>
+      </tr>
+      <tr>
+        <th>Coût total du crédit</th>
+        <td><%= fmt.euro(r.creditCost) %></td>
+      </tr>
+      <tr>
+        <th>
+          Revenu mensuel minimum
+          <span class="field__hint">(endettement <%= fmt.percent(r.debtRatio, 0) %>)</span>
+        </th>
+        <td><%= fmt.euro(r.minimumIncome) %></td>
+      </tr>
+    </tbody>
+  </table>
+
+    <% if (r.isFullyFunded) { %>
+      <p class="panel__note">
+        L'apport couvre la totalité du projet : aucun emprunt n'est nécessaire.
+      </p>
+    <% } %>
+
+    <p class="panel__note">
+      Estimation indicative, ne constitue pas une offre de prêt ni un conseil.
+    </p>
+  </section>
+</div>

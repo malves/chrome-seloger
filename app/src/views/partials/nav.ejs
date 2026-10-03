@@ -1,0 +1,41 @@
+<header class="topbar">
+  <div class="topbar__inner">
+    <a class="brand" href="/">
+      <span class="brand__mark" aria-hidden="true">C</span>
+      <span class="brand__name">Carnet</span>
+    </a>
+
+    <% if (user) { %>
+      <nav class="topnav" aria-label="Navigation principale">
+        <a
+          class="topnav__link <%= currentPath.startsWith('/listings') ? 'is-active' : '' %>"
+          href="/listings"
+          >Annonces</a
+        >
+        <a
+          class="topnav__link <%= currentPath.startsWith('/projects') ? 'is-active' : '' %>"
+          href="/projects"
+          >Gérer les projets</a
+        >
+        <a
+          class="topnav__link <%= currentPath.startsWith('/settings') ? 'is-active' : '' %>"
+          href="/settings"
+          >Paramètres</a
+        >
+      </nav>
+
+      <div class="topbar__account">
+        <span class="topbar__email" title="<%= user.email %>"><%= user.email %></span>
+        <form method="post" action="/logout">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <button class="btn btn--ghost btn--sm" type="submit">Déconnexion</button>
+        </form>
+      </div>
+    <% } else { %>
+      <div class="topbar__account">
+        <a class="btn btn--ghost btn--sm" href="/login">Connexion</a>
+        <a class="btn btn--dark btn--sm" href="/signup">Créer un compte</a>
+      </div>
+    <% } %>
+  </div>
+</header>

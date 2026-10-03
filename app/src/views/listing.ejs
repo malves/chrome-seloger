@@ -1,0 +1,306 @@
+<%
+  const specs = [
+    ["Type de bien", fmt.propertyTypeLabel(listing.property_type)],
+    ["Transaction", fmt.transactionLabel(listing.transaction_type)],
+    ["Prix", listing.price !== null ? fmt.euro(listing.price) : null],
+    ["Prix au m²", listing.price_per_m2 ? fmt.euro(listing.price_per_m2) + " / m²" : null],
+    ["Surface habitable", listing.surface ? fmt.surface(listing.surface) : null],
+    ["Surface du terrain", listing.land_surface ? fmt.surface(listing.land_surface) : null],
+    ["Pièces", listing.rooms || null],
+    ["Chambres", listing.bedrooms || null],
+    ["Étage", listing.floor !== null && listing.floor !== undefined ? listing.floor : null],
+    ["Année de construction", listing.year_built || null],
+    ["Construction", listing.is_new_build ? "Neuf" : null],
+    ["Commune", listing.city],
+    ["Code postal", listing.postal_code],
+    ["Code INSEE", listing.insee_code],
+    ["Agence", listing.agency && listing.agency.name ? listing.agency.name : null],
+    ["Téléphone", listing.agency && listing.agency.phone ? listing.agency.phone : null],
+    [
+      "Honoraires d'agence",
+      listing.agency && listing.agency.fees_percent
+        ? listing.agency.fees_percent + " %" + (listing.agency.fees_included ? " (inclus)" : "")
+        : null,
+    ],
+    ["Identifiant source", listing.source_id],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+%>
+
+<div class="detail">
+  <!-- 1. En-tête (le rattachement aux projets vit dans la dropdown du header) -->
+  <section class="panel">
+    <%- include("partials/detail-header", { listing: listing, projects: projects }) %>
+  </section>
+
+  <!-- 2. Galerie (carrousel : flèches, compteur, miniatures, clavier) -->
+  <% if (photos.length) { %>
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Photos</p>
+          <h2 class="panel__title"><%= photos.length %> photo<%= photos.length > 1 ? 's' : '' %></h2>
+        </div>
+        <span class="card__foot-note">Images servies par <%= fmt.sourceLabel(listing.source) %></span>
+      </div>
+
+      <div class="carousel" data-carousel>
+        <div class="carousel__stage">
+          <div class="carousel__viewport" tabindex="0" aria-roledescription="carrousel"
+               aria-label="Photos de l'annonce">
+            <div class="carousel__track" data-carousel-track>
+              <% photos.forEach(function (url, index) { %>
+                <div class="carousel__slide" role="group" aria-roledescription="diapositive"
+                     aria-label="Photo <%= index + 1 %> sur <%= photos.length %>">
+                  <img
+                    src="<%= url %>"
+                    alt="Photo <%= index + 1 %> de l'annonce"
+                    loading="<%= index === 0 ? 'eager' : 'lazy' %>"
+                    referrerpolicy="no-referrer"
+                  />
+                </div>
+              <% }); %>
+            </div>
+          </div>
+
+          <% if (photos.length > 1) { %>
+            <button type="button" class="carousel__nav carousel__nav--prev"
+                    data-carousel-prev aria-label="Photo précédente">‹</button>
+            <button type="button" class="carousel__nav carousel__nav--next"
+                    data-carousel-next aria-label="Photo suivante">›</button>
+            <div class="carousel__counter" data-carousel-counter aria-live="polite">
+              1 / <%= photos.length %>
+            </div>
+          <% } %>
+        </div>
+
+        <% if (photos.length > 1) { %>
+          <div class="carousel__thumbs" data-carousel-thumbs>
+            <% photos.forEach(function (url, index) { %>
+              <button type="button"
+                      class="carousel__thumb<%= index === 0 ? ' is-active' : '' %>"
+                      data-carousel-thumb="<%= index %>"
+                      aria-label="Aller à la photo <%= index + 1 %>">
+                <img src="<%= url %>" alt="" loading="lazy" referrerpolicy="no-referrer" />
+              </button>
+            <% }); %>
+          </div>
+        <% } %>
+      </div>
+    </section>
+  <% } %>
+
+  <!-- 3. Caractéristiques -->
+  <section class="panel">
+    <div class="panel__head">
+      <div>
+        <p class="panel__eyebrow">Le bien</p>
+        <h2 class="panel__title">Caractéristiques</h2>
+      </div>
+    </div>
+
+    <% if (specs.length) { %>
+      <div class="kv kv--grid">
+        <% specs.forEach(function ([label, value]) { %>
+          <div class="kv__row">
+            <span class="kv__key"><%= label %></span>
+            <span class="kv__value"><%= value %></span>
+          </div>
+        <% }); %>
+      </div>
+    <% } else { %>
+      <p class="field__hint">
+        Aucune caractéristique n'a été extraite pour cette annonce.
+      </p>
+    <% } %>
+
+    <% if (listing.features && listing.features.length) { %>
+      <ul class="tags" style="margin-top: var(--space-4)">
+        <% listing.features.forEach(function (feature) { %>
+          <li class="badge"><%= feature %></li>
+        <% }); %>
+      </ul>
+    <% } %>
+  </section>
+
+  <!-- 4. Description -->
+  <% if (listing.description) { %>
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Annonce</p>
+          <h2 class="panel__title">Description</h2>
+        </div>
+      </div>
+      <%
+        // Au-delà de quelques lignes, la description est repliée par défaut :
+        // on clique sur le bloc pour la déplier (voir public/js/app.js).
+        const collapsible = listing.description.length > 400;
+      %>
+      <div class="description-box<%= collapsible ? ' is-collapsible is-collapsed' : '' %>"<%= collapsible ? ' data-description' : '' %>>
+        <p class="description"><%= listing.description %></p>
+        <% if (collapsible) { %>
+          <button type="button" class="description-toggle" data-description-toggle aria-expanded="false">
+            <span class="description-toggle__more">Voir plus</span>
+            <span class="description-toggle__less">Voir moins</span>
+          </button>
+        <% } %>
+      </div>
+    </section>
+  <% } %>
+
+  <!-- 4b. Performance énergétique (étiquettes DPE / GES) -->
+  <% if (listing.dpe || listing.ges) { %>
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Énergie</p>
+          <h2 class="panel__title">Performance énergétique</h2>
+        </div>
+      </div>
+      <%- include("partials/energy-performance", { listing: listing }) %>
+    </section>
+  <% } %>
+
+  <!-- 5. Données de l'extension -->
+  <% if (listing.extension_data && Object.keys(listing.extension_data).length) { %>
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Extension</p>
+          <h2 class="panel__title">Données du navigateur</h2>
+        </div>
+      </div>
+      <%- include("partials/extension-data", { data: listing.extension_data }) %>
+    </section>
+  <% } %>
+
+  <!-- 6. Commune -->
+  <% if (communeProviders.length) { %>
+    <% const inlineCommuneHead = communeProviders.length === 1; %>
+    <section class="panel">
+      <% if (!inlineCommuneHead) { %>
+        <div class="panel__head">
+          <div>
+            <p class="panel__eyebrow">Territoire</p>
+            <h2 class="panel__title">Commune</h2>
+          </div>
+        </div>
+      <% } %>
+      <% communeProviders.forEach(function (provider) { %>
+        <%- include("partials/enrichment-block", {
+          provider: provider,
+          listing: listing,
+          eyebrow: inlineCommuneHead ? "Territoire" : null,
+          sectionTitle: inlineCommuneHead ? "Commune" : null
+        }) %>
+      <% }); %>
+    </section>
+  <% } %>
+
+  <!-- 7. Financement -->
+  <% if (listing.transaction_type !== 'rent') { %>
+    <section class="panel" id="financement">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Budget</p>
+          <h2 class="panel__title">Financement</h2>
+        </div>
+      </div>
+      <%- include("partials/financing", { listing: listing, financing: financing }) %>
+    </section>
+  <% } %>
+
+  <!-- Autres providers (hors commune et financement) -->
+  <% if (otherProviders.length) { %>
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Enrichissement</p>
+          <h2 class="panel__title">Autres données</h2>
+        </div>
+      </div>
+      <% otherProviders.forEach(function (provider) { %>
+        <%- include("partials/enrichment-block", { provider: provider, listing: listing }) %>
+      <% }); %>
+    </section>
+  <% } %>
+
+  <!-- 8. Historique de prix -->
+  <% if (priceHistory.length >= 2) { %>
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Suivi</p>
+          <h2 class="panel__title">Historique de prix</h2>
+        </div>
+      </div>
+      <div class="price-history">
+        <% priceHistory.forEach(function (point, index) { %>
+          <%
+            const previous = index > 0 ? priceHistory[index - 1].price : null;
+            const delta = previous !== null ? point.price - previous : null;
+          %>
+          <div class="price-history__row">
+            <span><%= fmt.date(point.observed_at) %></span>
+            <span>
+              <strong><%= fmt.euro(point.price) %></strong>
+              <% if (delta) { %>
+                <span class="price-history__delta price-history__delta--<%= delta < 0 ? 'down' : 'up' %>">
+                  <%= delta < 0 ? '−' : '+' %><%= fmt.euro(Math.abs(delta)) %>
+                </span>
+              <% } %>
+            </span>
+          </div>
+        <% }); %>
+      </div>
+    </section>
+  <% } %>
+
+  <!-- 9. Notes personnelles -->
+  <section class="panel">
+    <div class="panel__head">
+      <div>
+        <p class="panel__eyebrow">Vous</p>
+        <h2 class="panel__title">Notes personnelles</h2>
+      </div>
+      <span class="notes-status" id="notes-status">Enregistrement automatique</span>
+    </div>
+
+    <form
+      hx-post="/listings/<%= listing.id %>"
+      hx-trigger="keyup changed delay:800ms from:find textarea"
+      hx-target="#notes-status"
+      hx-swap="outerHTML"
+    >
+      <input type="hidden" name="view" value="notes" />
+      <textarea
+        class="textarea"
+        name="notes"
+        placeholder="Points forts, réserves, questions à poser à l'agence…"
+        maxlength="20000"
+      ><%= listing.notes || '' %></textarea>
+    </form>
+  </section>
+
+  <!-- Suppression -->
+  <section class="panel danger-zone">
+    <div class="panel__head">
+      <div>
+        <p class="panel__eyebrow">Zone dangereuse</p>
+        <h2 class="panel__title">Supprimer cette annonce</h2>
+      </div>
+    </div>
+    <p class="field__hint" style="margin-bottom: var(--space-4)">
+      L'annonce, ses photos, ses notes et son historique de prix sont
+      définitivement supprimés.
+    </p>
+    <form
+      method="post"
+      action="/listings/<%= listing.id %>/delete"
+      data-confirm="Supprimer définitivement cette annonce ?"
+    >
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <button class="btn btn--danger" type="submit">Supprimer l'annonce</button>
+    </form>
+  </section>
+</div>

@@ -1,0 +1,348 @@
+<%
+  var localizedCount = addresses.filter(function (addr) {
+    return addr.lat != null && addr.lng != null;
+  }).length;
+  var toGeocodeCount = addresses.length - localizedCount;
+%>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">
+      <%= project.name %>
+      <% if (project.is_default) { %>
+        <span class="badge badge--accent">Projet par défaut</span>
+      <% } %>
+      <span class="page-title__muted">
+        <%= project.listing_count %> annonce<%= project.listing_count > 1 ? 's' : '' %>
+        · <%= addresses.length %> adresse<%= addresses.length > 1 ? 's' : '' %> de référence
+      </span>
+    </h1>
+    <p class="page-subtitle">
+      <% if (!addresses.length) { %>
+        Aucune adresse de référence
+      <% } else { %>
+        <% if (localizedCount > 0) { %>
+          <%= localizedCount %> adresse<%= localizedCount > 1 ? 's' : '' %> localisée<%= localizedCount > 1 ? 's' : '' %>
+        <% } else { %>
+          Aucune adresse localisée
+        <% } %>
+        ·
+        <% if (toGeocodeCount > 0) { %>
+          <%= toGeocodeCount %> à géocoder
+        <% } else { %>
+          Toutes localisées
+        <% } %>
+      <% } %>
+    </p>
+  </div>
+</div>
+
+<div class="settings-layout">
+  <!-- --------------------------- Menu gauche --------------------------- -->
+  <aside class="settings-menu">
+    <div class="settings-menu__head">
+      <h1 class="settings-menu__title">Paramètres du projet</h1>
+      <p class="settings-menu__subtitle">
+        <a href="/listings?project=<%= project.slug %>">
+          Voir les annonces
+        </a>
+      </p>
+    </div>
+
+    <nav class="settings-menu__nav" aria-label="Sections du projet">
+      <button
+        type="button"
+        class="settings-menu__item"
+        data-settings-tab="general"
+        aria-selected="false"
+      >
+        <span class="settings-menu__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </span>
+        <span class="settings-menu__text">
+          <span class="settings-menu__label">Général</span>
+          <span class="settings-menu__hint">Nom du projet</span>
+        </span>
+        <span class="settings-menu__chevron" aria-hidden="true">›</span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-menu__item is-active"
+        data-settings-tab="addresses"
+        aria-selected="true"
+      >
+        <span class="settings-menu__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0Z" />
+            <circle cx="12" cy="10" r="3" />
+          </svg>
+        </span>
+        <span class="settings-menu__text">
+          <span class="settings-menu__label">Adresses de référence</span>
+          <span class="settings-menu__hint">Temps de trajet</span>
+        </span>
+        <span class="settings-menu__chevron" aria-hidden="true">›</span>
+      </button>
+
+      <% if (!project.is_default) { %>
+        <button
+          type="button"
+          class="settings-menu__item settings-menu__item--danger"
+          data-settings-tab="danger"
+          aria-selected="false"
+        >
+          <span class="settings-menu__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3 2 20h20L12 3Z" />
+              <path d="M12 10v4M12 17.5v.5" />
+            </svg>
+          </span>
+          <span class="settings-menu__text">
+            <span class="settings-menu__label">Zone dangereuse</span>
+            <span class="settings-menu__hint">Supprimer le projet</span>
+          </span>
+          <span class="settings-menu__chevron" aria-hidden="true">›</span>
+        </button>
+      <% } %>
+    </nav>
+  </aside>
+
+  <!-- -------------------------- Contenu droite ------------------------- -->
+  <div class="settings-content">
+    <!-- --------------------- Adresses de référence --------------------- -->
+    <section class="panel settings-panel is-active" data-settings-panel="addresses">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Temps de trajet</p>
+          <h2 class="panel__title">Adresses de référence</h2>
+        </div>
+      </div>
+
+      <p class="field__hint" style="margin-bottom: var(--space-4)">
+        Sur chaque annonce de ce projet, l'extension affiche le temps de trajet en
+        voiture jusqu'à ces adresses (domicile, bureau, école, gare…). Ajoutez-en
+        autant que de points qui comptent pour cette recherche.
+      </p>
+
+      <% if (!travelEnabled) { %>
+        <p class="form-errors" role="status" style="margin-bottom: var(--space-4)">
+          Le calcul d'itinéraire est actuellement indisponible côté serveur
+          (clé OpenRouteService non configurée). Les adresses sont enregistrées,
+          et seront géocodées au prochain calcul.
+        </p>
+      <% } %>
+
+      <% if (!addresses.length) { %>
+        <p class="field__hint" style="margin-bottom: var(--space-4)">
+          Aucune adresse de référence pour l'instant.
+        </p>
+      <% } else { %>
+        <ul class="address-list">
+          <% addresses.forEach(function (addr) { %>
+            <li class="address-list__item">
+              <div class="address-list__main">
+                <strong><%= addr.label || 'Adresse de référence' %></strong>
+                <div class="card__foot-note"><%= addr.address %></div>
+                <div class="card__foot-note">
+                  <% if (addr.lat != null && addr.lng != null) { %>
+                    <span class="badge badge--accent">Localisée</span>
+                  <% } else { %>
+                    <span class="badge badge--warn">À géocoder</span>
+                  <% } %>
+                </div>
+              </div>
+              <form
+                method="post"
+                action="/projects/<%= project.id %>/addresses/<%= addr.id %>/delete"
+                data-confirm="Retirer « <%= addr.label || addr.address %> » de ce projet ? Elle reste dans votre carnet d'adresses."
+                data-confirm-title="Retirer du projet"
+                data-confirm-label="Retirer"
+              >
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                <button class="btn btn--ghost btn--sm btn--danger-ghost" type="submit">
+                  Retirer
+                </button>
+              </form>
+            </li>
+          <% }); %>
+        </ul>
+      <% } %>
+
+      <form class="form" method="post" action="/projects/<%= project.id %>/addresses">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+        <% if (suggestions && suggestions.length) { %>
+          <div class="address-suggest" data-address-suggest>
+            <div class="field">
+              <label class="field__label" for="label">Libellé (facultatif)</label>
+              <input
+                class="input"
+                type="text"
+                id="label"
+                name="label"
+                maxlength="40"
+                placeholder="Bureau, École, Gare…"
+                autocomplete="off"
+                role="combobox"
+                aria-expanded="false"
+                aria-autocomplete="list"
+                aria-controls="address-suggest-menu"
+                data-label-input
+              />
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="address">Adresse</label>
+              <input
+                class="input"
+                type="text"
+                id="address"
+                name="address"
+                maxlength="200"
+                placeholder="12 rue de Rivoli, 75001 Paris"
+                autocomplete="off"
+                required
+                role="combobox"
+                aria-expanded="false"
+                aria-autocomplete="list"
+                aria-controls="address-suggest-menu"
+                data-address-input
+              />
+            </div>
+
+            <ul
+              class="address-suggest__menu"
+              id="address-suggest-menu"
+              role="listbox"
+              aria-label="Adresses déjà saisies"
+              hidden
+              data-address-menu
+            >
+              <li class="address-suggest__title" role="presentation">
+                Adresses déjà saisies
+              </li>
+              <% suggestions.forEach(function (s) { %>
+                <li role="presentation">
+                  <button
+                    type="button"
+                    class="address-suggest__option"
+                    role="option"
+                    aria-selected="false"
+                    data-address-option
+                    data-address="<%= s.address %>"
+                    data-label="<%= s.label || '' %>"
+                  >
+                    <% if (s.label) { %>
+                      <span class="address-suggest__label"><%= s.label %></span>
+                    <% } %>
+                    <span class="address-suggest__text"><%= s.address %></span>
+                  </button>
+                </li>
+              <% }); %>
+            </ul>
+
+            <p class="field__hint" style="margin-top: 6px">
+              Dans le libellé ou l'adresse, commencez à taper ou choisissez une
+              adresse déjà saisie dans un autre projet (libellé et adresse seront
+              remplis).
+            </p>
+          </div>
+        <% } else { %>
+          <div class="field">
+            <label class="field__label" for="label">Libellé (facultatif)</label>
+            <input
+              class="input"
+              type="text"
+              id="label"
+              name="label"
+              maxlength="40"
+              placeholder="Bureau, École, Gare…"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="address">Adresse</label>
+            <input
+              class="input"
+              type="text"
+              id="address"
+              name="address"
+              maxlength="200"
+              placeholder="12 rue de Rivoli, 75001 Paris"
+              autocomplete="off"
+              required
+            />
+          </div>
+        <% } %>
+
+        <button class="btn btn--green" type="submit">Ajouter l'adresse</button>
+      </form>
+    </section>
+
+    <!-- --------------------------- Nom du projet ---------------------- -->
+    <section class="panel settings-panel" data-settings-panel="general" hidden>
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Général</p>
+          <h2 class="panel__title">Nom du projet</h2>
+        </div>
+      </div>
+
+      <form class="form" method="post" action="/projects/<%= project.id %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="action" value="rename" />
+        <div class="field">
+          <label class="field__label" for="name">Nom</label>
+          <input
+            class="input"
+            type="text"
+            id="name"
+            name="name"
+            value="<%= project.name %>"
+            maxlength="60"
+            required
+          />
+        </div>
+        <button class="btn btn--green" type="submit">Renommer</button>
+      </form>
+
+      <% if (!project.is_default) { %>
+        <form class="form" method="post" action="/projects/<%= project.id %>" style="margin-top: var(--space-4)">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <input type="hidden" name="action" value="default" />
+          <button class="btn btn--ghost" type="submit">Définir comme projet par défaut</button>
+        </form>
+      <% } %>
+    </section>
+
+    <!-- ------------------------ Zone dangereuse ----------------------- -->
+    <% if (!project.is_default) { %>
+      <section class="panel danger-zone settings-panel" data-settings-panel="danger" hidden>
+        <div class="panel__head">
+          <div>
+            <p class="panel__eyebrow">Zone dangereuse</p>
+            <h2 class="panel__title">Supprimer le projet</h2>
+          </div>
+        </div>
+
+        <p class="field__hint" style="margin-bottom: var(--space-4)">
+          Les annonces de ce projet ne sont pas supprimées : celles qui n'en
+          avaient pas d'autre rejoignent le projet par défaut.
+        </p>
+
+        <form
+          method="post"
+          action="/projects/<%= project.id %>/delete"
+          data-confirm="Supprimer le projet « <%= project.name %> » ? Les annonces sont conservées."
+        >
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <button class="btn btn--danger" type="submit">Supprimer ce projet</button>
+        </form>
+      </section>
+    <% } %>
+  </div>
+</div>

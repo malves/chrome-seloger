@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Carnet de recherche</title>
+    <link rel="stylesheet" href="../styles/popup.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="brand">
+        <span class="brand__mark" aria-hidden="true">C</span>
+        <span class="brand__name">Carnet</span>
+      </span>
+
+      <div class="topbar__account hidden" id="account">
+        <span class="topbar__email" id="account-email"></span>
+        <button class="btn btn--ghost btn--sm" id="disconnect" type="button">
+          Déconnexion
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <!-- ------------------------ Non authentifié ------------------------ -->
+      <section class="panel panel--green hidden" id="auth-card">
+        <h1 class="panel__title">Gardez vos annonces au même endroit</h1>
+        <p class="panel__lead">
+          Authentifiez-vous une fois : l'extension pourra ensuite enregistrer
+          les annonces dans vos projets. Aucun code à recopier.
+        </p>
+        <button class="btn btn--lime btn--block" id="connect" type="button">
+          S'authentifier
+        </button>
+        <p class="status status--on-dark" id="auth-status" role="status" aria-live="polite"></p>
+        <p class="panel__note">
+          Pas encore de compte ?
+          <a href="#" id="signup-link">Créer un compte</a>
+        </p>
+      </section>
+
+      <!-- -------------------------- Sauvegarde --------------------------- -->
+      <section class="panel hidden" id="save-card">
+        <div class="panel__head">
+          <p class="panel__eyebrow">Annonce de cet onglet</p>
+          <span class="badge badge--accent hidden" id="saved-badge">
+            Dans votre carnet
+          </span>
+        </div>
+
+        <!-- Page sans annonce exploitable -->
+        <p class="muted hidden" id="save-unavailable"></p>
+
+        <!-- Aperçu de ce qui sera envoyé -->
+        <div class="listing hidden" id="listing">
+          <div class="listing__thumb" id="listing-thumb">
+            <img id="listing-photo" alt="" hidden />
+          </div>
+          <div class="listing__main">
+            <p class="listing__title" id="listing-title"></p>
+            <p class="listing__meta" id="listing-meta"></p>
+            <span class="badge badge--warn hidden" id="listing-partial">
+              Informations partielles
+            </span>
+          </div>
+        </div>
+
+        <div class="field hidden" id="project-field">
+          <label class="field__label" for="project">Enregistrer dans</label>
+          <div class="field__row">
+            <select class="select" id="project"></select>
+            <button
+              class="btn btn--ghost btn--icon"
+              id="project-new"
+              type="button"
+              title="Créer un projet"
+              aria-label="Créer un projet"
+            >
+              +
+            </button>
+          </div>
+          <p class="field__hint">
+            Le dernier projet utilisé reste sélectionné.
+          </p>
+        </div>
+
+        <div class="field hidden" id="project-create">
+          <label class="field__label" for="project-name">Nouveau projet</label>
+          <div class="field__row">
+            <input
+              class="input"
+              type="text"
+              id="project-name"
+              maxlength="60"
+              placeholder="Maison de campagne"
+              autocomplete="off"
+            />
+            <button class="btn btn--dark btn--sm" id="project-add" type="button">
+              Créer
+            </button>
+          </div>
+        </div>
+
+        <button class="btn btn--green btn--block hidden" id="save" type="button">
+          Sauvegarder l'annonce
+        </button>
+
+        <p class="status" id="save-status" role="status" aria-live="polite"></p>
+        <a class="link-out hidden" id="listing-link" target="_blank" rel="noopener">
+          Ouvrir la fiche dans le carnet
+        </a>
+      </section>
+
+      <!-- ------------------------- Temps de trajet ----------------------- -->
+      <section class="panel hidden" id="result-section">
+        <div class="panel__head">
+          <div>
+            <p class="panel__eyebrow">Temps de trajet</p>
+            <p class="panel__subeyebrow" id="trips-project"></p>
+          </div>
+          <span class="timestamp" id="timestamp"></span>
+        </div>
+
+        <ul class="trips" id="trips"></ul>
+
+        <div class="labels">
+          <div class="label-row hidden" id="district-row">
+            <span class="tag">Quartier</span>
+            <span id="district-label"></span>
+          </div>
+          <div class="label-row hidden" id="city-row">
+            <span class="tag" id="city-tag">Ville</span>
+            <a id="city-link" target="_blank" rel="noopener noreferrer"></a>
+          </div>
+          <div class="label-row">
+            <span class="tag">Bien</span>
+            <span id="property-label"></span>
+          </div>
+        </div>
+
+        <div class="commune hidden" id="commune-section">
+          <div class="hidden" id="prices-row">
+            <div class="commune-head">
+              <span>Prix médian au m²</span>
+            </div>
+            <div class="prices">
+              <div class="price-box hidden" id="price-maison-box">
+                <span class="price-type">Maison</span>
+                <span class="price-val" id="price-maison"></span>
+              </div>
+              <div class="price-box hidden" id="price-appt-box">
+                <span class="price-type">Appartement</span>
+                <span class="price-val" id="price-appt"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hidden" id="politics-row">
+            <div class="commune-head">
+              <span>Orientation politique</span>
+              <span class="commune-value" id="politics-label"></span>
+            </div>
+            <div
+              class="bar"
+              title="Présidentielle 2022, 1er tour (blocs gauche / centre / droite)"
+            >
+              <span class="seg seg-g" id="bar-gauche"></span>
+              <span class="seg seg-c" id="bar-centre"></span>
+              <span class="seg seg-d" id="bar-droite"></span>
+            </div>
+            <div class="bar-legend">
+              <span><span class="dot dot-g"></span><span id="pct-gauche"></span></span>
+              <span><span class="dot dot-c"></span><span id="pct-centre"></span></span>
+              <span><span class="dot dot-d"></span><span id="pct-droite"></span></span>
+            </div>
+          </div>
+
+          <div class="commune-head hidden" id="taxe-row">
+            <span>Taxe foncière</span>
+            <span class="commune-value">
+              <span class="dots" id="taxe-dots"></span>
+              <span id="taxe-index"></span>
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel--flat" id="empty-section">
+        <p class="muted">
+          Ouvrez une annonce SeLoger, Belles Demeures ou Leboncoin : le temps de
+          trajet s'affiche ici et sur la page.
+        </p>
+      </section>
+
+      <button class="btn btn--ghost btn--block" id="recompute" type="button">
+        Recalculer sur l'onglet actif
+      </button>
+
+      <p class="footer-hint">
+        Les adresses de référence du temps de trajet se gèrent projet par projet
+        dans le carnet.
+      </p>
+    </main>
+
+    <footer class="footer">
+      <a href="#" id="carnet-link" target="_blank" rel="noopener">
+        Ouvrir mon carnet
+      </a>
+    </footer>
+
+    <script src="config.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

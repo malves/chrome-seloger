@@ -1,0 +1,141 @@
+<article class="card" id="listing-<%= listing.id %>">
+  <a class="card__media" href="/listings/<%= listing.id %>">
+    <% if (listing.photo_url) { %>
+      <img
+        src="<%= listing.photo_url %>"
+        alt=""
+        loading="lazy"
+        referrerpolicy="no-referrer"
+      />
+    <% } else { %>
+      <span class="card__media--empty">Pas de photo</span>
+    <% } %>
+
+    <span class="card__badges">
+      <span class="badge badge--<%= fmt.statusTone(listing.status) %>">
+        <%= fmt.statusLabel(listing.status) %>
+      </span>
+      <% if (listing.price_change) { %>
+        <span class="badge badge--<%= listing.price_change.direction %>">
+          <%= listing.price_change.direction === 'down' ? 'Baisse' : 'Hausse' %>
+          <%= listing.price_change.percent !== null ? Math.abs(listing.price_change.percent) + ' %' : '' %>
+        </span>
+      <% } %>
+    </span>
+  </a>
+
+  <div class="card__fav">
+    <form
+      hx-post="/listings/<%= listing.id %>"
+      hx-target="closest .card"
+      hx-swap="outerHTML"
+    >
+      <input type="hidden" name="view" value="card" />
+      <input type="hidden" name="is_favorite" value="<%= listing.is_favorite ? '0' : '1' %>" />
+      <button
+        class="card__fav-btn<%= listing.is_favorite ? ' is-active' : '' %>"
+        type="submit"
+        title="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"
+        aria-label="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"
+        aria-pressed="<%= listing.is_favorite ? 'true' : 'false' %>"
+      ><%= listing.is_favorite ? '★' : '☆' %></button>
+    </form>
+  </div>
+
+  <div class="card__body">
+    <div class="card__headline">
+      <a class="card__title" href="/listings/<%= listing.id %>">
+        <%= listing.title || (fmt.propertyTypeLabel(listing.property_type) || 'Annonce') + (listing.city ? ' · ' + listing.city : '') %>
+      </a>
+      <span class="card__price"><%= fmt.euro(listing.price) %></span>
+    </div>
+
+    <%
+      // Assemblé puis joint : pas de séparateur orphelin quand un champ manque.
+      const meta = [
+        fmt.propertyTypeLabel(listing.property_type),
+        listing.surface ? fmt.surface(listing.surface) : null,
+        listing.rooms ? `${listing.rooms} pièces` : null,
+        listing.bedrooms ? `${listing.bedrooms} ch.` : null,
+      ].filter(Boolean);
+    %>
+    <% if (meta.length) { %>
+      <p class="card__meta"><%= meta.join(" · ") %></p>
+    <% } %>
+
+    <p class="card__meta card__meta--split">
+      <% if (listing.city) { %>
+        <span>📍 <%= listing.city %><%= listing.postal_code ? ' (' + listing.postal_code + ')' : '' %></span>
+      <% } %>
+      <% if (listing.price_per_m2) { %>
+        <span><%= fmt.euro(listing.price_per_m2) %>/m²</span>
+      <% } %>
+      <% if (listing.dpe) { %>
+        <span class="badge badge--dpe">DPE <%= listing.dpe %></span>
+      <% } %>
+      <% if (listing.transaction_type === 'rent') { %>
+        <span class="badge badge--warn">Location</span>
+      <% } %>
+    </p>
+
+    <% if (listing.projects && listing.projects.length) { %>
+      <p class="card__projects">
+        <% listing.projects.forEach(function (project) { %>
+          <a
+            class="project-chip"
+            href="/listings?project=<%= project.slug %>"
+            style="--project-color: <%= fmt.projectColor(project.color) %>"
+          >
+            <span class="project-dot" aria-hidden="true"></span>
+            <%= project.name %>
+          </a>
+        <% }); %>
+      </p>
+    <% } %>
+  </div>
+
+  <div class="card__foot">
+    <%# Même allure que la dropdown « Tous les projets » : déclencheur pilule
+        et menu flottant maison. Les valeurs (statut de suivi) et le comportement
+        htmx restent identiques à l'ancien <select>. %>
+    <div class="project-select card__status-select<%= listing.status === 'rejected' ? ' is-rejected' : '' %>" data-card-status>
+      <button
+        type="button"
+        class="project-select__trigger"
+        data-card-status-trigger
+        aria-haspopup="listbox"
+        aria-expanded="false"
+        aria-label="Statut de suivi"
+      >
+        <span class="project-select__label"><%= fmt.statusLabel(listing.status) %></span>
+        <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+
+      <form
+        class="project-select__menu card__status-menu"
+        data-card-status-menu
+        role="listbox"
+        hx-post="/listings/<%= listing.id %>"
+        hx-trigger="change"
+        hx-target="closest .card"
+        hx-swap="outerHTML"
+        hidden
+      >
+        <input type="hidden" name="view" value="card" />
+        <% fmt.statusOptions().forEach(function (option) { %>
+          <% const active = option.value === listing.status; %>
+          <label class="project-select__option card__status-option <%= active ? 'is-active' : '' %>" role="option" aria-selected="<%= active ? 'true' : 'false' %>">
+            <input type="radio" name="status" value="<%= option.value %>" <%= active ? 'checked' : '' %> />
+            <span class="project-select__option-name"><%= option.label %></span>
+          </label>
+        <% }); %>
+      </form>
+    </div>
+
+    <span class="card__foot-note">
+      <%= fmt.sourceLabel(listing.source) %> · <%= fmt.relative(listing.last_saved_at) %>
+    </span>
+  </div>
+</article>

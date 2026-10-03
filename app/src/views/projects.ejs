@@ -1,0 +1,142 @@
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Projets</h1>
+    <p class="page-subtitle">
+      <%= projects.length %> projet<%= projects.length > 1 ? 's' : '' %> ·
+      <%= totalListings %> annonce<%= totalListings > 1 ? 's' : '' %> enregistrée<%= totalListings > 1 ? 's' : '' %>
+    </p>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Nouveau</p>
+      <h2 class="panel__title">Créer un nouveau projet</h2>
+    </div>
+  </div>
+
+  <p class="field__hint" style="margin-bottom: var(--space-4)">
+    Un projet regroupe les annonces d'une même recherche : résidence
+    principale, maison de campagne, investissement locatif…
+  </p>
+
+  <form class="inline-form" method="post" action="/projects">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+    <input
+      class="input"
+      type="text"
+      name="name"
+      placeholder="Maison de campagne"
+      maxlength="60"
+      required
+      aria-label="Nom du projet"
+    />
+    <button class="btn btn--dark" type="submit">Créer</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Organisation</p>
+      <h2 class="panel__title">Mes projets</h2>
+    </div>
+  </div>
+
+  <p class="field__hint" style="margin-bottom: var(--space-4)">
+    Attrapez la poignée à gauche d'un projet pour le déplacer : l'ordre que
+    vous choisissez est conservé et toujours réutilisé pour l'affichage. Le
+    crayon à côté du nom permet de le modifier sur place. Ouvrez un projet pour
+    paramétrer ses adresses de référence (temps de trajet). Les annonces reçues
+    sans projet rejoignent le projet par défaut ; supprimer un projet ne
+    supprime aucune annonce.
+  </p>
+
+  <ul class="project-list" data-project-reorder>
+    <% projects.forEach(function (project) { %>
+      <li class="project-list__item" data-project-id="<%= project.id %>" draggable="false">
+        <button
+          type="button"
+          class="project-drag"
+          data-drag-handle
+          aria-label="Déplacer « <%= project.name %> »"
+          title="Glisser pour réordonner"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h16" />
+            <path d="M4 12h16" />
+            <path d="M4 17h16" />
+          </svg>
+        </button>
+
+        <span
+          class="project-dot"
+          style="--project-color: <%= fmt.projectColor(project.color) %>"
+          aria-hidden="true"
+        ></span>
+
+        <div class="project-list__main">
+          <div class="project-list__title" data-rename>
+            <a
+              class="project-list__name"
+              href="/projects/<%= project.id %>"
+              data-project-label
+            >
+              <%= project.name %>
+            </a>
+            <button
+              type="button"
+              class="project-rename"
+              data-rename-open
+              data-tooltip="Modifier"
+              aria-label="Renommer « <%= project.name %> »"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </button>
+            <form
+              class="project-rename-form"
+              method="post"
+              action="/projects/<%= project.id %>"
+              hidden
+              data-rename-form
+            >
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+              <input type="hidden" name="action" value="rename" />
+              <input type="hidden" name="from" value="list" />
+              <input
+                class="input project-rename__input"
+                type="text"
+                name="name"
+                value="<%= project.name %>"
+                maxlength="60"
+                required
+                autocomplete="off"
+                aria-label="Nom du projet"
+                data-rename-input
+              />
+            </form>
+          </div>
+          <p class="card__foot-note">
+            <a href="/listings?project=<%= project.slug %>">
+              <%= project.listing_count %> annonce<%= project.listing_count > 1 ? 's' : '' %>
+            </a>
+            · <%= project.address_count %> adresse<%= project.address_count > 1 ? 's' : '' %> de référence
+            <% if (project.is_default) { %>
+              · <span class="badge badge--accent">Projet par défaut</span>
+            <% } %>
+          </p>
+        </div>
+
+        <div class="project-list__actions">
+          <a class="btn btn--ghost btn--sm" href="/projects/<%= project.id %>">
+            Paramétrer
+          </a>
+        </div>
+      </li>
+    <% }); %>
+  </ul>
+</section>

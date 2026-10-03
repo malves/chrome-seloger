@@ -1,0 +1,75 @@
+<%
+  // Un bloc par provider : titre, contenu délégué au partial du provider,
+  // état d'erreur commun avec bouton « Réessayer ».
+%>
+<%
+  // Sans titre explicite (rafraîchissement HTMX), le provider communal
+  // réaffiche « Commune » comme titre du bloc.
+  const resolvedTitle =
+    typeof sectionTitle !== "undefined"
+      ? sectionTitle
+      : provider.scope === "commune"
+        ? "Commune"
+        : null;
+  const resolvedEyebrow =
+    typeof eyebrow !== "undefined"
+      ? eyebrow
+      : resolvedTitle
+        ? "Territoire"
+        : null;
+%>
+<div class="provider-block" id="provider-<%= provider.key %>">
+  <div class="panel__head">
+    <% if (resolvedTitle) { %>
+      <div>
+        <% if (resolvedEyebrow) { %>
+          <p class="panel__eyebrow"><%= resolvedEyebrow %></p>
+        <% } %>
+        <h2 class="panel__title"><%= resolvedTitle %></h2>
+      </div>
+    <% } else { %>
+      <h3 class="panel__title"><%= provider.label %></h3>
+    <% } %>
+    <% if (provider.fetchedAt) { %>
+      <span class="card__foot-note">
+        Mise à jour <%= fmt.relative(provider.fetchedAt) %>
+      </span>
+    <% } %>
+  </div>
+
+  <% if (provider.status === 'ok' && provider.data) { %>
+    <%- include(provider.partial, { data: provider.data, listing: listing }) %>
+  <% } else if (provider.status === 'pending') { %>
+    <p class="field__hint">Donnée en cours de récupération…</p>
+  <% } else { %>
+    <p class="field__hint">
+      Donnée indisponible.
+      <% if (provider.error) { %>
+        <span class="field-error"><%= provider.error %></span>
+      <% } %>
+    </p>
+  <% } %>
+
+  <div class="btn-row" style="margin-top: var(--space-3)">
+    <form
+      hx-post="/listings/<%= listing.id %>/enrich/<%= provider.key %>"
+      hx-target="#provider-<%= provider.key %>"
+      hx-swap="outerHTML"
+    >
+      <button class="btn btn--ghost btn--sm" type="submit">
+        <%= provider.status === 'ok' ? 'Actualiser' : 'Réessayer' %>
+      </button>
+    </form>
+  </div>
+
+  <% if (provider.source) { %>
+    <p class="provider-source">
+      Source :
+      <% if (provider.sourceUrl) { %>
+        <a href="<%= provider.sourceUrl %>" target="_blank" rel="noreferrer noopener"><%= provider.source %></a>
+      <% } else { %>
+        <%= provider.source %>
+      <% } %>
+    </p>
+  <% } %>
+</div>

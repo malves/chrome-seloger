@@ -1,0 +1,47 @@
+<div class="auth">
+  <div class="panel">
+    <p class="panel__eyebrow">Extension Chrome</p>
+    <h1 class="auth__title">Connecter l'extension</h1>
+    <p class="auth__lead">
+      L'extension demande l'accès à votre carnet depuis
+      <strong><%= browser %></strong>.
+    </p>
+
+    <div class="consent-identity">
+      <span class="consent-identity__avatar" aria-hidden="true">
+        <%= user.email.charAt(0).toUpperCase() %>
+      </span>
+      <div>
+        <strong><%= user.email %></strong>
+        <div class="card__foot-note">Compte qui recevra les annonces</div>
+      </div>
+    </div>
+
+    <ul class="consent-list">
+      <li>Enregistrer des annonces dans vos projets</li>
+      <li>Lister vos projets pour vous laisser choisir la destination</li>
+      <li>Vérifier si une annonce est déjà dans votre carnet</li>
+    </ul>
+
+    <form class="consent-actions" method="post" action="/extension/connect">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <input type="hidden" name="redirect_uri" value="<%= authorization.redirectUri %>" />
+      <input type="hidden" name="code_challenge" value="<%= authorization.codeChallenge %>" />
+      <input type="hidden" name="code_challenge_method" value="S256" />
+      <input type="hidden" name="state" value="<%= authorization.state %>" />
+
+      <button class="btn btn--ghost" type="submit" name="decision" value="deny">
+        Annuler
+      </button>
+      <button class="btn btn--green" type="submit" name="decision" value="allow">
+        Autoriser l'extension
+      </button>
+    </form>
+
+    <p class="panel__note">
+      L'extension n'accède ni à votre mot de passe ni à votre historique de
+      navigation. Vous pouvez révoquer cet accès à tout moment depuis
+      <a href="/settings">Paramètres</a>.
+    </p>
+  </div>
+</div>
