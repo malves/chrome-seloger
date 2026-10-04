@@ -25,10 +25,24 @@ function withApp(name, fn) {
 
 /* --------------------------- Pages publiques --------------------------- */
 
-withApp("la page d'accueil explique le fonctionnement", async ({ app }) => {
+withApp("la page d'accueil est publique et indexable", async ({ app }) => {
   const res = await request(app).get("/").expect(200);
-  assert.match(res.text, /dans un seul carnet/);
-  assert.equal(res.headers["x-robots-tag"], "noindex, nofollow");
+  assert.match(res.text, /ce que l'annonce/);
+  assert.match(res.text, /<meta name="robots" content="index, follow"/);
+  assert.match(res.text, /<link rel="canonical" href="[^"]+\/"/);
+  assert.match(res.text, /application\/ld\+json/);
+  assert.equal(res.headers["x-robots-tag"], undefined);
+
+  const login = await request(app).get("/login").expect(200);
+  assert.equal(login.headers["x-robots-tag"], "noindex, nofollow");
+  assert.match(login.text, /<meta name="robots" content="noindex, nofollow"/);
+});
+
+withApp("robots.txt et sitemap.xml référencent la page d'accueil", async ({ app }) => {
+  const robots = await request(app).get("/robots.txt").expect(200);
+  assert.match(robots.text, /Sitemap: .+\/sitemap\.xml/);
+  const sitemap = await request(app).get("/sitemap.xml").expect(200);
+  assert.match(sitemap.text, /<loc>.+\/<\/loc>/);
 });
 
 withApp("les pages privées renvoient vers la connexion", async ({ app }) => {

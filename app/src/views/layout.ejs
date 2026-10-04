@@ -3,18 +3,45 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex, nofollow" />
+    <% const seo = locals.seo || null; %>
+    <meta name="robots" content="<%= seo ? 'index, follow' : 'noindex, nofollow' %>" />
     <meta name="csrf-token" content="<%= csrfToken %>" />
-    <title><%= title %> · Carnet de Visites</title>
+    <meta name="theme-color" content="#0b3d2c" />
+    <% if (seo) { %>
+      <title><%= seo.title %></title>
+      <meta name="description" content="<%= seo.description %>" />
+      <link rel="canonical" href="<%= seo.url %>" />
+      <meta property="og:type" content="website" />
+      <meta property="og:locale" content="fr_FR" />
+      <meta property="og:site_name" content="Carnet de Visites" />
+      <meta property="og:title" content="<%= seo.title %>" />
+      <meta property="og:description" content="<%= seo.description %>" />
+      <meta property="og:url" content="<%= seo.url %>" />
+      <meta name="twitter:card" content="summary" />
+      <% if (seo.jsonLd) { %>
+        <script type="application/ld+json"><%- JSON.stringify(seo.jsonLd).replace(/</g, "\\u003c") %></script>
+      <% } %>
+    <% } else { %>
+      <title><%= title %> · Carnet de Visites</title>
+    <% } %>
+    <% (locals.preloadFonts || []).forEach(function (href) { %>
+      <link rel="preload" href="<%= href %>" as="font" type="font/woff2" crossorigin />
+    <% }) %>
     <link rel="stylesheet" href="/public/css/app.css?v=<%= assetVersion %>" />
+    <% (locals.styles || []).forEach(function (href) { %>
+      <link rel="stylesheet" href="<%= href %>?v=<%= assetVersion %>" />
+    <% }) %>
     <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" />
     <script src="/public/js/htmx.min.js" defer></script>
     <script src="/public/js/app.js?v=<%= assetVersion %>" defer></script>
+    <% (locals.scripts || []).forEach(function (src) { %>
+      <script src="<%= src %>?v=<%= assetVersion %>" defer></script>
+    <% }) %>
   </head>
   <body>
     <%- include("partials/nav") %>
 
-    <main class="page">
+    <main class="<%= locals.mainClass || 'page' %>">
       <%- include("partials/flash") %>
       <%- body %>
     </main>

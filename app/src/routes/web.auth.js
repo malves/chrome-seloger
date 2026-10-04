@@ -23,6 +23,41 @@ function safeNext(value) {
   return target;
 }
 
+const HOME_DESCRIPTION =
+  "Extension Chrome gratuite : prix au m² réel du quartier, adresse probable, " +
+  "temps de trajet, DPE, sécurité et financement sur chaque annonce SeLoger et Leboncoin.";
+
+function homeSeo() {
+  const url = `${config.baseUrl}/`;
+  return {
+    title: "Carnet de Visites · Tout savoir sur chaque annonce immobilière",
+    description: HOME_DESCRIPTION,
+    url,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": `${url}#website`,
+          url,
+          name: "Carnet de Visites",
+          inLanguage: "fr-FR",
+        },
+        {
+          "@type": "SoftwareApplication",
+          name: "Carnet de Visites",
+          url,
+          description: HOME_DESCRIPTION,
+          applicationCategory: "LifestyleApplication",
+          operatingSystem: "Google Chrome",
+          inLanguage: "fr-FR",
+          offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
+        },
+      ],
+    },
+  };
+}
+
 export default function createAuthRouter({ repositories, logger }) {
   const router = express.Router();
   const projectsService = createProjectsService({ repositories });
@@ -38,7 +73,14 @@ export default function createAuthRouter({ repositories, logger }) {
 
   router.get("/", (req, res) => {
     if (req.user) return res.redirect("/listings");
-    return res.render("home", { title: "Accueil" });
+    return res.render("home", {
+      title: "Accueil",
+      seo: homeSeo(),
+      mainClass: "home",
+      styles: ["/public/css/home.css"],
+      scripts: ["/public/js/home.js"],
+      preloadFonts: ["/public/fonts/fraunces-latin-wght-normal.woff2"],
+    });
   });
 
   /* ------------------------------ Inscription ------------------------------ */

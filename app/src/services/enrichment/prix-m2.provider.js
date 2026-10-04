@@ -41,7 +41,7 @@ export default {
   scope: "listing",
   order: 25,
   ttlDays: 90,
-  label: "Prix au m²",
+  label: "Estimation du prix au m²",
   source: "DVF — DGFiP (geo-dvf Etalab)",
   sourceUrl: DATASET_URL,
 
@@ -206,15 +206,6 @@ export default {
       verdict,
       evolution,
       import_meta: dvf.importMeta(),
-      disclaimer:
-        "Prix issus des ventes réelles enregistrées (DVF / DGFiP), médianes par commune. " +
-        "Le rayon s'adapte (" +
-        baseRadius +
-        " à " +
-        maxRadius +
-        " m) selon le nombre de ventes disponibles et s'appuie sur la géolocalisation des ventes (adresse approximative). " +
-        "Échantillons faibles non représentatifs ; données publiées avec un décalage et mises à jour ~2 fois par an ; " +
-        "Alsace-Moselle et Mayotte non couvertes.",
     };
   },
 };

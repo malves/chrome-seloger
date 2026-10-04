@@ -89,9 +89,9 @@ export default function createApp(options = {}) {
     })
   );
 
-  // Le carnet est privé : rien n'est indexable.
+  // Le carnet est privé : seule la page d'accueil publique est indexable.
   app.use((req, res, next) => {
-    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    if (req.path !== "/") res.setHeader("X-Robots-Tag", "noindex, nofollow");
     next();
   });
 
@@ -101,6 +101,25 @@ export default function createApp(options = {}) {
       maxAge: config.isProduction ? "7d" : 0,
     })
   );
+
+  app.get("/robots.txt", (req, res) => {
+    res
+      .type("text/plain")
+      .send(
+        `User-agent: *\nDisallow: /api/\n\nSitemap: ${config.baseUrl}/sitemap.xml\n`
+      );
+  });
+
+  app.get("/sitemap.xml", (req, res) => {
+    res
+      .type("application/xml")
+      .send(
+        `<?xml version="1.0" encoding="UTF-8"?>\n` +
+          `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+          `  <url><loc>${config.baseUrl}/</loc></url>\n` +
+          `</urlset>\n`
+      );
+  });
 
   /* --------------------------- API extension --------------------------- */
   // Montée avant les sessions : authentification par Bearer, sans cookie.

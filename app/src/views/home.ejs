@@ -1,40 +1,324 @@
-<section class="hero">
-  <h1 class="hero__title">
-    Toutes vos annonces, <span>dans un seul carnet.</span>
-  </h1>
-  <p class="hero__lead">
-    Depuis une page d'annonce, l'extension Chrome enregistre le bien dans votre
-    Carnet de Visites. Le site le conserve, l'enrichit avec des données sur la
-    commune et calcule le plan de financement.
-  </p>
-  <div class="btn-row">
-    <a class="btn btn--lime" href="/signup">Créer un compte</a>
-    <a class="btn btn--ghost" href="/login">J'ai déjà un compte</a>
+<%
+  var icons = {
+    euro: '<path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/>',
+    pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+    car: '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9L18 10l-2.7-3.6A2 2 0 0 0 13.7 6H8.3a2 2 0 0 0-1.6.8L4 10l-2.4.6C.7 10.9 0 11.6 0 12.5V16c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M9 17h6"/>',
+    leaf: '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z"/><path d="M2 21c0-3 1.9-5.4 5.1-6"/>',
+    shield: '<path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.7 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1Z"/>',
+    bank: '<path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4Z"/>',
+    vote: '<path d="m9 12 2 2 4-4"/><path d="M5 7c0-1.1.9-2 2-2h10a2 2 0 0 1 2 2v12H5Z"/><path d="M22 19H2"/>',
+    list: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="m3 6 1 1 2-2"/><path d="m3 12 1 1 2-2"/><path d="m3 18 1 1 2-2"/>',
+    receipt: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/>'
+  };
+  function icon(name) {
+    return '<svg class="h-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icons[name] + '</svg>';
+  }
+  var arrow = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>';
+
+  var demoRows = [
+    { icon: "euro", label: "Prix au m²", value: "5 720 €", tag: "+8 % vs ventes du quartier", tone: "warn" },
+    { icon: "pin", label: "Adresse probable", value: "14 rue Chevreul", tag: "87 % de confiance", tone: "lime" },
+    { icon: "car", label: "Trajet vers votre bureau", value: "24 min", tag: "en voiture", tone: "muted" },
+    { icon: "leaf", label: "DPE", value: "D · 212 kWh/m²", tag: "vérifié ADEME", tone: "muted" },
+    { icon: "shield", label: "Délinquance de la commune", value: "−12 %", tag: "vs moyenne nationale", tone: "ok" },
+    { icon: "bank", label: "Mensualité estimée", value: "1 802 €", tag: "25 ans · 3,5 %", tone: "muted" }
+  ];
+
+  var decoder = [
+    {
+      claim: "Prix attractif",
+      fact: "Le m² est 8 % au-dessus des ventes réelles autour du bien.",
+      detail: "Médiane des ventes notariées de la commune et dans un rayon autour de l'adresse, évolution sur 10 ans et verdict de négociation.",
+      source: "DVF · Direction générale des Finances publiques"
+    },
+    {
+      claim: "Secteur Jean Macé",
+      fact: "Adresse probable : 14 rue Chevreul.",
+      detail: "Surface, étiquettes énergie, étage et année de construction recoupés avec les diagnostics publics.",
+      source: "DPE · ADEME"
+    },
+    {
+      claim: "Proche toutes commodités",
+      fact: "24 minutes de votre bureau, en voiture.",
+      detail: "Temps de trajet calculé depuis vos propres adresses : travail, école, famille.",
+      source: "OpenRouteService · Base Adresse Nationale"
+    },
+    {
+      claim: "Quartier calme et recherché",
+      fact: "Délinquance 12 % sous la moyenne nationale.",
+      detail: "Faits enregistrés par la police et la gendarmerie dans la commune, avec leur tendance. Plus le vote de la commune et son indice de taxe foncière.",
+      source: "SSMSI · Ministère de l'Intérieur"
+    },
+    {
+      claim: "Bon état général",
+      fact: "DPE D, 212 kWh/m²/an : un budget travaux à anticiper.",
+      detail: "Diagnostic officiel retrouvé dans la base nationale, pas seulement la vignette de l'annonce.",
+      source: "DPE · ADEME"
+    }
+  ];
+
+  var candidates = [
+    { address: "14 rue Chevreul", score: 87 },
+    { address: "22 rue de Marseille", score: 61 },
+    { address: "3 place Jean Macé", score: 34 }
+  ];
+%>
+
+<section class="h-hero" aria-labelledby="hero-title">
+  <div class="h-wrap h-hero__grid">
+    <div class="h-hero__copy">
+      <p class="h-kicker">
+        <span class="h-kicker__dot" aria-hidden="true"></span>
+        Extension Chrome gratuite pour acheter un bien immobilier
+      </p>
+
+      <h1 id="hero-title" class="h-display">
+        Lisez enfin ce que l'annonce <mark>ne&nbsp;dit&nbsp;pas</mark>.
+      </h1>
+
+      <p class="h-lead">
+        Prix réel du quartier, adresse probable, temps de trajet, DPE, sécurité,
+        mensualité&nbsp;: Carnet de Visites révèle l'essentiel
+        <strong>directement sur chaque annonce</strong> SeLoger, Leboncoin ou
+        Belles Demeures, puis range vos coups de cœur dans un carnet privé.
+      </p>
+
+      <div class="h-cta">
+        <a class="h-btn h-btn--primary" href="/signup">
+          Créer mon carnet gratuit <%- arrow %>
+        </a>
+        <a class="h-btn h-btn--quiet" href="/login">J'ai déjà un carnet</a>
+      </div>
+
+      <ul class="h-reassure" aria-label="Engagements">
+        <li>100&nbsp;% gratuit</li>
+        <li>Sans carte bancaire</li>
+        <li>Annonces visibles de vous seul</li>
+      </ul>
+    </div>
+
+    <figure class="demo demo--animate" data-demo>
+      <div class="demo__browser">
+        <div class="demo__chrome" aria-hidden="true">
+          <span class="demo__dots"><i></i><i></i><i></i></span>
+          <span class="demo__url">seloger.com/annonces/achat/appartement/lyon-7eme/…</span>
+          <span class="demo__ext">C</span>
+        </div>
+
+        <div class="demo__listing">
+          <div class="demo__photo" aria-hidden="true">
+            <svg viewBox="0 0 320 200" preserveAspectRatio="xMidYMax slice">
+              <rect width="320" height="200" fill="#e2efe8" />
+              <circle cx="262" cy="46" r="22" fill="#c8f751" opacity=".85" />
+              <rect x="40" y="56" width="150" height="144" fill="#12513a" />
+              <rect x="190" y="92" width="96" height="108" fill="#0b3d2c" />
+              <% for (var r = 0; r < 4; r++) { for (var c = 0; c < 4; c++) { %>
+                <rect x="<%= 54 + c * 33 %>" y="<%= 70 + r * 32 %>" width="20" height="20" rx="2" fill="<%= (r === 1 && c === 2) ? '#c8f751' : '#e2efe8' %>" opacity="<%= (r === 1 && c === 2) ? 1 : .55 %>" />
+              <% } } %>
+              <% for (var r2 = 0; r2 < 3; r2++) { for (var c2 = 0; c2 < 3; c2++) { %>
+                <rect x="<%= 202 + c2 * 28 %>" y="<%= 104 + r2 * 30 %>" width="16" height="18" rx="2" fill="#e2efe8" opacity=".35" />
+              <% } } %>
+              <rect y="196" width="320" height="4" fill="#11150f" opacity=".2" />
+            </svg>
+          </div>
+          <div class="demo__info">
+            <p class="demo__price">389 000 €</p>
+            <p class="demo__title">Appartement 3 pièces · 68 m² · 3<sup>e</sup> étage</p>
+            <p class="demo__place">Lyon 7<sup>e</sup> · Secteur Jean Macé</p>
+            <p class="demo__blurb">
+              « Lumineux, proche toutes commodités, dans un quartier calme et
+              recherché. Bon état général. À visiter sans tarder&nbsp;! »
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo__panel">
+        <div class="demo__panel-head">
+          <span class="demo__mark" aria-hidden="true">C</span>
+          <span>Carnet de Visites</span>
+          <span class="demo__status">
+            <span class="demo__status-run">Analyse de l'annonce…</span>
+            <span class="demo__status-done">6 signaux trouvés</span>
+          </span>
+        </div>
+        <ul class="demo__rows">
+          <% demoRows.forEach(function (row, i) { %>
+            <li class="demo__row" style="--i: <%= i %>">
+              <span class="demo__row-icon"><%- icon(row.icon) %></span>
+              <span class="demo__row-label"><%= row.label %></span>
+              <strong class="demo__row-value"><%= row.value %></strong>
+              <span class="demo__tag demo__tag--<%= row.tone %>"><%= row.tag %></span>
+            </li>
+          <% }) %>
+        </ul>
+        <div class="demo__save" aria-hidden="true">
+          <span class="demo__save-idle">Sauvegarder l'annonce</span>
+          <span class="demo__save-done">✓ Ajoutée au projet « Lyon 2027 »</span>
+        </div>
+      </div>
+
+      <p class="demo__note" aria-hidden="true">6 infos que l'annonce ne donnait pas</p>
+
+      <figcaption class="demo__caption">
+        Exemple illustratif, chiffres fictifs.
+        <button type="button" class="demo__replay" data-demo-replay hidden>Rejouer l'animation</button>
+      </figcaption>
+    </figure>
+  </div>
+
+  <div class="h-wrap">
+    <ul class="h-sites" aria-label="Sites compatibles">
+      <li class="h-sites__lead">Fonctionne sur</li>
+      <li class="h-sites__name h-sites__name--seloger">SeLoger</li>
+      <li class="h-sites__name h-sites__name--lbc">leboncoin</li>
+      <li class="h-sites__name h-sites__name--bd">Belles Demeures</li>
+    </ul>
   </div>
 </section>
 
-<section class="panel" style="margin-top: var(--space-4)">
-  <h2 class="panel__title">Comment ça marche</h2>
-  <ol class="steps" style="margin-top: var(--space-4)">
-    <li>
-      <div>
-        <strong>Créez votre compte</strong><br />
-        Un compte = une recherche. Vos annonces ne sont visibles que de vous.
+<section class="h-section h-decoder" aria-labelledby="decoder-title">
+  <div class="h-wrap">
+    <header class="h-head" data-reveal>
+      <p class="h-eyebrow">Le décodeur d'annonces</p>
+      <h2 id="decoder-title" class="h-title">
+        Une annonce est un argumentaire de vente. <em>Pas un dossier.</em>
+      </h2>
+      <p class="h-sub">
+        Chaque formule d'agence trouve sa réponse chiffrée, issue de données
+        publiques, affichée sur la page même de l'annonce. Sans copier-coller,
+        sans dix onglets ouverts.
+      </p>
+    </header>
+
+    <ol class="decoder">
+      <% decoder.forEach(function (row, i) { %>
+        <li class="decoder__row" data-reveal style="--d: <%= i %>">
+          <p class="decoder__claim">
+            <span class="decoder__quote">« <%= row.claim %> »</span>
+          </p>
+          <span class="decoder__arrow" aria-hidden="true"><%- arrow %></span>
+          <div class="decoder__fact">
+            <h3><%= row.fact %></h3>
+            <p><%= row.detail %></p>
+            <span class="decoder__source">Source&nbsp;: <%= row.source %></span>
+          </div>
+        </li>
+      <% }) %>
+    </ol>
+  </div>
+</section>
+
+<section class="h-section h-address" aria-labelledby="address-title">
+  <div class="h-wrap h-address__grid">
+    <div class="h-address__copy" data-reveal>
+      <p class="h-eyebrow h-eyebrow--lime">Adresse précise</p>
+      <h2 id="address-title" class="h-title">
+        L'annonce floute l'adresse. <em>Nous la retrouvons.</em>
+      </h2>
+      <p class="h-sub">
+        Chaque logement vendu a un diagnostic énergétique public. Carnet de
+        Visites compare les caractéristiques de l'annonce à ces diagnostics et
+        vous propose les adresses les plus cohérentes, avec un score de
+        confiance pour chacune.
+      </p>
+      <ul class="h-checks">
+        <li>Repérez la rue et l'immeuble avant même d'appeler l'agence.</li>
+        <li>Allez voir le quartier, l'exposition et le vis-à-vis par vous-même.</li>
+        <li>Écartez en deux minutes les biens qui ne vous conviennent pas.</li>
+      </ul>
+    </div>
+
+    <div class="finder" data-reveal data-finder>
+      <div class="finder__head">
+        <span class="finder__title">Adresses possibles</span>
+        <span class="finder__meta">Lyon 7<sup>e</sup> · 69007</span>
       </div>
-    </li>
-    <li>
-      <div>
-        <strong>Authentifiez l'extension</strong><br />
-        Un clic sur « S'authentifier » dans la popup, une autorisation à
-        valider, et c'est connecté. Aucun code à recopier.
-      </div>
-    </li>
-    <li>
-      <div>
-        <strong>Enregistrez une annonce</strong><br />
-        Sur une page SeLoger ou Leboncoin, choisissez le projet et cliquez sur
-        « Sauvegarder l'annonce ».
-      </div>
-    </li>
-  </ol>
+      <ul class="finder__criteria" aria-label="Critères recoupés">
+        <li>68 m²</li>
+        <li>DPE D</li>
+        <li>GES E</li>
+        <li>3<sup>e</sup> étage</li>
+        <li>Construit vers 1965</li>
+      </ul>
+      <ol class="finder__list">
+        <% candidates.forEach(function (c, i) { %>
+          <li class="finder__item <%= i === 0 ? 'is-best' : '' %>" style="--score: <%= c.score %>%; --d: <%= i %>">
+            <span class="finder__rank"><%= i + 1 %></span>
+            <span class="finder__address"><%= c.address %></span>
+            <span class="finder__score"><%= c.score %>&nbsp;%</span>
+            <span class="finder__bar" aria-hidden="true"><span></span></span>
+          </li>
+        <% }) %>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="h-section h-steps" id="comment-ca-marche" aria-labelledby="steps-title">
+  <div class="h-wrap">
+    <header class="h-head" data-reveal>
+      <p class="h-eyebrow">Comment ça marche</p>
+      <h2 id="steps-title" class="h-title">
+        Trois minutes pour démarrer. <em>Rien à changer à vos habitudes.</em>
+      </h2>
+    </header>
+
+    <ol class="steps-line">
+      <li class="steps-line__item" data-reveal style="--d: 0">
+        <span class="steps-line__num">1</span>
+        <h3>Créez votre carnet</h3>
+        <p>Une adresse e-mail, un mot de passe&nbsp;: c'est tout. Ajoutez vos adresses importantes (travail, école) pour calculer les trajets.</p>
+      </li>
+      <li class="steps-line__item" data-reveal style="--d: 1">
+        <span class="steps-line__num">2</span>
+        <h3>Connectez l'extension</h3>
+        <p>Un clic sur «&nbsp;S'authentifier&nbsp;» dans l'extension, une autorisation à valider. Aucun code à recopier.</p>
+        <span class="steps-line__badge">Bientôt sur le Chrome Web Store</span>
+      </li>
+      <li class="steps-line__item" data-reveal style="--d: 2">
+        <span class="steps-line__num">3</span>
+        <h3>Cherchez comme d'habitude</h3>
+        <p>Sur SeLoger, Leboncoin ou Belles Demeures, les informations s'affichent sur l'annonce. Un clic, et le bien rejoint votre carnet avec son plan de financement.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="h-section h-carnet" aria-labelledby="carnet-title">
+  <div class="h-wrap h-carnet__grid">
+    <div data-reveal>
+      <p class="h-eyebrow">Votre carnet</p>
+      <h2 id="carnet-title" class="h-title">
+        Toutes vos annonces, <em>enfin comparables.</em>
+      </h2>
+      <p class="h-sub">
+        Un bien vu sur Leboncoin, un autre sur SeLoger&nbsp;: dans votre carnet,
+        ils sont côte à côte, avec les mêmes données, vos notes de visite et
+        votre plan de financement. Même quand l'annonce a disparu du site.
+      </p>
+    </div>
+    <ul class="h-facts" data-reveal>
+      <li><%- icon("receipt") %><div><strong>Plan de financement</strong><span>Apport, frais de notaire et mensualité, calculés bien par bien.</span></div></li>
+      <li><%- icon("vote") %><div><strong>La commune en un coup d'œil</strong><span>Vote au 1<sup>er</sup> tour de la présidentielle 2022, indice de taxe foncière, évolution des prix sur 10 ans.</span></div></li>
+      <li><%- icon("list") %><div><strong>Projets, statuts et notes</strong><span>« À étudier », « Visite prévue », « Offre faite »&nbsp;: suivez chaque bien jusqu'à l'offre.</span></div></li>
+      <li><%- icon("shield") %><div><strong>Privé par défaut</strong><span>Vos annonces et vos notes ne sont visibles que de vous.</span></div></li>
+    </ul>
+  </div>
+</section>
+
+<section class="h-final" aria-labelledby="final-title">
+  <div class="h-wrap h-final__inner" data-reveal>
+    <h2 id="final-title" class="h-final__title">
+      Visitez moins. <mark>Visitez mieux.</mark>
+    </h2>
+    <p class="h-final__lead">
+      Votre carnet est prêt en 30 secondes. L'extension arrive très bientôt sur
+      le Chrome Web Store&nbsp;: vous serez prêt le jour J.
+    </p>
+    <div class="h-cta h-cta--center">
+      <a class="h-btn h-btn--lime" href="/signup">Créer mon carnet gratuit <%- arrow %></a>
+      <a class="h-btn h-btn--quiet-inverse" href="/login">Me connecter</a>
+    </div>
+  </div>
 </section>
