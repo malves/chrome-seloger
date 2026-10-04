@@ -1,0 +1,123 @@
+<%
+  var dpeSearchPayload = fmt.listingDpeSearchCriteria(listing);
+  var dpeSearchJson = JSON.stringify(dpeSearchPayload).replace(/<\//g, "\\u003c/");
+%>
+<div
+  class="modal listing-address-ai-modal"
+  id="listing-address-ai-modal"
+  hidden
+  data-listing-address-ai-modal
+  data-listing-id="<%= listing.id %>"
+>
+  <script type="application/json" data-listing-dpe-criteria><%- dpeSearchJson %></script>
+  <div class="modal__overlay" data-listing-address-ai-dismiss></div>
+  <div
+    class="modal__dialog listing-address-ai-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="listing-address-ai-modal-title"
+  >
+    <button
+      type="button"
+      class="modal__close"
+      data-listing-address-ai-dismiss
+      aria-label="Fermer"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+
+    <h2 class="modal__title" id="listing-address-ai-modal-title" data-listing-address-ai-title>
+      Déterminer l'adresse via IA
+    </h2>
+
+    <div data-listing-address-ai-intro>
+      <p class="listing-address-ai-dialog__lead">
+        L'annonce masque l'adresse réelle et ne montre qu'un secteur approximatif.
+        Nous vous proposons une ou plusieurs <strong>adresses possibles</strong> pour
+        ce bien, avec un <strong>score de confiance</strong> pour vous aider à trancher.
+      </p>
+
+      <div class="listing-address-ai-dialog__block">
+        <p class="listing-address-ai-dialog__block-title">Notre méthode</p>
+        <p class="listing-address-ai-dialog__text">
+          Nous exploitons tout ce que l'annonce laisse entrevoir&nbsp;: texte, photos,
+          détails du logement et indices de quartier. Ces éléments sont recoupés avec
+          des <strong>sources ouvertes sur le web</strong> pour faire émerger les
+          adresses les plus cohérentes avec le bien que vous suivez.
+        </p>
+      </div>
+
+      <div class="modal__actions listing-address-ai-dialog__actions">
+        <button type="button" class="btn btn--ghost" data-listing-address-ai-dismiss>
+          Annuler
+        </button>
+        <button type="button" class="btn btn--green" data-listing-address-ai-start>
+          Démarrer l'analyse
+        </button>
+      </div>
+    </div>
+
+    <div data-listing-address-ai-running hidden>
+      <div
+        class="listing-address-ai-dialog__running"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
+        <span class="spinner listing-address-ai-dialog__spinner" aria-hidden="true"></span>
+        <p class="listing-address-ai-dialog__running-title">Nous analysons ce bien</p>
+        <p class="listing-address-ai-dialog__running-status" data-listing-address-ai-status>
+          Mise en route de l'analyse…
+        </p>
+      </div>
+
+    </div>
+
+    <div data-listing-address-ai-results hidden>
+      <p class="listing-address-ai-dialog__results-lead">
+        Voici les localisations les plus plausibles pour ce bien, classées par score
+        de confiance.
+      </p>
+
+      <ol
+        class="listing-address-ai-results"
+        data-listing-address-ai-results-list
+        role="listbox"
+        aria-label="Adresses possibles"
+      ></ol>
+
+      <div
+        class="listing-address-ai-dialog__empty"
+        data-listing-address-ai-empty
+        hidden
+      >
+        <p class="listing-address-ai-dialog__empty-title">Aucune adresse trouvée</p>
+        <p class="listing-address-ai-dialog__empty-text">
+          Nous n'avons pas trouvé de correspondance précise dans la base DPE pour
+          ce bien. Une recherche élargie sera proposée prochainement.
+        </p>
+      </div>
+
+      <div class="modal__actions listing-address-ai-dialog__actions">
+        <button type="button" class="btn btn--ghost" data-listing-address-ai-retry>
+          Relancer l'analyse
+        </button>
+        <button type="button" class="btn btn--ghost" data-listing-address-ai-dismiss>
+          Fermer
+        </button>
+        <button
+          type="button"
+          class="btn btn--green"
+          data-listing-address-ai-apply
+          hidden
+        >
+          <span class="btn__spinner" aria-hidden="true"></span>
+          <span class="btn__label">Utiliser cette adresse</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

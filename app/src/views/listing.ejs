@@ -89,6 +89,9 @@
     </section>
   <% } %>
 
+  <!-- 2b. Localisation précise (panneau + modale de saisie) -->
+  <%- include("partials/listing-location-block", { listing: listing }) %>
+
   <!-- 3. Caractéristiques -->
   <section class="panel">
     <div class="panel__head">
@@ -174,27 +177,27 @@
     </section>
   <% } %>
 
-  <!-- 6. Commune -->
-  <% if (communeProviders.length) { %>
-    <% const inlineCommuneHead = communeProviders.length === 1; %>
+  <!-- Autres providers (hors commune et financement), ex. prix au m² -->
+  <% if (otherProviders.length) { %>
     <section class="panel">
-      <% if (!inlineCommuneHead) { %>
-        <div class="panel__head">
-          <div>
-            <p class="panel__eyebrow">Territoire</p>
-            <h2 class="panel__title">Commune</h2>
-          </div>
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Enrichissement</p>
+          <h2 class="panel__title">Autres données</h2>
         </div>
-      <% } %>
-      <% communeProviders.forEach(function (provider) { %>
-        <%- include("partials/enrichment-block", {
-          provider: provider,
-          listing: listing,
-          eyebrow: inlineCommuneHead ? "Territoire" : null,
-          sectionTitle: inlineCommuneHead ? "Commune" : null
-        }) %>
+      </div>
+      <% otherProviders.forEach(function (provider) { %>
+        <%- include("partials/enrichment-block", { provider: provider, listing: listing }) %>
       <% }); %>
     </section>
+  <% } %>
+
+  <!-- 6. Territoire (commune, délinquance, …) -->
+  <% if (communeProviders.length) { %>
+    <%- include("partials/listing-territory", {
+      communeProviders: communeProviders,
+      listing: listing
+    }) %>
   <% } %>
 
   <!-- 7. Financement -->
@@ -207,21 +210,6 @@
         </div>
       </div>
       <%- include("partials/financing", { listing: listing, financing: financing }) %>
-    </section>
-  <% } %>
-
-  <!-- Autres providers (hors commune et financement) -->
-  <% if (otherProviders.length) { %>
-    <section class="panel">
-      <div class="panel__head">
-        <div>
-          <p class="panel__eyebrow">Enrichissement</p>
-          <h2 class="panel__title">Autres données</h2>
-        </div>
-      </div>
-      <% otherProviders.forEach(function (provider) { %>
-        <%- include("partials/enrichment-block", { provider: provider, listing: listing }) %>
-      <% }); %>
     </section>
   <% } %>
 

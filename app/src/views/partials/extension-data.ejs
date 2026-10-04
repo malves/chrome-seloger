@@ -106,7 +106,10 @@
         aria-label="Indice de taxe foncière : <%= taxIndex %> sur 5 (taxe <%= taxLabels[taxIndex].toLowerCase() %>)"
       >
         <% for (let i = 1; i <= 5; i++) { %>
-          <span class="tax__step<%= i <= taxIndex ? ' is-on' : '' %>"><%= i %></span>
+          <div class="tax__col">
+            <span class="tax__step<%= i <= taxIndex ? ' is-on' : '' %>"></span>
+            <span class="tax__num<%= i <= taxIndex ? ' is-on' : '' %>" aria-hidden="true"><%= i %></span>
+          </div>
         <% } %>
       </div>
       <p class="tax__note"><%= taxNotes[taxIndex] %></p>

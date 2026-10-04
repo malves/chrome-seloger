@@ -155,9 +155,10 @@ export default function createListingsRepository(db, { projects }) {
     ),
     byUrl: db.prepare("SELECT * FROM listings WHERE user_id = ? AND url = ?"),
     remove: db.prepare("DELETE FROM listings WHERE id = ? AND user_id = ?"),
-    setInsee: db.prepare(
+    setInseeIfEmpty: db.prepare(
       "UPDATE listings SET insee_code = ? WHERE id = ? AND insee_code IS NULL"
     ),
+    setInsee: db.prepare("UPDATE listings SET insee_code = ? WHERE id = ?"),
     setStatus: db.prepare(
       "UPDATE listings SET status = ? WHERE id = ? AND user_id = ?"
     ),
@@ -166,6 +167,15 @@ export default function createListingsRepository(db, { projects }) {
     ),
     setNotes: db.prepare(
       "UPDATE listings SET notes = ? WHERE id = ? AND user_id = ?"
+    ),
+    setUserAddress: db.prepare(
+      `UPDATE listings SET
+         user_address = @address,
+         user_lat = @lat,
+         user_lng = @lng,
+         user_address_source = @source,
+         user_address_updated_at = @updated_at
+       WHERE id = @id AND user_id = @user_id`
     ),
     countByUser: db.prepare(
       `SELECT COUNT(*) AS n FROM listings l WHERE l.user_id = @user_id
@@ -265,8 +275,12 @@ export default function createListingsRepository(db, { projects }) {
       return statements.remove.run(id, userId).changes > 0;
     },
 
-    setInseeCode(id, inseeCode) {
-      statements.setInsee.run(inseeCode, id);
+    setInseeCode(id, inseeCode, { force = false } = {}) {
+      if (force) {
+        statements.setInsee.run(inseeCode ?? null, id);
+      } else {
+        statements.setInseeIfEmpty.run(inseeCode, id);
+      }
     },
 
     setStatus(userId, id, status) {
@@ -281,6 +295,25 @@ export default function createListingsRepository(db, { projects }) {
 
     setNotes(userId, id, notes) {
       return statements.setNotes.run(notes || null, id, userId).changes > 0;
+    },
+
+    /**
+     * Adresse réelle du bien saisie par l'utilisateur. Une adresse vide efface
+     * aussi les coordonnées et la source : le champ revient à son état initial.
+     */
+    setUserAddress(userId, id, { address, lat, lng, source } = {}) {
+      const cleaned = address ? String(address) : null;
+      return (
+        statements.setUserAddress.run({
+          id,
+          user_id: userId,
+          address: cleaned,
+          lat: cleaned && lat != null ? lat : null,
+          lng: cleaned && lng != null ? lng : null,
+          source: cleaned ? source || "manual" : null,
+          updated_at: cleaned ? nowIso() : null,
+        }).changes > 0
+      );
     },
 
     countByUser(userId, projectId = null) {

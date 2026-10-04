@@ -12,7 +12,7 @@ const app = createApp({ logger });
 const server = app.listen(config.port, () => {
   logger.info(
     { port: config.port, env: config.env, baseUrl: config.baseUrl },
-    "carnet de recherche démarré — en écoute (Ctrl+C pour arrêter)"
+    "Carnet de Visites démarré — en écoute (Ctrl+C pour arrêter)"
   );
 });
 

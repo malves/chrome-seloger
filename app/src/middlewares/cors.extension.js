@@ -6,7 +6,8 @@
  * en-tête `Origin` (curl, service worker) passent normalement.
  */
 
-const ALLOWED_HEADERS = "Authorization, Content-Type, X-Requested-With";
+const ALLOWED_HEADERS =
+  "Authorization, Content-Type, X-Requested-With, X-Carnet-Extension-Version";
 const ALLOWED_METHODS = "GET, POST, DELETE, OPTIONS";
 
 export default function extensionCors(allowedOrigins = []) {

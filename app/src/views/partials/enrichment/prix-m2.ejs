@@ -1,0 +1,203 @@
+<%
+  const eur = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    return fmt.euro(v);
+  };
+  const pct = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    const s = (Math.round(v * 10) / 10).toLocaleString('fr-FR');
+    return (v > 0 ? '+' : '') + s + ' %';
+  };
+
+  const verdict = data.verdict;
+  const radius = data.radius;
+  const commune = data.commune || {};
+  const evo = data.evolution;
+
+  // Position sur l'échelle de la jauge (100 = prix du marché, au centre).
+  const gaugePos = function (index) {
+    if (index == null) return null;
+    return Math.max(0, Math.min(100, (Math.min(index, 200) / 200) * 100));
+  };
+  const markerPos = verdict ? gaugePos(verdict.index) : null;
+  const gaugeTone = verdict ? verdict.tone : 'neutral';
+
+  // Construction du graphe d'évolution (SVG), un point + sa valeur par année.
+  let chart = null;
+  if (evo && evo.points && evo.points.length >= 2) {
+    const r1 = function (v) { return Math.round(v * 10) / 10; };
+    const W = 640, H = 190;
+    const padL = 44, padR = 44, padT = 38, padB = 30;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+    const vals = evo.points.map(function (p) { return p.median_price_m2; });
+    let min = Math.min.apply(null, vals);
+    let max = Math.max.apply(null, vals);
+    if (min === max) { min = min * 0.96; max = max * 1.04; }
+    const span = max - min || 1;
+    const n = evo.points.length;
+    const xAt = function (i) {
+      return padL + (n === 1 ? innerW / 2 : (i * innerW) / (n - 1));
+    };
+    const yAt = function (v) {
+      return padT + innerH - ((v - min) / span) * innerH;
+    };
+    const pts = evo.points.map(function (p, i) {
+      return { x: r1(xAt(i)), y: r1(yAt(p.median_price_m2)), p: p };
+    });
+    const line = pts.map(function (q) { return q.x + ',' + q.y; }).join(' ');
+    const baseY = padT + innerH;
+    const area = pts[0].x + ',' + baseY + ' ' + line + ' ' + pts[n - 1].x + ',' + baseY;
+    const grid = [0, 0.25, 0.5, 0.75, 1].map(function (t) { return r1(padT + innerH * t); });
+    chart = {
+      W: W, H: H, padL: padL, padR: padR,
+      line: line, area: area, pts: pts, grid: grid, baseY: baseY,
+    };
+  }
+%>
+<div class="pricem2">
+  <div class="pricem2__top">
+    <% if (data.reference_year) { %>
+      <span class="pricem2__year">Ventes réelles · référence <%= data.reference_year %></span>
+    <% } %>
+  </div>
+
+  <% if (verdict) { %>
+    <div class="pricem2__verdict pricem2__verdict--<%= gaugeTone %>">
+      <div class="pricem2__verdict-head">
+        <div>
+          <span class="pricem2__verdict-label">Positionnement du prix</span>
+          <span class="pricem2__verdict-title"><%= verdict.label %></span>
+        </div>
+        <div class="pricem2__verdict-figure">
+          <span class="pricem2__verdict-index"><%= verdict.index %></span>
+          <span class="pricem2__verdict-unit">/ 100</span>
+        </div>
+      </div>
+
+      <div class="pricem2__gauge-track">
+        <div class="pricem2__gauge-bar" role="img"
+          aria-label="Prix du bien <%= eur(verdict.listing_price_m2) %>/m² pour une référence locale de <%= eur(verdict.reference_price_m2) %>/m²">
+          <span class="pricem2__gauge-ref" style="left: 50%"
+            data-tooltip="Prix du marché · <%= eur(verdict.reference_price_m2) %>/m²" tabindex="0"
+            aria-label="Prix du marché, <%= eur(verdict.reference_price_m2) %> par m²"></span>
+          <% if (markerPos != null) { %>
+            <span class="pricem2__gauge-marker" style="left: <%= markerPos %>%"
+              data-tooltip="Ce bien · <%= eur(verdict.listing_price_m2) %>/m²" tabindex="0"
+              aria-label="Ce bien, <%= eur(verdict.listing_price_m2) %> par m²"></span>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="pricem2__gauge-legend">
+        <span><span class="pricem2__dot pricem2__dot--bien"></span>Ce bien · <%= eur(verdict.listing_price_m2) %>/m²</span>
+        <span>
+          <span class="pricem2__dot pricem2__dot--ref"></span>
+          Référence <%= verdict.reference_scope === 'radius' ? (radius ? radius.meters + ' m' : 'locale') : 'commune' %>
+          · <%= eur(verdict.reference_price_m2) %>/m²
+        </span>
+      </div>
+
+      <% if (verdict.negotiation_amount && verdict.negotiation_amount > 0) { %>
+        <p class="pricem2__advice pricem2__advice--negotiate">
+          <strong>Négociation conseillée.</strong>
+          Au prix médian local, ce bien se situerait autour de
+          <strong><%= eur(verdict.reference_price_m2 * listing.surface) %></strong>,
+          soit environ <strong><%= eur(verdict.negotiation_amount) %></strong> au-dessus du marché.
+        </p>
+      <% } else if (verdict.index <= 97) { %>
+        <p class="pricem2__advice pricem2__advice--good">
+          <strong>Prix attractif.</strong>
+          Ce bien est affiché sous la médiane locale
+          (écart d'environ <strong><%= eur(Math.abs(verdict.delta_amount)) %></strong>).
+        </p>
+      <% } else { %>
+        <p class="pricem2__advice">
+          Ce bien est aligné sur le prix médian du secteur.
+        </p>
+      <% } %>
+    </div>
+  <% } %>
+
+  <div class="pricem2__cards">
+    <% if (radius) { %>
+      <div class="pricem2__card pricem2__card--highlight">
+        <span class="pricem2__card-eyebrow">Rayon <%= radius.meters %> m</span>
+        <span class="pricem2__card-value"><%= eur(radius.median_price_m2) %><small>/m²</small></span>
+        <span class="pricem2__card-meta">
+          <%= fmt.number(radius.count) %> vente<%= radius.count > 1 ? 's' : '' %>
+          · <%= radius.property_type === 'house' ? 'maisons' : 'appartements' %>
+          <% if (radius.widened) { %>· <em>rayon élargi</em><% } %>
+          <% if (!radius.enough) { %>· <em>échantillon faible</em><% } %>
+        </span>
+      </div>
+    <% } else if (data.property_type && !data.has_coordinates) { %>
+      <div class="pricem2__card pricem2__card--empty">
+        <span class="pricem2__card-eyebrow">Rayon autour de l'adresse</span>
+        <span class="pricem2__card-hint">
+          Renseignez l'adresse exacte du bien pour obtenir le prix autour de l'adresse.
+        </span>
+      </div>
+    <% } %>
+
+    <% if (commune.house) { %>
+      <div class="pricem2__card">
+        <span class="pricem2__card-eyebrow">Maisons · <%= commune.name || 'commune' %></span>
+        <span class="pricem2__card-value"><%= eur(commune.house.median_price_m2) %><small>/m²</small></span>
+        <span class="pricem2__card-meta"><%= fmt.number(commune.house.count) %> vente<%= commune.house.count > 1 ? 's' : '' %> · <%= commune.house.year %></span>
+      </div>
+    <% } %>
+
+    <% if (commune.apartment) { %>
+      <div class="pricem2__card">
+        <span class="pricem2__card-eyebrow">Appartements · <%= commune.name || 'commune' %></span>
+        <span class="pricem2__card-value"><%= eur(commune.apartment.median_price_m2) %><small>/m²</small></span>
+        <span class="pricem2__card-meta"><%= fmt.number(commune.apartment.count) %> vente<%= commune.apartment.count > 1 ? 's' : '' %> · <%= commune.apartment.year %></span>
+      </div>
+    <% } %>
+  </div>
+
+  <% if (chart) { %>
+    <div class="pricem2__evolution pricem2__evolution--<%= evo.tone %>">
+      <div class="pricem2__evolution-head">
+        <div class="pricem2__evolution-heading">
+          <span class="pricem2__card-eyebrow">Évolution du prix médian au m²</span>
+          <span class="pricem2__evolution-sub">
+            <%= evo.property_type === 'house' ? 'Maisons' : 'Appartements' %>
+            · <%= chart.pts[0].p.year %>–<%= chart.pts[chart.pts.length - 1].p.year %>
+          </span>
+        </div>
+        <div class="pricem2__evolution-trend">
+          <span class="pricem2__evolution-label"><%= evo.label %></span>
+          <% if (evo.trend_pct != null) { %>
+            <span class="badge <%= evo.trend_pct > 0 ? 'badge--up' : evo.trend_pct < 0 ? 'badge--down' : 'badge--muted' %>">
+              <%= evo.trend_pct > 0 ? '▲' : evo.trend_pct < 0 ? '▼' : '■' %> <%= pct(evo.trend_pct) %>
+            </span>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="pricem2__chart">
+        <svg viewBox="0 0 <%= chart.W %> <%= chart.H %>"
+          role="img" aria-label="Évolution du prix médian au m² par année">
+          <% chart.grid.forEach(function (gy) { %>
+            <line class="pricem2__chart-grid" x1="<%= chart.padL %>" y1="<%= gy %>" x2="<%= chart.W - chart.padR %>" y2="<%= gy %>"></line>
+          <% }); %>
+          <polygon class="pricem2__chart-area" points="<%= chart.area %>"></polygon>
+          <polyline class="pricem2__chart-line" points="<%= chart.line %>"></polyline>
+          <% chart.pts.forEach(function (q) { %>
+            <circle class="pricem2__chart-dot" cx="<%= q.x %>" cy="<%= q.y %>" r="2.5"></circle>
+            <text class="pricem2__chart-value" x="<%= q.x %>" y="<%= q.y - 7 %>" text-anchor="middle" font-size="9"><%= eur(q.p.median_price_m2) %></text>
+            <text class="pricem2__chart-year" x="<%= q.x %>" y="<%= chart.H - 8 %>" text-anchor="middle" font-size="9"><%= q.p.year %></text>
+          <% }); %>
+        </svg>
+      </div>
+
+      <p class="pricem2__chart-caption">Prix médian au m² observé (ventes DVF), par année.</p>
+    </div>
+  <% } %>
+
+  <div class="pricem2__meta">
+    <p class="pricem2__note"><%= data.disclaimer %></p>
+  </div>
+</div>

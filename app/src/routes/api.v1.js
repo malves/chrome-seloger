@@ -21,6 +21,7 @@ import createListingsService from "../services/listings.service.js";
 import createProjectsService from "../services/projects.service.js";
 import createTravelService from "../services/travel.service.js";
 import { logActivity } from "../lib/activity.js";
+import extensionClient from "../middlewares/extension.client.js";
 
 function jsonLimitHandler(code, message) {
   return (req, res) => {
@@ -34,6 +35,8 @@ export default function createApiRouter({ repositories, enrichment, logger }) {
   const projectsService = createProjectsService({ repositories });
   const travelService = createTravelService({ logger });
   const requireSession = requireExtensionSession(repositories);
+
+  router.use(extensionClient({ minVersion: config.extensionMinVersion }));
 
   const webUrl = (id) => `${config.baseUrl}/listings/${id}`;
 

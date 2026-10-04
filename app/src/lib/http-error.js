@@ -37,4 +37,13 @@ export default class HttpError extends Error {
   static tooManyRequests(message = "Trop de requêtes, réessayez plus tard.") {
     return new HttpError(429, "too_many_requests", message);
   }
+
+  static upgradeRequired(message) {
+    return new HttpError(
+      426,
+      "extension_outdated",
+      message ||
+        "Votre extension n'est plus à jour. Installez la dernière version depuis le Chrome Web Store."
+    );
+  }
 }

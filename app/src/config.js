@@ -1,7 +1,8 @@
 /**
  * Lecture et validation des variables d'environnement.
  *
- * Toutes les valeurs par défaut du financement vivent ici : le service de
+ * Les taux forfaitaires du financement ont leurs valeurs par défaut ici ;
+ * l'administration peut les surcharger (table `app_settings`). Le service de
  * calcul ne contient aucun taux en dur.
  */
 
@@ -57,10 +58,22 @@ const config = {
     .map(extensionId)
     .filter(Boolean),
 
+  /**
+   * Version minimale de l'extension (`x.y.z`). Vide = pas de contrôle.
+   * Les requêtes plus anciennes reçoivent HTTP 426 `extension_outdated`.
+   */
+  extensionMinVersion: String(process.env.EXTENSION_MIN_VERSION || "").trim(),
+
   logLevel: process.env.LOG_LEVEL || (isTest ? "silent" : "info"),
 
   /** Longueur minimale d'un mot de passe. */
   passwordMinLength: 10,
+
+  /**
+   * Compte autorisé à accéder à l'espace d'administration. Comparaison
+   * insensible à la casse ; surchargeable via `ADMIN_EMAIL`.
+   */
+  adminEmail: (process.env.ADMIN_EMAIL || "contact@malves.fr").toLowerCase(),
 
   /** Limites de débit. */
   rateLimits: {
@@ -72,6 +85,35 @@ const config = {
   enrichment: {
     timeoutMs: 8000,
     retries: 1,
+  },
+
+  /** Import SSMSI (délinquance enregistrée, data.gouv). */
+  ssmsi: {
+    communeUrl:
+      process.env.SSMSI_COMMUNE_URL ||
+      "https://static.data.gouv.fr/resources/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/20260709-115942/donnee-data.gouv-2025-geographie2026-produit-le2026-06-25.csv.gz",
+    depUrl:
+      process.env.SSMSI_DEP_URL ||
+      "https://static.data.gouv.fr/resources/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/20260709-120038/donnee-dep-data.gouv-2025-geographie2026-produit-le2026-06-25.csv",
+  },
+
+  /**
+   * Prix au m² issus des ventes réelles DVF (geo-dvf Etalab). Un fichier gzip
+   * par année : `{baseUrl}/{année}/full.csv.gz`. L'import couvre la plage
+   * `[yearFrom, yearTo]`. Les bornes de prix au m² écartent les aberrations.
+   */
+  dvf: {
+    baseUrl: (
+      process.env.DVF_BASE_URL ||
+      "https://files.data.gouv.fr/geo-dvf/latest/csv"
+    ).replace(/\/+$/, ""),
+    yearFrom: num(process.env.DVF_YEAR_FROM, new Date().getFullYear() - 10),
+    yearTo: num(process.env.DVF_YEAR_TO, new Date().getFullYear() - 1),
+    minPricePerM2: num(process.env.DVF_MIN_PRICE_M2, 200),
+    maxPricePerM2: num(process.env.DVF_MAX_PRICE_M2, 25000),
+    radiusMeters: num(process.env.DVF_RADIUS_METERS, 250),
+    radiusMinSample: num(process.env.DVF_RADIUS_MIN_SAMPLE, 5),
+    radiusYears: num(process.env.DVF_RADIUS_YEARS, 5),
   },
 
   /**
@@ -94,17 +136,53 @@ const config = {
    * présenté comme une estimation.
    */
   financing: {
-    notaryRateOld: num(process.env.NOTARY_RATE_OLD, 0.08),
-    notaryRateNew: num(process.env.NOTARY_RATE_NEW, 0.025),
-    guaranteeRate: num(process.env.GUARANTEE_RATE, 0.015),
-    interestRate: num(process.env.DEFAULT_INTEREST_RATE, 0.035),
-    insuranceRate: num(process.env.DEFAULT_INSURANCE_RATE, 0.003),
-    years: num(process.env.DEFAULT_YEARS, 25),
-    debtRatio: num(process.env.DEBT_RATIO, 0.35),
+    notaryRateOld: 0.08,
+    notaryRateNew: 0.025,
+    guaranteeRate: 0.015,
+    interestRate: 0.035,
+    insuranceRate: 0.003,
+    years: 25,
+    debtRatio: 0.35,
     downPayment: 0,
     works: 0,
   },
+
+  /**
+   * Fond de carte Leaflet (fiche annonce). Les tuiles tile.openstreetmap.org
+   * ne doivent pas servir d'apps web : on utilise CARTO Voyager, qui
+   * fonctionne sans clé pour un trafic modéré. `CARTO_BASEMAP_KEY` lève les
+   * quotas en production.
+   */
+  basemap: {
+    cartoKey: String(process.env.CARTO_BASEMAP_KEY || "").trim(),
+  },
 };
+
+/**
+ * Config sérialisable pour le client (URL tuiles + attribution).
+ *
+ * Avec `CARTO_BASEMAP_KEY` : tuiles CARTO Voyager (style OSM) adaptées aux
+ * apps web, sans quota serré. Sans clé : repli Esri World Street Map, qui
+ * sert de vraies tuiles sans clé (CARTO sans clé ne renvoie qu'un filigrane
+ * « api key required »).
+ */
+export function basemapClientConfig({ cartoKey } = config.basemap) {
+  if (cartoKey) {
+    const key = encodeURIComponent(cartoKey);
+    return {
+      url: `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${key}`,
+      subdomains: "abcd",
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions/" target="_blank" rel="noopener noreferrer">CARTO</a>',
+    };
+  }
+  return {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+    subdomains: "",
+    attribution:
+      'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; sources: Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
+  };
+}
 
 if (isProduction && config.sessionSecret === "change-me") {
   throw new Error(

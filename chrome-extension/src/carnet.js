@@ -1,5 +1,5 @@
 /**
- * Client du carnet de recherche, chargé par le service worker.
+ * Client Carnet de Visites, chargé par le service worker.
  *
  * Authentification : l'utilisateur clique « S'authentifier », Chrome ouvre la
  * page de consentement du site (`chrome.identity.launchWebAuthFlow`), et le
@@ -13,6 +13,25 @@
 
 const SESSION_STORAGE_KEY = "carnetSession";
 const LAST_PROJECT_STORAGE_KEY = "carnetLastProjectId";
+
+/** Version embarquée dans le zip (`build.version.js`) ou lue depuis le manifest. */
+function extensionClientVersion() {
+  if (typeof EXTENSION_BUILD_VERSION !== "undefined" && EXTENSION_BUILD_VERSION) {
+    return String(EXTENSION_BUILD_VERSION);
+  }
+  try {
+    return chrome.runtime.getManifest().version;
+  } catch {
+    return "dev";
+  }
+}
+
+function apiHeaders(extra = {}) {
+  return {
+    ...extra,
+    "X-Carnet-Extension-Version": extensionClientVersion(),
+  };
+}
 
 /** Erreur porteuse d'un code, pour que la popup choisisse son message. */
 class CarnetError extends Error {
@@ -73,7 +92,7 @@ async function apiFetch(path, { method = "GET", body = null, auth = true } = {})
   try {
     response = await fetch(`${CARNET_BASE_URL}${path}`, {
       method,
-      headers,
+      headers: apiHeaders(headers),
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) {

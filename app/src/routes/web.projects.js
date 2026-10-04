@@ -141,26 +141,21 @@ export default function createProjectsRouter({ repositories, logger }) {
       // Réutilise un géocodage déjà connu si l'adresse correspond exactement à
       // une adresse déjà localisée du compte (comparaison serveur) : évite un
       // appel ORS redondant quand on resaisit une adresse via l'autocomplétion.
-      const known = projects.findUserAddressCoords(req.user.id, req.body.address);
-      // Géocodage côté serveur (clé ORS partagée) : au mieux on mémorise les
-      // coordonnées, sinon le trajet géocodera l'adresse au moment du calcul.
-      const geo = known
-        ? { lat: known.lat, lon: known.lng }
-        : await travel.geocodeAddress(req.body.address);
-      const { error } = projects.addAddress(req.user.id, id, {
-        label: req.body.label,
-        address: req.body.address,
-        lat: geo ? geo.lat : null,
-        lng: geo ? geo.lon : null,
-      });
+      const { error, address } = await projects.addAddress(
+        req.user.id,
+        id,
+        { label: req.body.label, address: req.body.address },
+        travel
+      );
       if (!error) {
         logActivity(logger, req, "adresse de référence ajoutée", { projectId: id });
       }
+      const localized = address?.lat != null && address?.lng != null;
       req.session.flash = error
         ? { type: "error", message: error }
         : {
             type: "success",
-            message: geo
+            message: localized
               ? "Adresse de référence ajoutée."
               : "Adresse ajoutée (coordonnées à confirmer : géocodage indisponible).",
           };

@@ -1,0 +1,91 @@
+<%
+  var dash = ssmsiDashboard || {};
+  var running = dash.running;
+  var latest = dash.latest;
+  var poll = Boolean(running);
+  var blockNew = Boolean(running);
+  var pct = dash.importProgressPct != null ? dash.importProgressPct : (running ? 0 : null);
+  var indicatorCount = dash.indicatorCount || 0;
+  var expectedIndicators = dash.expectedIndicators || 0;
+  var needsReimport = Boolean(dash.needsReimport);
+%>
+<div
+  id="ssmsi-import-status"
+  class="dpe-import-status"
+  data-block-import="<%= blockNew ? 'true' : 'false' %>"
+  <% if (poll) { %>
+    hx-get="/admin/ssmsi/import/status"
+    hx-trigger="every 2s"
+    hx-target="this"
+    hx-swap="outerHTML"
+  <% } %>
+>
+  <% if (typeof ssmsiImportError !== 'undefined' && ssmsiImportError) { %>
+    <p class="dpe-import-status__error" role="alert"><%= ssmsiImportError %></p>
+  <% } %>
+  <% if (typeof ssmsiImportNotice !== 'undefined' && ssmsiImportNotice) { %>
+    <p class="dpe-import-status__notice dpe-import-status__notice--success" role="status"><%= ssmsiImportNotice %></p>
+  <% } %>
+
+  <p class="field__hint">
+    <%= fmt.number(dash.communeRows || 0) %> lignes communales en base
+    <% if (dash.departmentRows) { %>
+      · <%= fmt.number(dash.departmentRows) %> départementales
+    <% } %>
+    <% if (expectedIndicators) { %>
+      · <%= indicatorCount %>/<%= expectedIndicators %> types d'infraction importés
+    <% } %>
+  </p>
+
+  <% if (needsReimport && !running) { %>
+    <div class="dpe-import-status__notice dpe-import-status__notice--warn" role="alert">
+      <p class="dpe-import-status__notice-text">
+        La base est incomplète (seulement <%= indicatorCount %> type<%= indicatorCount > 1 ? 's' : '' %> sur <%= expectedIndicators %>).
+        Relancez l'import ci-dessus pour inclure les atteintes aux personnes et les stupéfiants.
+      </p>
+    </div>
+  <% } %>
+
+  <% if (running) { %>
+    <div class="dpe-import-status__current">
+      <div class="dpe-import-status__head">
+        <span class="badge badge--info">Import en cours</span>
+        <% if (pct != null) { %>
+          <span class="dpe-import-status__pct"><%= pct %> %</span>
+        <% } %>
+      </div>
+
+      <% if (pct != null) { %>
+        <div class="dpe-progress is-active" role="progressbar"
+          aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= pct %>"
+          aria-label="Progression de l'import SSMSI communal">
+          <div class="dpe-progress__bar" style="width: <%= pct %>%"></div>
+        </div>
+      <% } %>
+
+      <p class="dpe-import-status__meta">
+        Commune : <%= fmt.number(running.rows_commune || 0) %> lignes importées
+        · Département : <%= fmt.number(running.rows_dep || 0) %> lignes
+        · activité <%= fmt.relative(running.updated_at) %>
+      </p>
+      <p class="dpe-import-status__hint">
+        Comptez 3 à 8 minutes. Cette zone se met à jour toutes les 2 secondes tant que l'import tourne.
+        Une fois terminé, le badge passera à « Terminé » et le compteur affichera <%= expectedIndicators %> types d'infraction.
+      </p>
+    </div>
+  <% } else if (latest && latest.status === 'done') { %>
+    <div class="dpe-import-status__notice dpe-import-status__notice--success" role="status">
+      <p class="dpe-import-status__notice-text">
+        <span class="badge badge--accent">Terminé</span>
+        Dernier import <%= fmt.relative(latest.updated_at) %>
+        — <%= fmt.number(latest.rows_commune) %> lignes communales,
+        <%= fmt.number(latest.rows_dep) %> départementales.
+        <% if (!needsReimport && expectedIndicators) { %>
+          Les <%= expectedIndicators %> indicateurs SSMSI sont en base : vous pouvez actualiser les fiches annonces.
+        <% } %>
+      </p>
+    </div>
+  <% } else if (latest && latest.status === 'error') { %>
+    <p class="dpe-import-status__error" role="alert"><%= latest.error || 'Import en échec.' %></p>
+  <% } %>
+</div>

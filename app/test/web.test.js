@@ -10,6 +10,7 @@ import {
   loginAgent,
 } from "./helpers.js";
 import createListingsService from "../src/services/listings.service.js";
+import config from "../src/config.js";
 
 function withApp(name, fn) {
   test(name, async (t) => {
@@ -110,6 +111,28 @@ withApp("le carnet vide explique la démarche", async ({ app, repositories }) =>
   const res = await agent.get("/listings").expect(200);
   assert.match(res.text, /Votre carnet est vide/);
   assert.match(res.text, /Enregistrez une annonce/);
+});
+
+withApp("la liste n'affiche que 9 annonces par page", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "pag@example.com");
+  for (let i = 0; i < 12; i++) {
+    listingsService.save(
+      user,
+      listingPayload({
+        source_id: String(2000 + i),
+        url: `https://www.seloger.com/annonces/achat/maison/ville-78/${2000 + i}.htm`,
+        title: `Annonce ${i}`,
+      })
+    );
+  }
+  const agent = await loginAgent(app, "pag@example.com");
+  const page1 = await agent.get("/listings").expect(200);
+  assert.equal((page1.text.match(/<article class="card"/g) || []).length, 9);
+  assert.match(page1.text, /1–9 sur 12 annonces/);
+  const page2 = await agent.get("/listings?page=2").expect(200);
+  assert.equal((page2.text.match(/<article class="card"/g) || []).length, 3);
+  assert.match(page2.text, /10–12 sur 12 annonces/);
 });
 
 withApp("les annonces écartées restent visibles, en fin de liste", async (ctx) => {
@@ -324,6 +347,186 @@ withApp("les notes s'enregistrent et le favori bascule", async (ctx) => {
   assert.equal(repositories.listings.findById(user.id, id).is_favorite, true);
 });
 
+withApp("l'adresse réelle se saisit, puis s'efface", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+  const { id } = listingsService.save(user, listingPayload());
+  const agent = await loginAgent(app, "a@example.com");
+  const csrf = extractCsrf((await agent.get("/listings")).text);
+
+  // Saisie : l'adresse texte est persistée (le géocodage échoue hors-ligne
+  // sans faire échouer l'enregistrement).
+  const saved = await agent
+    .post(`/listings/${id}/address`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf, user_address: "12 rue de Rivoli, 75001 Paris" })
+    .expect(200);
+  assert.match(saved.text, /12 rue de Rivoli/);
+  assert.match(saved.text, /75001 Paris/);
+  assert.match(saved.text, /Adresse saisie manuellement/);
+  assert.equal(
+    repositories.listings.findById(user.id, id).user_address,
+    "12 rue de Rivoli, 75001 Paris"
+  );
+
+  const structured = await agent
+    .post(`/listings/${id}/address`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      street: "8 avenue Foch",
+      complement: "Bat. C",
+      postal_code: "78120",
+      city: "Rambouillet",
+    })
+    .expect(200);
+  assert.match(structured.text, /8 avenue Foch/);
+  assert.equal(
+    repositories.listings.findById(user.id, id).user_address,
+    "8 avenue Foch, Bat. C, 78120 Rambouillet"
+  );
+
+  await agent
+    .post(`/listings/${id}/address`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      street: "177 Boulevard de la République",
+      postal_code: "92210",
+      city: "Saint-Cloud",
+      address_source: "detected",
+    })
+    .expect(200);
+  const fromDpe = repositories.listings.findById(user.id, id);
+  assert.equal(fromDpe.user_address_source, "detected");
+  assert.match(fromDpe.user_address, /177 Boulevard de la République/);
+
+  // Effacement : une adresse vide remet le champ à null.
+  const cleared = await agent
+    .post(`/listings/${id}/address`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf, street: "", postal_code: "", city: "" })
+    .expect(200);
+  assert.ok(cleared.text);
+  assert.equal(repositories.listings.findById(user.id, id).user_address, null);
+});
+
+withApp("les critères DPE pour déterminer l'adresse sont exposés en JSON", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+  const payload = listingPayload({
+    location: { city: "Paris", postal_code: "75011" },
+    property_type: "apartment",
+    dpe: "D",
+    ges: "C",
+    surface: 48,
+    floor: 2,
+    year_built: 1975,
+  });
+  const { id } = listingsService.save(user, payload);
+  const agent = await loginAgent(app, "a@example.com");
+  const csrf = extractCsrf((await agent.get("/listings")).text);
+
+  const res = await agent
+    .post(`/listings/${id}/address-ai/criteria`)
+    .set("X-CSRF-Token", csrf)
+    .set("Accept", "application/json")
+    .send({})
+    .expect(200);
+
+  assert.equal(res.body.listingId, id);
+  assert.equal(res.body.criteres.codePostal, "75011");
+  assert.equal(res.body.criteres.dpe, "D");
+  assert.equal(res.body.criteres.typeBien, "apartment");
+  assert.equal(res.body.criteres.typeBatiment, "appartement");
+  assert.equal(res.body.criteres.etage, 2);
+  assert.equal(res.body.criteres.anneeConstruction, 1975);
+  assert.equal(res.body.filtresRechercheDpe.type_batiment, "appartement");
+});
+
+withApp("la recherche DPE renvoie des adresses candidates notées", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+
+  repositories.dpe.upsertMany([
+    {
+      numero_dpe: "DPE-TEST-1",
+      date_derniere_modification_dpe: "2024-01-02",
+      etiquette_dpe: "D",
+      etiquette_ges: "C",
+      type_batiment: "appartement",
+      annee_construction: 1975,
+      surface_habitable_logement: 48,
+      adresse_ban: "5 Rue de Test 75011 Paris",
+      nom_commune_ban: "Paris",
+      code_postal_ban: "75011",
+      numero_etage_appartement: 2,
+      complement_adresse_logement: "2ème étage",
+    },
+    {
+      // Hors fenêtre de surface : ne doit pas ressortir.
+      numero_dpe: "DPE-TEST-2",
+      date_derniere_modification_dpe: "2024-01-01",
+      etiquette_dpe: "A",
+      etiquette_ges: "A",
+      type_batiment: "appartement",
+      surface_habitable_logement: 120,
+      adresse_ban: "99 Avenue Autre 75011 Paris",
+      nom_commune_ban: "Paris",
+      code_postal_ban: "75011",
+    },
+  ]);
+
+  const payload = listingPayload({
+    location: { city: "Paris", postal_code: "75011" },
+    property_type: "apartment",
+    dpe: "D",
+    ges: "C",
+    surface: 48,
+    floor: 2,
+    year_built: 1975,
+  });
+  const { id } = listingsService.save(user, payload);
+  const agent = await loginAgent(app, "a@example.com");
+  const csrf = extractCsrf((await agent.get("/listings")).text);
+
+  const res = await agent
+    .post(`/listings/${id}/address-ai/search`)
+    .set("X-CSRF-Token", csrf)
+    .set("Accept", "application/json")
+    .send({})
+    .expect(200);
+
+  assert.equal(res.body.mode, "precise");
+  assert.equal(res.body.candidates.length, 1);
+  const candidate = res.body.candidates[0];
+  assert.equal(candidate.street, "5 Rue de Test");
+  assert.equal(candidate.postalCode, "75011");
+  assert.ok(candidate.confidence >= 90);
+  assert.equal(candidate.matched.floor, true);
+});
+
+withApp("l'adresse réelle d'une annonce d'autrui est inaccessible", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const owner = await createUser(repositories, "a@example.com");
+  const { id } = listingsService.save(owner, listingPayload());
+  await createUser(repositories, "b@example.com");
+  const agent = await loginAgent(app, "b@example.com");
+  const csrf = extractCsrf((await agent.get("/listings")).text);
+
+  await agent
+    .post(`/listings/${id}/address`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf, user_address: "1 rue Secrète, 75000 Paris" })
+    .expect(404);
+  assert.equal(repositories.listings.findById(owner.id, id).user_address, null);
+});
+
 withApp("le tableau de financement se recalcule", async (ctx) => {
   const { app, repositories, listingsService } = ctx;
   const user = await createUser(repositories, "a@example.com");
@@ -347,8 +550,8 @@ withApp("le tableau de financement se recalcule", async (ctx) => {
     .expect(200);
 
   assert.match(res.text, /Estimation indicative/);
-  assert.equal((res.text.match(/data-amount-step="1"/g) || []).length, 3);
-  assert.equal((res.text.match(/data-amount-step="-1"/g) || []).length, 3);
+  assert.equal((res.text.match(/data-amount-step="1"/g) || []).length, 6);
+  assert.equal((res.text.match(/data-amount-step="-1"/g) || []).length, 6);
   assert.match(res.text, /value="350[\u202f\u00a0 ]000"/);
   assert.match(res.text, /value="15[\u202f\u00a0 ]000"/);
   assert.match(res.text, /value="40[\u202f\u00a0 ]000"/);
@@ -516,4 +719,216 @@ withApp("la suppression du compte efface toutes les données", async (ctx) => {
       `${table} doit être vide`
     );
   }
+});
+
+withApp("l'admin enregistre le paramétrage financement", async ({ app, repositories }) => {
+  await createUser(repositories, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmail);
+
+  const page = await agent.get("/admin").expect(200);
+  assert.match(page.text, /Financement/);
+
+  const csrf = extractCsrf(page.text);
+  await agent
+    .post("/admin/financing")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      notary_rate_old: "7",
+      notary_rate_new: "2,5",
+      guarantee_rate: "1,5",
+      interest_rate: "3,5",
+      insurance_rate: "0,30",
+      years: "22",
+      debt_ratio: "35",
+    })
+    .expect(302)
+    .expect("location", "/admin");
+
+  assert.equal(config.financing.notaryRateOld, 0.07);
+  assert.equal(config.financing.years, 22);
+});
+
+withApp(
+  "l'admin clôt un import orphelin au rafraîchissement du statut",
+  async ({ app, repositories, db }) => {
+    await createUser(repositories, config.adminEmail);
+    const agent = await loginAgent(app, config.adminEmail);
+    const jobId = repositories.dpe.createJob({
+      dateFrom: "2026-09-04",
+      dateTo: "2026-09-04",
+      daysTotal: 1,
+    });
+    repositories.dpe.updateJob(jobId, {
+      status: "running",
+      current_day: "2026-09-04",
+    });
+    db.prepare("UPDATE dpe_import_jobs SET updated_at = ? WHERE id = ?").run(
+      new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      jobId
+    );
+
+    const res = await agent
+      .get("/admin/dpe/import/status")
+      .set("HX-Request", "true")
+      .expect(200);
+
+    assert.match(res.text, /plus aucune activité/i);
+    assert.equal(repositories.dpe.getJob(jobId).status, "error");
+    assert.doesNotMatch(res.text, /hx-get="\/admin\/dpe\/import\/status"/);
+  }
+);
+
+withApp("l'admin peut interrompre un import en cours", async ({ app, repositories }) => {
+  await createUser(repositories, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmail);
+  const jobId = repositories.dpe.createJob({
+    dateFrom: "2026-09-04",
+    dateTo: "2026-09-04",
+    daysTotal: 1,
+  });
+  repositories.dpe.updateJob(jobId, {
+    status: "running",
+    current_day: "2026-09-04",
+    day_rows_total: 8000,
+    day_rows_done: 1200,
+    rows_imported: 1200,
+  });
+
+  const page = await agent.get("/admin").expect(200);
+  const csrf = extractCsrf(page.text);
+
+  const res = await agent
+    .post("/admin/dpe/import/cancel")
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf, job_id: String(jobId) })
+    .expect(200);
+
+  assert.match(res.text, /Import interrompu|annulé/i);
+  assert.equal(repositories.dpe.getJob(jobId).status, "error");
+  assert.match(repositories.dpe.getJob(jobId).error, /annulé/i);
+});
+
+withApp("l'admin peut relancer un import en échec", async ({ app, repositories }) => {
+  await createUser(repositories, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmail);
+  const jobId = repositories.dpe.createJob({
+    dateFrom: "2026-09-04",
+    dateTo: "2026-09-05",
+    daysTotal: 2,
+  });
+  repositories.dpe.updateJob(jobId, {
+    status: "error",
+    error: "Import interrompu : plus aucune activité détectée.",
+  });
+
+  const page = await agent.get("/admin").expect(200);
+  assert.match(page.text, /Relancer/);
+
+  const before = repositories.dpe.listRecentJobs(50).length;
+
+  const csrf = extractCsrf(page.text);
+  const res = await agent
+    .post("/admin/dpe/import/retry")
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf, job_id: String(jobId) })
+    .expect(200);
+
+  assert.match(res.text, /Import relancé/i);
+
+  // La relance réutilise la même ligne : aucun nouveau job n'est créé.
+  assert.equal(repositories.dpe.listRecentJobs(50).length, before);
+
+  const running = repositories.dpe.listRunningJobs();
+  assert.equal(running.length, 1);
+  const [reloaded] = running;
+  assert.equal(reloaded.id, jobId);
+  assert.equal(reloaded.date_from, "2026-09-04");
+  assert.equal(reloaded.date_to, "2026-09-05");
+  assert.ok(["pending", "running"].includes(reloaded.status));
+  // La progression et l'erreur précédentes ont été réinitialisées.
+  assert.equal(reloaded.error, null);
+  assert.equal(reloaded.days_done, 0);
+  assert.equal(reloaded.rows_imported, 0);
+});
+
+withApp("l'admin gère les comptes utilisateurs", async ({ app, repositories }) => {
+  await createUser(repositories, config.adminEmail);
+  const victim = await createUser(repositories, "victime@example.com");
+  const agent = await loginAgent(app, config.adminEmail);
+
+  const page = await agent.get("/admin").expect(200);
+  assert.match(page.text, /Utilisateurs/);
+  assert.match(page.text, /victime@example.com/);
+
+  assert.doesNotMatch(page.text, /Nouveau compte/);
+
+  const detail = await agent.get(`/admin/users/${victim.id}`).expect(200);
+  assert.match(detail.text, /Mot de passe/);
+
+  const detailCsrf = extractCsrf(detail.text);
+  await agent
+    .post(`/admin/users/${victim.id}/password`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({
+      _csrf: detailCsrf,
+      password: "nouveaumotdepasse",
+      password_confirm: "nouveaumotdepasse",
+    })
+    .expect(200);
+
+  const guest = request.agent(app);
+  const loginPage = await guest.get("/login").expect(200);
+  const loginCsrf = extractCsrf(loginPage.text);
+  await guest
+    .post("/login")
+    .type("form")
+    .send({
+      _csrf: loginCsrf,
+      email: "victime@example.com",
+      password: PASSWORD,
+    })
+    .expect(401);
+
+  const loginPage2 = await guest.get("/login").expect(200);
+  await guest
+    .post("/login")
+    .type("form")
+    .send({
+      _csrf: extractCsrf(loginPage2.text),
+      email: "victime@example.com",
+      password: "nouveaumotdepasse",
+    })
+    .expect(302);
+
+  const adminPage = await agent.get("/admin").expect(200);
+  const deleteCsrf = extractCsrf(adminPage.text);
+  await agent
+    .post(`/admin/users/${victim.id}/delete`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: deleteCsrf })
+    .expect(200);
+
+  assert.equal(repositories.users.findById(victim.id), null);
+});
+
+withApp("l'admin ne peut pas supprimer son propre compte", async ({ app, repositories }) => {
+  const admin = await createUser(repositories, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmail);
+  const page = await agent.get("/admin").expect(200);
+  const csrf = extractCsrf(page.text);
+
+  const res = await agent
+    .post(`/admin/users/${admin.id}/delete`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf })
+    .expect(200);
+
+  assert.match(res.text, /ne pouvez pas supprimer votre propre compte/i);
+  assert.ok(repositories.users.findById(admin.id));
 });

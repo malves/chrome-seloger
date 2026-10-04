@@ -1,0 +1,46 @@
+<%
+  const inlineCommuneHead = communeProviders.length === 1;
+  const territoryHasData = communeProviders.some(function (p) {
+    return p.status === "ok" && p.data;
+  });
+%>
+<section class="panel listing-territory" id="listing-territory">
+  <div class="address-book__overlay listing-territory__overlay" aria-hidden="true">
+    <span class="spinner" role="status" aria-label="Chargement…"></span>
+  </div>
+
+  <% if (!inlineCommuneHead) { %>
+    <div class="panel__head">
+      <div>
+        <p class="panel__eyebrow">Territoire</p>
+        <h2 class="panel__title">Commune</h2>
+      </div>
+      <% if (listing && listing.id) { %>
+        <form
+          class="listing-territory__refresh"
+          hx-post="/listings/<%= listing.id %>/enrich/territoire"
+          hx-target="#listing-territory"
+          hx-swap="outerHTML"
+          hx-indicator="#listing-territory .listing-territory__overlay"
+          hx-disabled-elt="find button"
+        >
+          <button class="btn btn--ghost btn--sm" type="submit">
+            <%= territoryHasData ? "Actualiser" : "Réessayer" %>
+          </button>
+        </form>
+      <% } %>
+    </div>
+  <% } %>
+
+  <% communeProviders.forEach(function (provider) { %>
+    <%- include("enrichment-block", {
+      provider: provider,
+      listing: listing,
+      eyebrow: inlineCommuneHead ? "Territoire" : null,
+      sectionTitle: inlineCommuneHead ? "Commune" : null,
+      hideProviderRefresh: true,
+      territoryRefresh: inlineCommuneHead && listing && listing.id,
+      territoryHasData: territoryHasData
+    }) %>
+  <% }); %>
+</section>

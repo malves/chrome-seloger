@@ -14,6 +14,16 @@
  */
 
 // Adresse du carnet et client d'API (authentification, projets, trajet, annonces).
+try {
+  importScripts("config.local.js");
+} catch {
+  // Pas de surcharge : config.js utilise l'URL de production.
+}
+try {
+  importScripts("build.version.js");
+} catch {
+  // Développement : la version vient du manifest Chrome.
+}
 importScripts("config.js", "carnet.js");
 
 const GEO_BASE = "https://geo.api.gouv.fr";

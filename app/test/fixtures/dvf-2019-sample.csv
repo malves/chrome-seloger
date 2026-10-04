@@ -1,0 +1,3 @@
+id_mutation,date_mutation,numero_disposition,nature_mutation,valeur_fonciere,adresse_numero,adresse_nom_voie,code_postal,code_commune,nom_commune,code_departement,id_parcelle,nombre_lots,code_type_local,type_local,surface_reelle_bati,nombre_pieces_principales,surface_terrain,longitude,latitude
+2019-1,2019-03-10,000001,Vente,150000.00,5,RUE DES FLEURS,33000,33063,Bordeaux,33,33063000AB0002,1,2,Appartement,50.00,2,,-0.5795,44.8380
+2019-2,2019-05-10,000001,Vente,210000.00,10,RUE DE TEST,33000,33063,Bordeaux,33,33063000AB0001,0,1,Maison,100.00,4,200.00,-0.5792,44.8378

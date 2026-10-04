@@ -1,0 +1,49 @@
+<%
+  // Détail d'un job d'import DPE : horodatage, erreur complète, commande wget.
+  // Attendu en local : `job` (décoré avec `requests`).
+  var requests = job.requests || [];
+%>
+<dl class="dpe-job-details__facts">
+  <div class="dpe-job-details__fact">
+    <dt>Lancé le</dt>
+    <dd><%= fmt.datetime(job.created_at) %></dd>
+  </div>
+  <div class="dpe-job-details__fact">
+    <dt>Dernière activité</dt>
+    <dd><%= fmt.datetime(job.updated_at) %></dd>
+  </div>
+  <div class="dpe-job-details__fact">
+    <dt>Jours</dt>
+    <dd><%= job.days_done %>/<%= job.days_total %></dd>
+  </div>
+  <div class="dpe-job-details__fact">
+    <dt>Lignes importées</dt>
+    <dd><%= fmt.number(job.rows_imported) %></dd>
+  </div>
+</dl>
+
+<% if (job.error) { %>
+  <div class="dpe-job-details__block">
+    <p class="dpe-job-details__label">Erreur complète</p>
+    <pre class="dpe-job-details__error"><%= job.error %></pre>
+  </div>
+<% } %>
+
+<% if (requests.length) { %>
+  <div class="dpe-job-details__block">
+    <p class="dpe-job-details__label">
+      Commande <code>wget</code> équivalente<%= requests.length > 1 ? ' (une par jour)' : '' %>
+    </p>
+    <% requests.forEach(function (req) { %>
+      <div class="dpe-cmd">
+        <pre class="dpe-cmd__code"><code><%= req.wget %></code></pre>
+        <button type="button" class="btn btn--ghost btn--sm dpe-cmd__copy" data-copy>
+          Copier
+        </button>
+      </div>
+    <% }); %>
+    <p class="dpe-job-details__hint">
+      Récupère la 1ʳᵉ page ; la suite se pagine via le champ <code>next</code> de la réponse.
+    </p>
+  </div>
+<% } %>

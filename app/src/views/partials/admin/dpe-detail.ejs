@@ -1,0 +1,76 @@
+<div class="dpe-detail">
+  <header class="dpe-detail__hero">
+    <div class="dpe-detail__hero-main">
+      <p class="dpe-detail__eyebrow">Diagnostic de performance énergétique</p>
+      <h2 class="dpe-detail__title" id="dpe-detail-modal-title">
+        <%= detail.headline.numero %>
+      </h2>
+      <% if (detail.headline.commune || detail.headline.adresse) { %>
+        <p class="dpe-detail__subtitle">
+          <% if (detail.headline.adresse) { %><%= detail.headline.adresse %><% } %>
+          <% if (detail.headline.adresse && detail.headline.commune) { %> · <% } %>
+          <% if (detail.headline.commune) { %><%= detail.headline.commune %><% } %>
+        </p>
+      <% } %>
+      <% if (detail.headline.date) { %>
+        <p class="dpe-detail__meta">Établi le <%= detail.headline.date %></p>
+      <% } %>
+    </div>
+    <div class="dpe-detail__badges" aria-label="Étiquettes énergétiques">
+      <% if (detail.headline.etiquetteDpe) { %>
+        <div class="dpe-detail__badge">
+          <span class="dpe-detail__badge-label">DPE</span>
+          <span class="dpe-label dpe-label--lg dpe-label--<%= detail.headline.etiquetteDpe.toLowerCase() %>">
+            <%= detail.headline.etiquetteDpe %>
+          </span>
+        </div>
+      <% } %>
+      <% if (detail.headline.etiquetteGes) { %>
+        <div class="dpe-detail__badge">
+          <span class="dpe-detail__badge-label">GES</span>
+          <span class="dpe-label dpe-label--lg dpe-label--<%= detail.headline.etiquetteGes.toLowerCase() %>">
+            <%= detail.headline.etiquetteGes %>
+          </span>
+        </div>
+      <% } %>
+    </div>
+  </header>
+
+  <div class="dpe-detail__body">
+    <% detail.sections.forEach(function (section) { %>
+      <section class="dpe-detail__section" aria-labelledby="dpe-section-<%= section.id %>">
+        <h3 class="dpe-detail__section-title" id="dpe-section-<%= section.id %>">
+          <%= section.title %>
+        </h3>
+        <% if (section.help) { %>
+          <p class="dpe-detail__section-hint"><%= section.help %></p>
+        <% } %>
+        <dl class="dpe-detail__grid">
+          <% section.fields.forEach(function (field) { %>
+            <div class="dpe-detail__row">
+              <dt class="dpe-detail__term">
+                <%= field.label %>
+                <% if (field.help) { %>
+                  <span class="dpe-detail__term-help"><%= field.help %></span>
+                <% } %>
+              </dt>
+              <dd class="dpe-detail__value">
+                <% if (field.kind === "etiquette") { %>
+                  <span class="dpe-label dpe-label--<%= field.value.toLowerCase() %>"><%= field.value %></span>
+                <% } else { %>
+                  <%= field.value %>
+                <% } %>
+              </dd>
+            </div>
+          <% }); %>
+        </dl>
+      </section>
+    <% }); %>
+  </div>
+
+  <% if (detail.headline.importedAt) { %>
+    <footer class="dpe-detail__foot">
+      Importé dans la base le <%= fmt.date(detail.headline.importedAt) %>
+    </footer>
+  <% } %>
+</div>

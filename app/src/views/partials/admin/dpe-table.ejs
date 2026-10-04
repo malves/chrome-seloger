@@ -1,0 +1,123 @@
+<%
+  // Construit l'URL de recherche en changeant seulement la page (les filtres
+  // courants sont repris). Utilisée par la pagination htmx.
+  function searchUrl(page) {
+    var params = new URLSearchParams();
+    if (filters.codePostal) params.set("code_postal", filters.codePostal);
+    if (filters.typeBatiment) params.set("type_batiment", filters.typeBatiment);
+    if (filters.etiquette) params.set("etiquette", filters.etiquette);
+    if (filters.etiquetteGes) params.set("etiquette_ges", filters.etiquetteGes);
+    if (filters.surfaceMin != null) params.set("surface_min", String(filters.surfaceMin));
+    if (filters.surfaceMax != null) params.set("surface_max", String(filters.surfaceMax));
+    if (filters.anneeMin != null) params.set("annee_min", String(filters.anneeMin));
+    if (filters.anneeMax != null) params.set("annee_max", String(filters.anneeMax));
+    if (page > 1) params.set("page", String(page));
+    var qs = params.toString();
+    return qs ? "/admin/dpe/search?" + qs : "/admin/dpe/search";
+  }
+  var p = pagination;
+%>
+
+<div class="dpe-results">
+  <div class="dpe-results__toolbar">
+    <button
+      type="button"
+      class="btn btn--ghost btn--sm"
+      data-dpe-search-reset
+      aria-label="Réinitialiser tous les filtres de recherche"
+    >
+      Réinitialiser les filtres
+    </button>
+    <% if (p.total) { %>
+      <p class="dpe-results__summary">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <%= fmt.number(p.from) %>–<%= fmt.number(p.to) %> sur <%= fmt.number(p.total) %> DPE
+      </p>
+    <% } %>
+  </div>
+
+  <% if (records.length) { %>
+    <div class="dpe-table-wrap">
+      <table class="dpe-table">
+        <thead>
+          <tr>
+            <th>N° DPE</th>
+            <th>Dernière modif.</th>
+            <th>Commune</th>
+            <th>DPE</th>
+            <th>GES</th>
+            <th>Bâtiment</th>
+            <th>Année</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% records.forEach(function (r) { %>
+            <tr
+              class="dpe-table__row"
+              tabindex="0"
+              role="button"
+              data-dpe-numero="<%= r.numero_dpe %>"
+              aria-label="Voir le détail du DPE <%= r.numero_dpe %>"
+            >
+              <td class="dpe-table__mono"><%= r.numero_dpe %></td>
+              <td><%= r.date_derniere_modification_dpe || r.date_etablissement_dpe || '—' %></td>
+              <td>
+                <%= r.nom_commune_ban || '—' %>
+                <% if (r.code_postal_ban) { %><span class="dpe-table__muted"><%= r.code_postal_ban %></span><% } %>
+              </td>
+              <td>
+                <% if (r.etiquette_dpe) { %>
+                  <span class="dpe-label dpe-label--<%= r.etiquette_dpe.toLowerCase() %>"><%= r.etiquette_dpe %></span>
+                <% } else { %>—<% } %>
+              </td>
+              <td>
+                <% if (r.etiquette_ges) { %>
+                  <span class="dpe-label dpe-label--<%= r.etiquette_ges.toLowerCase() %>"><%= r.etiquette_ges %></span>
+                <% } else { %>—<% } %>
+              </td>
+              <td>
+                <%= r.type_batiment || '—' %>
+                <% if (r.surface_habitable_logement) { %>
+                  <span class="dpe-table__muted"><%= fmt.surface(r.surface_habitable_logement) %></span>
+                <% } %>
+              </td>
+              <td><%= r.annee_construction || '—' %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (p.pageCount > 1) { %>
+      <nav class="dpe-pagination" aria-label="Pagination des DPE">
+        <% if (p.page > 1) { %>
+          <a class="btn btn--ghost btn--sm" href="<%= searchUrl(p.page - 1) %>"
+            hx-get="<%= searchUrl(p.page - 1) %>" hx-target="#dpe-results" hx-swap="innerHTML">Précédent</a>
+        <% } else { %>
+          <span class="btn btn--ghost btn--sm is-disabled" aria-disabled="true">Précédent</span>
+        <% } %>
+
+        <span class="dpe-pagination__page">Page <%= p.page %> / <%= p.pageCount %></span>
+
+        <% if (p.page < p.pageCount) { %>
+          <a class="btn btn--ghost btn--sm" href="<%= searchUrl(p.page + 1) %>"
+            hx-get="<%= searchUrl(p.page + 1) %>" hx-target="#dpe-results" hx-swap="innerHTML">Suivant</a>
+        <% } else { %>
+          <span class="btn btn--ghost btn--sm is-disabled" aria-disabled="true">Suivant</span>
+        <% } %>
+      </nav>
+    <% } %>
+  <% } else { %>
+    <div class="dpe-empty">
+      <svg class="dpe-empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m21 21-4.3-4.3" />
+      </svg>
+      <p class="dpe-empty__title">Aucun DPE ne correspond à cette recherche</p>
+      <p class="dpe-empty__hint">Essayez d'élargir les filtres ou de modifier les termes de recherche.</p>
+    </div>
+  <% } %>
+</div>

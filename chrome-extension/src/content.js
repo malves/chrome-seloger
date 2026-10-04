@@ -24,6 +24,10 @@
   let galleryPhotos = []; // photos complètes fournies par inject.js (SeLoger)
   let lastDetails = null; // DPE/GES/année fournis par inject.js (SeLoger)
 
+  // État d'affichage du badge : carte déployée ou bulle réduite déplaçable.
+  // `side` = bord d'aimantation, `topRatio` = hauteur relative (0 = haut, 1 = bas).
+  let badgeState = { collapsed: false, side: "right", topRatio: null };
+
   /* ------------------------------------------------------------------ *
    *  Source principale : messages depuis inject.js (monde principal)
    * ------------------------------------------------------------------ */
@@ -50,7 +54,7 @@
     if (data.channel !== CHANNEL || !data.location) return;
     gotMainWorldData = true;
     lastLocation = data.location;
-    compute(data.location, false);
+    if (isListingDetailPage()) compute(data.location, false);
   });
 
   /* ------------------------------------------------------------------ *
@@ -227,9 +231,12 @@
   const BADGE_CSS = `
     :host {
       position: fixed;
-      bottom: 20px;
-      right: 20px;
       z-index: 2147483647;
+    }
+    .hidden { display: none !important; }
+    @keyframes seloger-pop-in {
+      from { opacity: 0; transform: translateY(8px) scale(0.96); }
+      to { opacity: 1; transform: none; }
     }
     .card {
       box-sizing: border-box;
@@ -354,15 +361,265 @@
       text-decoration: underline;
       text-underline-offset: 2px;
     }
+    .card { animation: seloger-pop-in 0.18s ease; transform-origin: bottom right; }
+    .hd__close {
+      margin-left: auto;
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: #9aa0a6;
+      border-radius: 8px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .hd__close:hover { background: #f1efe8; color: #11150f; }
+    .hd__close:active { background: #e7e4da; }
+    .launcher {
+      -webkit-appearance: none;
+      appearance: none;
+      margin: 0;
+      padding: 0;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      background: #0b3d2c;
+      color: #c8f751;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+      font-size: 19px;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+      box-shadow: 0 2px 6px rgba(17, 21, 15, 0.18),
+        0 8px 24px rgba(17, 21, 15, 0.22);
+      animation: seloger-pop-in 0.18s ease;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .launcher:hover {
+      transform: scale(1.06);
+      box-shadow: 0 3px 8px rgba(17, 21, 15, 0.2),
+        0 12px 30px rgba(17, 21, 15, 0.26);
+    }
+    .launcher:active { cursor: grabbing; }
+    .launcher.dragging {
+      animation: none;
+      transition: none;
+      cursor: grabbing;
+      transform: scale(1.1);
+    }
+    .launcher__mark { pointer-events: none; line-height: 1; }
   `;
 
   const HEADER_HTML =
     `<div class="hd"><span class="hd__mark">C</span>` +
-    `<span class="hd__title">Temps de trajet</span></div>`;
+    `<span class="hd__title">Temps de trajet</span>` +
+    `<button class="hd__close" type="button" aria-label="Réduire" ` +
+    `title="Réduire dans une bulle">` +
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" ` +
+    `stroke="currentColor" stroke-width="2.4" stroke-linecap="round">` +
+    `<path d="M5 12h14"/></svg></button></div>`;
+
+  /* ------------------------------------------------------------------ *
+   *  Réduction en bulle déplaçable (façon iGraal / Intercom)
+   *
+   *  La carte peut se replier en une bulle ronde que l'on déplace à la
+   *  souris ; elle s'aimante au bord gauche ou droit le plus proche et
+   *  mémorise sa hauteur. Un simple clic la redéploie. L'état (réduit /
+   *  déployé + position) est persisté dans chrome.storage.local pour
+   *  survivre aux navigations et aux changements d'annonce.
+   * ------------------------------------------------------------------ */
+
+  const BADGE_MARGIN = 16; // marge mini entre la bulle et le bord de l'écran
+  const LAUNCHER_SIZE = 48;
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function saveBadgeState() {
+    try {
+      chrome.storage?.local?.set({
+        badgeUi: {
+          collapsed: badgeState.collapsed,
+          side: badgeState.side,
+          topRatio: badgeState.topRatio,
+        },
+      });
+    } catch (e) {
+      /* stockage indisponible : l'état reste au moins en mémoire */
+    }
+  }
+
+  function loadBadgeState(done) {
+    try {
+      chrome.storage?.local?.get("badgeUi", (res) => {
+        const s = res && res.badgeUi;
+        if (s) {
+          if (s.side === "left" || s.side === "right") badgeState.side = s.side;
+          if (typeof s.topRatio === "number") badgeState.topRatio = s.topRatio;
+          if (typeof s.collapsed === "boolean") {
+            badgeState.collapsed = s.collapsed;
+          }
+        }
+        done && done();
+      });
+    } catch (e) {
+      done && done();
+    }
+  }
+
+  /** Place l'hôte sur la bulle réduite (coin, selon le côté mémorisé). */
+  function applyCollapsedPosition() {
+    const host = document.getElementById(BADGE_ID);
+    if (!host) return;
+    const travel = window.innerHeight - LAUNCHER_SIZE;
+    let top = badgeState.topRatio == null
+      ? travel - 20 // par défaut : en bas
+      : badgeState.topRatio * travel;
+    top = clamp(top, BADGE_MARGIN, travel - BADGE_MARGIN);
+    host.style.top = `${Math.round(top)}px`;
+    host.style.bottom = "auto";
+    if (badgeState.side === "left") {
+      host.style.left = `${BADGE_MARGIN}px`;
+      host.style.right = "auto";
+    } else {
+      host.style.right = `${BADGE_MARGIN}px`;
+      host.style.left = "auto";
+    }
+  }
+
+  /** Place l'hôte sur la carte déployée (ancrée en bas, côté mémorisé). */
+  function applyExpandedPosition() {
+    const host = document.getElementById(BADGE_ID);
+    if (!host) return;
+    host.style.top = "auto";
+    host.style.bottom = "20px";
+    if (badgeState.side === "left") {
+      host.style.left = "20px";
+      host.style.right = "auto";
+    } else {
+      host.style.right = "20px";
+      host.style.left = "auto";
+    }
+  }
+
+  /** Bascule entre la carte déployée et la bulle réduite. */
+  function setCollapsed(collapsed, persist) {
+    badgeState.collapsed = collapsed;
+    const host = document.getElementById(BADGE_ID);
+    if (host && host.__ui) {
+      const { card, launcher } = host.__ui;
+      if (collapsed) {
+        card.classList.add("hidden");
+        launcher.classList.remove("hidden");
+        applyCollapsedPosition();
+      } else {
+        launcher.classList.add("hidden");
+        card.classList.remove("hidden");
+        applyExpandedPosition();
+      }
+    }
+    if (persist !== false) saveBadgeState();
+  }
 
   /**
-   * Crée (ou récupère) la carte du badge dans un Shadow DOM isolé.
-   * Renvoie l'élément `.card` où injecter le contenu.
+   * Rend la bulle déplaçable : déplacement libre au doigt / à la souris, puis
+   * aimantation au bord le plus proche. Un relâchement sans déplacement notable
+   * est interprété comme un clic → redéploiement de la carte.
+   */
+  function setupLauncherDrag(host, launcher) {
+    let pointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let originLeft = 0;
+    let originTop = 0;
+    let dragging = false;
+
+    launcher.addEventListener("pointerdown", (event) => {
+      if (event.button != null && event.button !== 0) return;
+      const rect = host.getBoundingClientRect();
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      originLeft = rect.left;
+      originTop = rect.top;
+      dragging = false;
+      try {
+        launcher.setPointerCapture(pointerId);
+      } catch (e) {}
+      event.preventDefault();
+    });
+
+    launcher.addEventListener("pointermove", (event) => {
+      if (pointerId == null) return;
+      const dx = event.clientX - startX;
+      const dy = event.clientY - startY;
+      if (!dragging && Math.hypot(dx, dy) < 5) return; // sous le seuil : clic
+      if (!dragging) {
+        dragging = true;
+        launcher.classList.add("dragging");
+      }
+      const left = clamp(
+        originLeft + dx,
+        BADGE_MARGIN,
+        window.innerWidth - LAUNCHER_SIZE - BADGE_MARGIN
+      );
+      const top = clamp(
+        originTop + dy,
+        BADGE_MARGIN,
+        window.innerHeight - LAUNCHER_SIZE - BADGE_MARGIN
+      );
+      host.style.left = `${Math.round(left)}px`;
+      host.style.top = `${Math.round(top)}px`;
+      host.style.right = "auto";
+      host.style.bottom = "auto";
+    });
+
+    const endDrag = () => {
+      if (pointerId == null) return;
+      try {
+        launcher.releasePointerCapture(pointerId);
+      } catch (e) {}
+      pointerId = null;
+      const wasDragging = dragging;
+      dragging = false;
+      launcher.classList.remove("dragging");
+
+      if (!wasDragging) {
+        // Pas de déplacement notable → c'est un clic : on redéploie la carte.
+        setCollapsed(false);
+        return;
+      }
+      // Aimantation : la bulle colle au bord gauche ou droit le plus proche.
+      const rect = host.getBoundingClientRect();
+      const center = rect.left + rect.width / 2;
+      badgeState.side = center < window.innerWidth / 2 ? "left" : "right";
+      badgeState.topRatio = clamp(
+        rect.top / (window.innerHeight - LAUNCHER_SIZE),
+        0,
+        1
+      );
+      applyCollapsedPosition();
+      saveBadgeState();
+    };
+
+    launcher.addEventListener("pointerup", endDrag);
+    launcher.addEventListener("pointercancel", endDrag);
+  }
+
+  /**
+   * Crée (ou récupère) le badge dans un Shadow DOM isolé : la carte détaillée
+   * et la bulle réduite déplaçable. Renvoie l'élément `.card` où injecter le
+   * contenu.
    */
   function ensureBadge() {
     let host = document.getElementById(BADGE_ID);
@@ -370,6 +627,7 @@
 
     host = document.createElement("div");
     host.id = BADGE_ID;
+    host.style.position = "fixed";
     const shadow = host.attachShadow({ mode: "open" });
 
     const style = document.createElement("style");
@@ -378,6 +636,15 @@
     const card = document.createElement("div");
     card.className = "card";
     card.addEventListener("click", (event) => {
+      // Bouton « réduire » → repli de la carte vers la bulle.
+      const close = event.target.closest(".hd__close");
+      if (close && card.contains(close)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setCollapsed(true);
+        return;
+      }
+      // Liens « Itinéraire / ville » → ouverture de Google Maps.
       const link = event.target.closest("a[data-maps]");
       if (!link || !card.contains(link)) return;
       event.preventDefault();
@@ -386,10 +653,25 @@
       if (url) chrome.runtime.sendMessage({ type: "OPEN_MAPS", url });
     });
 
+    const launcher = document.createElement("button");
+    launcher.className = "launcher hidden";
+    launcher.type = "button";
+    launcher.setAttribute("aria-label", "Ouvrir le temps de trajet");
+    launcher.title = "Carnet de Visites — temps de trajet";
+    launcher.innerHTML = `<span class="launcher__mark">C</span>`;
+
     shadow.appendChild(style);
     shadow.appendChild(card);
+    shadow.appendChild(launcher);
     document.body.appendChild(host);
+
     host.__card = card;
+    host.__ui = { card, launcher };
+
+    setupLauncherDrag(host, launcher);
+    // Applique l'état mémorisé (réduit ou déployé) sans le re-persister.
+    setCollapsed(badgeState.collapsed, false);
+
     return card;
   }
 
@@ -556,7 +838,23 @@
     return prop.address || null;
   }
 
+  function isListingDetailPage() {
+    return (
+      self.CarnetListingPage &&
+      self.CarnetListingPage.isListingDetailUrl(location.href)
+    );
+  }
+
+  function clearTravelBadge() {
+    const host = document.getElementById(BADGE_ID);
+    if (host) host.remove();
+  }
+
   function compute(property, force) {
+    if (!isListingDetailPage()) {
+      clearTravelBadge();
+      return;
+    }
     if (!property) return;
 
     const key = propertyKey(property);
@@ -658,6 +956,7 @@
     fill("dpe_value", details.dpe_value);
     fill("ges_value", details.ges_value);
     fill("year_built", details.year_built);
+    fill("floor", details.floor);
   }
 
   /** Demandes venues du popup ou du service worker. */
@@ -694,11 +993,24 @@
     return false;
   });
 
+  // Restaure l'état d'affichage mémorisé (réduit / déployé + position de la
+  // bulle) ; si le badge est déjà à l'écran, on l'applique immédiatement.
+  loadBadgeState(() => {
+    const host = document.getElementById(BADGE_ID);
+    if (host && host.__ui) setCollapsed(badgeState.collapsed, false);
+  });
+
+  // La bulle réduite suit le redimensionnement de la fenêtre.
+  window.addEventListener("resize", () => {
+    if (badgeState.collapsed) applyCollapsedPosition();
+  });
+
   /* ------------------------------------------------------------------ *
    *  Fallback : si inject.js n'a rien fourni après un délai, on tente le DOM.
    * ------------------------------------------------------------------ */
 
   setTimeout(() => {
+    if (!isListingDetailPage()) return;
     if (gotMainWorldData) return;
     const prop = extractFallback();
     if (prop) compute(prop, false);
@@ -711,6 +1023,10 @@
   if (/(^|\.)leboncoin\.fr$/i.test(location.hostname)) {
     let lastUrl = location.href;
     const tryLbc = () => {
+      if (!isListingDetailPage()) {
+        clearTravelBadge();
+        return;
+      }
       const prop = fromLeboncoin();
       if (prop) {
         lastLocation = prop;
@@ -722,8 +1038,18 @@
       if (location.href !== lastUrl) {
         lastUrl = location.href;
         lastPropertyKey = null;
-        tryLbc();
       }
+      tryLbc();
     }, 1500);
   }
+
+  // Navigation SPA (SeLoger / Belles Demeures) : retirer le badge hors fiche.
+  let lastDetailHref = location.href;
+  setInterval(() => {
+    if (location.href !== lastDetailHref) {
+      lastDetailHref = location.href;
+      lastPropertyKey = null;
+    }
+    if (!isListingDetailPage()) clearTravelBadge();
+  }, 1500);
 })();

@@ -2,7 +2,7 @@
   <div class="topbar__inner">
     <a class="brand" href="/">
       <span class="brand__mark" aria-hidden="true">C</span>
-      <span class="brand__name">Carnet</span>
+      <span class="brand__name">Carnet de Visites</span>
     </a>
 
     <% if (user) { %>
@@ -22,6 +22,13 @@
           href="/settings"
           >Paramètres</a
         >
+        <% if (isAdmin) { %>
+          <a
+            class="topnav__link <%= currentPath.startsWith('/admin') ? 'is-active' : '' %>"
+            href="/admin"
+            >Admin</a
+          >
+        <% } %>
       </nav>
 
       <div class="topbar__account">

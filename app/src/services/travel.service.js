@@ -13,6 +13,7 @@ import config from "../config.js";
 import HttpError from "../lib/http-error.js";
 
 const BASE = config.openRouteService.baseUrl;
+const BAN_SEARCH = "https://api-adresse.data.gouv.fr/search/";
 
 function toNumber(value) {
   const n = Number(value);
@@ -60,16 +61,59 @@ export default function createTravelService({ logger } = {}) {
     return response.json();
   }
 
-  /** Géocode une adresse texte → { lat, lon, label } ou null. */
-  async function geocode(text) {
+  function featureToPoint(feature, fallbackText) {
+    if (!feature?.geometry?.coordinates) return null;
+    const [lon, lat] = feature.geometry.coordinates;
+    return { lat, lon, label: feature.properties?.label || fallbackText };
+  }
+
+  /** Géocodage OpenRouteService (lève si ORS est injoignable ou refuse la clé). */
+  async function geocodeOrs(text) {
     const url =
       `${BASE}/geocode/search?api_key=${encodeURIComponent(apiKey)}` +
       `&text=${encodeURIComponent(text)}&boundary.country=FR&size=1`;
     const data = await orsJson(url);
-    const feature = data?.features?.[0];
-    if (!feature?.geometry?.coordinates) return null;
-    const [lon, lat] = feature.geometry.coordinates;
-    return { lat, lon, label: feature.properties?.label || text };
+    return featureToPoint(data?.features?.[0], text);
+  }
+
+  /** Repli gratuit Base Adresse Nationale (adresses françaises). */
+  async function geocodeBan(text) {
+    const url = `${BAN_SEARCH}?q=${encodeURIComponent(text)}&limit=1`;
+    let response;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    } catch (err) {
+      logger?.warn?.({ err: err.message }, "API Adresse (BAN) injoignable");
+      return null;
+    }
+    if (!response.ok) {
+      logger?.warn?.(
+        { status: response.status },
+        "API Adresse (BAN) a répondu une erreur"
+      );
+      return null;
+    }
+    const data = await response.json();
+    return featureToPoint(data?.features?.[0], text);
+  }
+
+  /** Géocode une adresse texte → { lat, lon, label } ou null (BAN puis ORS). */
+  async function geocode(text) {
+    const fromBan = await geocodeBan(text);
+    if (fromBan) return fromBan;
+
+    if (configured()) {
+      try {
+        const fromOrs = await geocodeOrs(text);
+        if (fromOrs) return fromOrs;
+      } catch (err) {
+        logger?.warn?.(
+          { err: err.message },
+          "Géocodage OpenRouteService indisponible"
+        );
+      }
+    }
+    return null;
   }
 
   /** Itinéraire voiture entre deux points { lat, lon }. */
@@ -134,10 +178,11 @@ export default function createTravelService({ logger } = {}) {
    * trajet géocodera plus tard).
    */
   async function geocodeAddress(text) {
-    if (!configured() || !text) return null;
+    const cleaned = typeof text === "string" ? text.trim() : "";
+    if (!cleaned) return null;
     try {
-      return await geocode(text);
-    } catch (err) {
+      return await geocode(cleaned);
+    } catch {
       return null;
     }
   }

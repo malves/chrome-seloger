@@ -1,5 +1,10 @@
 node_modules/
 .env
 app/data/
+app/app.db
+*.db
 *.log
 .DS_Store
+chrome-extension/dist/
+chrome-extension/src/config.local.js
+chrome-extension/src/build.version.js

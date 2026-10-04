@@ -6,6 +6,8 @@
  * code INSEE préalable (`resolvesInsee`).
  */
 
+import { listingTerritory } from "../../lib/listing-territory.js";
+
 const BASE = "https://geo.api.gouv.fr";
 const FIELDS = "nom,code,codesPostaux,population,surface,departement,region";
 
@@ -69,36 +71,37 @@ export default {
   resolvesInsee: true,
 
   async fetch({ listing, inseeCode, fetchJson }) {
+    const territory = listingTerritory(listing);
     const search = async (params) => {
       const query = new URLSearchParams({ fields: FIELDS, format: "json", ...params });
       return fetchJson(`${BASE}/communes?${query}`);
     };
 
-    if (inseeCode) {
+    if (inseeCode && territory.source !== "user") {
       const commune = await fetchJson(
         `${BASE}/communes/${encodeURIComponent(inseeCode)}?fields=${FIELDS}`
       );
       return toResult(commune);
     }
 
-    if (listing.lat != null && listing.lng != null) {
+    if (territory.lat != null && territory.lng != null) {
       const found = pickCommune(
-        await search({ lat: String(listing.lat), lon: String(listing.lng) }),
-        listing.city
+        await search({ lat: String(territory.lat), lon: String(territory.lng) }),
+        territory.city
       );
       if (found) return toResult(found);
     }
 
-    if (listing.postal_code) {
+    if (territory.postal_code) {
       const found = pickCommune(
-        await search({ codePostal: listing.postal_code }),
-        listing.city
+        await search({ codePostal: territory.postal_code }),
+        territory.city
       );
       if (found) return toResult(found);
     }
 
-    if (listing.city) {
-      const found = pickCommune(await search({ nom: listing.city }), listing.city);
+    if (territory.city) {
+      const found = pickCommune(await search({ nom: territory.city }), territory.city);
       if (found) return toResult(found);
     }
 

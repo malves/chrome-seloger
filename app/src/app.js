@@ -6,11 +6,12 @@
  */
 
 import path from "node:path";
+import fs from "node:fs";
 import express from "express";
 import session from "express-session";
 import helmet from "helmet";
 
-import config, { rootDir } from "./config.js";
+import config, { basemapClientConfig, rootDir } from "./config.js";
 import { openDatabase } from "./db.js";
 import createRepositories from "./repositories/index.js";
 import SqliteSessionStore from "./session-store.js";
@@ -28,20 +29,40 @@ import createExtensionRouter from "./routes/web.extension.js";
 import createListingsRouter from "./routes/web.listings.js";
 import createProjectsRouter from "./routes/web.projects.js";
 import createSettingsRouter from "./routes/web.settings.js";
+import createAdminRouter from "./routes/web.admin.js";
 import createApiRouter from "./routes/api.v1.js";
 import createEnrichmentService from "./services/enrichment/index.js";
+import { loadFinancingRates } from "./services/financing-config.service.js";
 
 const BODY_LIMIT = "1mb";
+
+/**
+ * Version des assets statiques (CSS/JS) pour le cache-busting : date de
+ * modification du bundle CSS. Évite qu'un navigateur serve un ancien CSS en
+ * cache après une mise à jour (mauvais positionnement d'éléments, etc.).
+ */
+function computeAssetVersion() {
+  try {
+    const cssPath = path.join(rootDir, "public", "css", "app.css");
+    return String(Math.trunc(fs.statSync(cssPath).mtimeMs));
+  } catch {
+    return String(Date.now());
+  }
+}
+
+const STARTUP_ASSET_VERSION = computeAssetVersion();
 
 export default function createApp(options = {}) {
   const logger = options.logger || createLogger();
   const db = options.db || openDatabase();
   const repositories = options.repositories || createRepositories(db);
+  loadFinancingRates(repositories);
   const enrichment =
     options.enrichment || createEnrichmentService({ repositories, logger });
 
   const app = express();
   app.locals.config = config;
+  app.locals.assetVersion = STARTUP_ASSET_VERSION;
   app.set("trust proxy", config.isProduction ? 1 : false);
   app.set("views", path.join(rootDir, "src", "views"));
   app.set("view engine", "ejs");
@@ -117,9 +138,15 @@ export default function createApp(options = {}) {
     res.locals.flash = req.session?.flash || null;
     if (req.session?.flash) delete req.session.flash;
     res.locals.fmt = fmt;
+    // En dev, on relit la date à chaque requête pour refléter les éditions sans
+    // redémarrage ; en prod, valeur figée au démarrage (fichiers immuables).
+    res.locals.assetVersion = config.isProduction
+      ? STARTUP_ASSET_VERSION
+      : computeAssetVersion();
+    res.locals.basemap = basemapClientConfig();
     res.locals.baseUrl = config.baseUrl;
     res.locals.currentPath = req.path;
-    res.locals.title = "Carnet de recherche";
+    res.locals.title = "Carnet de Visites";
     next();
   });
 
@@ -150,6 +177,7 @@ export default function createApp(options = {}) {
   app.use(createExtensionRouter({ repositories, logger }));
   app.use(createProjectsRouter({ repositories, logger }));
   app.use(createSettingsRouter({ repositories, logger }));
+  app.use(createAdminRouter({ repositories, logger }));
   app.use(createListingsRouter({ repositories, enrichment, logger }));
 
   app.use(notFoundHandler);

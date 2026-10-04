@@ -26,7 +26,7 @@ services:
       # - "traefik.http.routers.carnet.entrypoints=websecure"
       # - "traefik.http.routers.carnet.tls.certresolver=letsencrypt"
       # - "traefik.http.services.carnet.loadbalancer.server.port=3000"
-      - "org.opencontainers.image.title=Carnet de recherche immobilière"
+      - "org.opencontainers.image.title=Carnet de Visites"
 
 networks:
   web:

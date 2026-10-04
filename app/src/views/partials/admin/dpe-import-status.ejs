@@ -1,0 +1,175 @@
+<%
+  var dashboard = importDashboard || jobView || {};
+  var activeJobViews = dashboard.activeJobViews || [];
+  var poll = dashboard.poll;
+  var showActivePanel = dashboard.showActivePanel;
+  var canRetry = !dashboard.blockNewImport;
+
+  var jobBadgeTone = function (status) {
+    return status === 'done' ? 'accent'
+      : status === 'error' ? 'error'
+      : 'info';
+  };
+  var jobStatusLabel = function (status) {
+    return status === 'running' ? 'En cours'
+      : status === 'pending' ? 'En attente'
+      : status === 'done' ? 'Terminé'
+      : 'Erreur';
+  };
+  var jobRange = function (j) {
+    return j.date_from + (j.date_to !== j.date_from ? ' → ' + j.date_to : '');
+  };
+  var dayLabel = function (j) {
+    return j.date_from === j.date_to ? j.date_from : jobRange(j);
+  };
+%>
+<div
+  id="dpe-import-status"
+  class="dpe-import-status"
+  data-block-import="<%= dashboard.blockNewImport ? 'true' : 'false' %>"
+  <% if (poll) { %>
+    hx-get="/admin/dpe/import/status"
+    hx-trigger="every 2s"
+    hx-target="this"
+    hx-swap="outerHTML"
+  <% } %>
+>
+  <% if (typeof importNotice !== 'undefined' && importNotice) { %>
+    <p class="dpe-import-status__notice dpe-import-status__notice--success" role="status"><%= importNotice %></p>
+  <% } %>
+
+  <% if (typeof importError !== 'undefined' && importError) { %>
+    <p class="dpe-import-status__error" role="alert"><%= importError %></p>
+  <% } %>
+
+  <% if (showActivePanel && activeJobViews.length) { %>
+    <div class="dpe-import-status__active">
+      <div class="dpe-import-status__active-head">
+        <h3 class="dpe-import-status__active-title">
+          <%= activeJobViews.length === 1 ? 'Import en cours' : activeJobViews.length + ' imports en cours' %>
+        </h3>
+        <% if (poll && activeJobViews.length > 1) { %>
+          <p class="dpe-import-status__hint dpe-import-status__hint--inline">
+            Un worker par jour — les jours terminés restent en base si un autre échoue.
+          </p>
+        <% } %>
+      </div>
+
+      <ul class="dpe-import-status__active-list">
+        <% activeJobViews.forEach(function (row) {
+          var job = row.job;
+          var pct = row.pct != null ? row.pct : 0;
+          var animate = row.animateProgress;
+          var stale = row.stale;
+          var badgeTone = row.badgeTone || 'neutral';
+          var statusLabel = row.statusLabel || '';
+        %>
+          <li class="dpe-import-status__current<%= stale ? ' is-stale' : '' %>">
+            <div class="dpe-import-status__head">
+              <span class="badge badge--<%= badgeTone %>"><%= statusLabel %></span>
+              <span class="dpe-import-status__range"><%= dayLabel(job) %></span>
+              <span class="dpe-import-status__pct"><%= pct %> %</span>
+            </div>
+
+            <div class="dpe-progress <%= animate ? 'is-active' : '' %><%= stale ? ' is-stale' : '' %>" role="progressbar"
+              aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= pct %>"
+              aria-label="Progression de l'import du <%= dayLabel(job) %>">
+              <div class="dpe-progress__bar" style="width: <%= pct %>%"></div>
+            </div>
+
+            <p class="dpe-import-status__meta">
+              <% if (poll && job.day_rows_total) { %>
+                <%= fmt.number(job.day_rows_done) %>/<%= fmt.number(job.day_rows_total) %> lignes
+              <% } else if (job.rows_imported) { %>
+                <%= fmt.number(job.rows_imported) %> ligne<%= job.rows_imported > 1 ? 's' : '' %>
+              <% } else { %>
+                En attente de données…
+              <% } %>
+              <% if (poll) { %> · activité <%= fmt.relative(job.updated_at) %><% } %>
+            </p>
+
+            <% if (stale && row.staleMessage) { %>
+              <div class="dpe-import-status__notice dpe-import-status__notice--warn" role="alert">
+                <p class="dpe-import-status__notice-text"><%= row.staleMessage %></p>
+              </div>
+            <% } %>
+
+            <details class="dpe-job-disclosure">
+              <summary class="dpe-job-disclosure__summary">Détails &amp; commande wget</summary>
+              <div class="dpe-job-disclosure__body">
+                <%- include("dpe-job-details", { job: job }) %>
+              </div>
+            </details>
+
+            <% if (row.showCancel) { %>
+              <div class="dpe-import-status__actions">
+                <form
+                  method="post"
+                  action="/admin/dpe/import/cancel"
+                  hx-post="/admin/dpe/import/cancel"
+                  hx-target="#dpe-import-status"
+                  hx-swap="outerHTML"
+                  hx-confirm="Interrompre l'import du <%= dayLabel(job) %> ? Les lignes déjà enregistrées pour ce jour peuvent être incomplètes."
+                >
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                  <input type="hidden" name="job_id" value="<%= job.id %>" />
+                  <button type="submit" class="btn btn--ghost btn--sm dpe-import-status__cancel">
+                    <%= stale ? 'Libérer ce jour' : 'Interrompre ce jour' %>
+                  </button>
+                </form>
+              </div>
+            <% } %>
+          </li>
+        <% }); %>
+      </ul>
+
+      <% if (poll && !activeJobViews.some(function (r) { return r.stale; })) { %>
+        <p class="dpe-import-status__hint">
+          L'import continue même si vous changez de page. Revenez ici pour suivre la progression.
+        </p>
+      <% } %>
+    </div>
+  <% } %>
+
+  <div class="dpe-history">
+    <h3 class="dpe-history__title">10 derniers imports</h3>
+    <% if (!recentJobs || !recentJobs.length) { %>
+      <p class="field__hint">Aucun import effectué pour le moment.</p>
+    <% } else { %>
+      <ul class="dpe-history__list">
+        <% recentJobs.forEach(function (j) { %>
+          <li class="dpe-history__item">
+            <details class="dpe-history__disclosure">
+              <summary class="dpe-history__summary">
+                <span class="badge badge--<%= jobBadgeTone(j.status) %>"><%= jobStatusLabel(j.status) %></span>
+                <span class="dpe-history__range"><%= jobRange(j) %></span>
+                <span class="dpe-history__rows"><%= fmt.number(j.rows_imported) %> ligne<%= j.rows_imported > 1 ? 's' : '' %> · <%= j.days_done %>/<%= j.days_total %> j</span>
+                <span class="dpe-history__when" title="<%= j.created_at %>"><%= fmt.relative(j.created_at) %></span>
+                <span class="dpe-history__chevron" aria-hidden="true">›</span>
+              </summary>
+              <div class="dpe-history__details">
+                <%- include("dpe-job-details", { job: j }) %>
+                <% if (j.status === 'error' && canRetry) { %>
+                  <form
+                    class="dpe-history__retry"
+                    method="post"
+                    action="/admin/dpe/import/retry"
+                    hx-post="/admin/dpe/import/retry"
+                    hx-target="#dpe-import-status"
+                    hx-swap="outerHTML"
+                  >
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                    <input type="hidden" name="job_id" value="<%= j.id %>" />
+                    <button type="submit" class="btn btn--ghost btn--sm dpe-history__retry-btn" title="Relancer <%= jobRange(j) %>">
+                      Relancer cet import
+                    </button>
+                  </form>
+                <% } %>
+              </div>
+            </details>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+  </div>
+</div>

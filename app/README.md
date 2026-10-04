@@ -1,4 +1,6 @@
-# Carnet de recherche immobilière
+# Carnet de Visites
+
+Site et API du service [carnetdevisites.fr](https://carnetdevisites.fr).
 
 Serveur et site web qui conservent les annonces envoyées par l'extension
 Chrome du dossier [`../chrome-extension`](../chrome-extension), les listent, les
@@ -27,6 +29,7 @@ son bouton « S'authentifier ».
 | `npm start` | Serveur en production |
 | `npm test` | Tests unitaires et d'intégration (`node:test` + `supertest`) |
 | `npm run seed` | Recrée le compte de démonstration et ses annonces |
+| `npm run import:ssmsi` | Importe la base SSMSI (délinquance) depuis data.gouv ou des chemins locaux |
 
 ## Configuration
 
@@ -39,8 +42,9 @@ Toutes les variables sont décrites dans [`.env.example`](.env.example).
 | `SESSION_SECRET` | Obligatoire en production |
 | `EXTENSION_ORIGINS` | Origines autorisées sur `/api/v1/*`, ex. `chrome-extension://abcdef…`. Restreint aussi les extensions autorisées à recevoir un code d'autorisation |
 | `ORS_API_KEY` | Clé OpenRouteService partagée : géocodage des adresses de projet et calcul des temps de trajet (`POST /api/v1/travel-time`). Vide = itinéraires indisponibles |
-| `NOTARY_RATE_OLD`, `NOTARY_RATE_NEW`, `GUARANTEE_RATE` | Taux forfaitaires du financement, valeurs indicatives |
-| `DEFAULT_INTEREST_RATE`, `DEFAULT_INSURANCE_RATE`, `DEFAULT_YEARS`, `DEBT_RATIO` | Valeurs initiales des paramètres de financement |
+| `SSMSI_COMMUNE_URL` / `SSMSI_DEP_URL` | Fichiers communaux (csv.gz) et départementaux (csv) SSMSI ; défaut = ressources data.gouv juillet 2026 |
+
+Les taux forfaitaires du tableau de financement se règlent dans **Administration → Paramétrage financement** (valeurs par défaut dans `config.js`, persistance SQLite).
 
 ## Organisation
 
@@ -218,14 +222,21 @@ pas les autres ; la fiche affiche « Donnée indisponible » avec un bouton
 essai. Les providers de portée `commune` lisent le cache partagé
 `commune_data` et n'appellent l'extérieur qu'en cas d'absence ou d'expiration.
 
-Deux providers sont livrés : `commune` (résolution du code INSEE et des données
-administratives via `geo.api.gouv.fr`, prérequis des futurs providers
-communaux) et `financing` (calcul local).
+Providers livrés : `commune` (résolution INSEE via `geo.api.gouv.fr`), `financing`
+(calcul local) et `delinquance` (SSMSI, lieu de commission à l'échelle communale).
 
-Pour les jeux de données volumineux prévus ensuite (délinquance SSMSI,
-recensement INSEE, transactions DVF, Géorisques), le `fetch` d'un provider peut
-lire dans une table locale alimentée par un script `scripts/import-*.js` plutôt
-que d'appeler une API.
+**Territoire des enrichissements communaux** : tant qu'aucune adresse réelle n'est
+renseignée, on utilise la ville / le code postal de l'annonce ; dès qu'une adresse
+est saisie ou validée (y compris via « Déterminer l'adresse via IA »), c'est elle
+qui prime pour la résolution INSEE et les blocs communaux.
+
+**Base SSMSI** : importer une fois par an (mise à jour SSMSI sur data.gouv) via
+**Administration → Import SSMSI** ou `npm run import:ssmsi` (équivalent CLI).
+Sans import, le bloc « Délinquance » indique que la base est absente.
+
+Pour d'autres jeux volumineux (recensement INSEE, DVF, Géorisques), le `fetch`
+d'un provider peut lire une table locale alimentée par un script `import-*.js`
+plutôt que d'appeler une API.
 
 ## Financement
 

@@ -50,6 +50,10 @@ export default function createExtensionRepository(db) {
       `UPDATE extension_sessions SET revoked_at = ?
        WHERE id = ? AND user_id = ? AND revoked_at IS NULL`
     ),
+    revokeAllForUser: db.prepare(
+      `UPDATE extension_sessions SET revoked_at = ?
+       WHERE user_id = ? AND revoked_at IS NULL`
+    ),
     revokeByHash: db.prepare(
       `UPDATE extension_sessions SET revoked_at = ?
        WHERE key_hash = ? AND revoked_at IS NULL`
@@ -95,6 +99,11 @@ export default function createExtensionRepository(db) {
 
     revokeSession(id, userId) {
       return statements.revoke.run(nowIso(), id, userId).changes > 0;
+    },
+
+    /** Déconnecte toutes les extensions d'un compte (changement de mot de passe admin). */
+    revokeAllSessionsForUser(userId) {
+      return statements.revokeAllForUser.run(nowIso(), userId).changes;
     },
 
     revokeSessionByKey(key) {

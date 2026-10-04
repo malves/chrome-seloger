@@ -22,6 +22,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import config, { rootDir } from "../../config.js";
+import { listingTerritory } from "../../lib/listing-territory.js";
 import { daysSince } from "../../lib/time.js";
 import ProviderSkipped from "./skipped.js";
 
@@ -116,7 +117,7 @@ export default function createEnrichmentService({ repositories, logger }) {
     return row;
   }
 
-  async function runProvider(provider, listing) {
+  async function runProvider(provider, listing, { force = false } = {}) {
     const context = {
       listing,
       inseeCode: listing.insee_code || null,
@@ -127,7 +128,12 @@ export default function createEnrichmentService({ repositories, logger }) {
     };
 
     if (provider.scope === "commune") {
-      const cached = readCommuneCache(provider, context.inseeCode);
+      const territory = listingTerritory(listing);
+      const skipCache = territory.source === "user";
+      const cached =
+        !force && !skipCache
+          ? readCommuneCache(provider, context.inseeCode)
+          : null;
       if (cached) {
         repositories.enrichments.saveListingResult(listing.id, provider.key, {
           status: "ok",
@@ -149,8 +155,12 @@ export default function createEnrichmentService({ repositories, logger }) {
       }
 
       repositories.enrichments.saveCommune(inseeCode, provider.key, data);
-      if (!listing.insee_code) {
-        repositories.listings.setInseeCode(listing.id, inseeCode);
+      const forceInsee =
+        territory.source === "user" || listing.insee_code !== inseeCode;
+      if (!listing.insee_code || forceInsee) {
+        repositories.listings.setInseeCode(listing.id, inseeCode, {
+          force: forceInsee,
+        });
         listing.insee_code = inseeCode;
       }
       repositories.enrichments.saveListingResult(listing.id, provider.key, {
@@ -171,7 +181,7 @@ export default function createEnrichmentService({ repositories, logger }) {
    * Exécute les providers d'une annonce. Une erreur sur l'un n'empêche pas
    * les suivants : elle est enregistrée et affichée sur la fiche.
    */
-  async function runForListing(userId, listingId, { only = null } = {}) {
+  async function runForListing(userId, listingId, { only = null, force = false } = {}) {
     const { providers } = await getRegistry();
     const selected = only
       ? providers.filter((provider) => provider.key === only)
@@ -183,7 +193,7 @@ export default function createEnrichmentService({ repositories, logger }) {
       if (!listing) return;
 
       try {
-        await runProvider(provider, listing);
+        await runProvider(provider, listing, { force });
       } catch (err) {
         const skipped = err instanceof ProviderSkipped;
         repositories.enrichments.saveListingResult(listingId, provider.key, {

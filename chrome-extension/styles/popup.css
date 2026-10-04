@@ -77,6 +77,18 @@ p {
   margin: 0;
 }
 
+.page-banner {
+  /* Même largeur que les `.panel` : pas de marge latérale (déjà gérée par `main`). */
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid #e8c4a8;
+  background: var(--warn-soft);
+  color: #7a2e0a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 a {
   color: var(--green-600);
   text-decoration: none;
@@ -124,6 +136,11 @@ main {
   gap: var(--space-2);
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+.brand__name {
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .brand__mark {

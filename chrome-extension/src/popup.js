@@ -15,6 +15,7 @@ for (const id of [
   "account",
   "account-email",
   "disconnect",
+  "page-banner",
   "auth-card",
   "auth-status",
   "connect",
@@ -67,12 +68,15 @@ for (const id of [
   "taxe-index",
   "timestamp",
   "recompute",
+  "footer-hint",
 ]) {
   els[id] = document.getElementById(id);
 }
 
 let activeTab = null;
 let page = { supported: false };
+/** Dernier calcul de trajet mis en cache par le service worker. */
+let cachedLastResult = null;
 
 /* ---------------------- Pont vers le service worker --------------------- */
 
@@ -113,11 +117,6 @@ function setButtonLoading(button, text) {
   button.append(text);
 }
 
-/** Petite pause utilitaire pour laisser le loader visible. */
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function setStatus(element, text, kind = "") {
   element.textContent = text || "";
   element.classList.remove("is-ok", "is-error");
@@ -152,6 +151,7 @@ async function refreshAccount() {
     state = await send("CARNET_STATE");
   } catch (err) {
     setStatus(els["auth-status"], err.message, "is-error");
+    await refreshPage();
     return;
   }
 
@@ -164,7 +164,7 @@ async function refreshAccount() {
   show(els["auth-card"], !state.connected);
   show(els["save-card"], state.connected);
 
-  if (state.connected) await refreshPage();
+  await refreshPage();
 }
 
 els.connect.addEventListener("click", async () => {
@@ -212,9 +212,65 @@ async function refreshPage() {
   if (page.supported && page.listing) await loadProjects();
 }
 
+function isSupportedListingHost(url) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      CARNET_SUPPORTED_HOSTS.test(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isListingDetailTab(url = activeTab?.url) {
+  return Boolean(
+    url && typeof CarnetListingPage !== "undefined" &&
+      CarnetListingPage.isListingDetailUrl(url)
+  );
+}
+
+function isReadableListingPage(state = page) {
+  if (!isListingDetailTab()) return false;
+  return Boolean(state.supported && state.listing);
+}
+
+/** Message affiché quand l'onglet actif n'est pas une annonce exploitable. */
+function pageContextMessage(state = page) {
+  if (state.error) return state.error;
+  if (!activeTab?.url) {
+    return "Aucun onglet actif à analyser.";
+  }
+  if (!isSupportedListingHost(activeTab.url)) {
+    return "Cette page n'est pas une annonce SeLoger, Belles Demeures ou Leboncoin.";
+  }
+  if (!isListingDetailTab(activeTab.url)) {
+    return "Cette page n'est pas une fiche annonce (accueil, résultats de recherche…). Ouvrez le détail d'un bien.";
+  }
+  if (state.supported && !state.listing) {
+    return "Annonce illisible sur cette page. Rechargez la fiche du bien, puis rouvrez l'extension.";
+  }
+  return "Ouvrez une annonce SeLoger, Belles Demeures ou Leboncoin pour utiliser l'extension.";
+}
+
+function renderPageBanner() {
+  if (isReadableListingPage()) {
+    show(els["page-banner"], false);
+    els["page-banner"].textContent = "";
+    return;
+  }
+
+  els["page-banner"].textContent = pageContextMessage();
+  show(els["page-banner"], true);
+}
+
 function renderPage() {
   const listing = page.listing;
-  const readable = Boolean(page.supported && listing);
+  const readable = isReadableListingPage();
+
+  renderPageBanner();
 
   show(els.listing, readable);
   show(els["project-field"], readable);
@@ -225,12 +281,8 @@ function renderPage() {
 
   if (!readable) {
     show(els["project-create"], false);
-    show(els["save-unavailable"], true);
-    els["save-unavailable"].textContent = page.error
-      ? page.error
-      : page.supported
-        ? "Annonce illisible sur cette page. Rechargez-la, puis rouvrez cette fenêtre."
-        : "Ouvrez une annonce SeLoger, Belles Demeures ou Leboncoin pour l'enregistrer.";
+    show(els["save-unavailable"], false);
+    updateTravelSection();
     return;
   }
 
@@ -257,6 +309,8 @@ function renderPage() {
   els.save.textContent = page.saved
     ? "Mettre à jour l'annonce"
     : "Sauvegarder l'annonce";
+
+  updateTravelSection();
 }
 
 /* -------------------------------- Projets ------------------------------- */
@@ -334,15 +388,10 @@ els.save.addEventListener("click", async () => {
   setStatus(els["save-status"], "");
 
   try {
-    // La sauvegarde peut être quasi instantanée : on garde le loader au moins
-    // deux secondes pour que l'effet reste perceptible.
-    const [result] = await Promise.all([
-      send("CARNET_SAVE", {
-        tabId: activeTab.id,
-        projectId: selectedProjectId(),
-      }),
-      delay(2000),
-    ]);
+    const result = await send("CARNET_SAVE", {
+      tabId: activeTab.id,
+      projectId: selectedProjectId(),
+    });
 
     page.saved = true;
     page.webUrl = result.webUrl;
@@ -454,15 +503,39 @@ function renderTrips(result) {
 }
 
 function renderResult(result) {
+  cachedLastResult = result ?? null;
+  updateTravelSection();
+}
+
+function updateTravelSection() {
+  const showTravel = isReadableListingPage();
+  show(els.recompute, showTravel);
+  show(els["footer-hint"], showTravel);
+
+  if (!showTravel) {
+    show(els["result-section"], false);
+    show(els["empty-section"], false);
+    return;
+  }
+
+  const result = cachedLastResult;
   if (!result || !result.ok) {
     show(els["result-section"], false);
     show(els["empty-section"], true);
+    const hint = els["empty-section"].querySelector("p");
+    if (hint) {
+      hint.textContent =
+        "Le temps de trajet s'affichera ici une fois calculé sur la page de l'annonce.";
+    }
     return;
   }
 
   show(els["empty-section"], false);
   show(els["result-section"], true);
+  renderTravelResultContent(result);
+}
 
+function renderTravelResultContent(result) {
   els["trips-project"].textContent = result.project
     ? `Projet « ${result.project.name} »`
     : "";
@@ -605,7 +678,7 @@ async function init() {
   activeTab = tab || null;
 
   const { lastResult } = await chrome.storage.local.get("lastResult");
-  renderResult(lastResult);
+  cachedLastResult = lastResult ?? null;
   await refreshAccount();
 }
 

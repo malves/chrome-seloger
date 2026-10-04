@@ -24,6 +24,19 @@ export default function createUsersRepository(db) {
     updateSettings: db.prepare("UPDATE users SET settings = ? WHERE id = ?"),
     remove: db.prepare("DELETE FROM users WHERE id = ?"),
     count: db.prepare("SELECT COUNT(*) AS n FROM users"),
+    listAdmin: db.prepare(
+      `SELECT u.id, u.email, u.created_at,
+              (SELECT COUNT(*) FROM listings l WHERE l.user_id = u.id) AS listing_count,
+              (SELECT COUNT(*) FROM projects p WHERE p.user_id = u.id) AS project_count
+       FROM users u
+       WHERE (@q IS NULL OR u.email LIKE @like ESCAPE '\\')
+       ORDER BY u.created_at DESC
+       LIMIT @limit OFFSET @offset`
+    ),
+    countAdmin: db.prepare(
+      `SELECT COUNT(*) AS n FROM users u
+       WHERE (@q IS NULL OR u.email LIKE @like ESCAPE '\\')`
+    ),
   };
 
   return {
@@ -60,6 +73,20 @@ export default function createUsersRepository(db) {
 
     count() {
       return statements.count.get().n;
+    },
+
+    /** Recherche admin par e-mail (sous-chaîne, insensible à la casse). */
+    listAdmin({ query = null, limit = 25, offset = 0 } = {}) {
+      const q = String(query || "").trim().slice(0, 120) || null;
+      const like = q ? `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%` : null;
+      const params = { q, like, limit, offset };
+      return statements.listAdmin.all(params).map((row) => hydrate(row));
+    },
+
+    countAdminSearch({ query = null } = {}) {
+      const q = String(query || "").trim().slice(0, 120) || null;
+      const like = q ? `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%` : null;
+      return statements.countAdmin.get({ q, like }).n;
     },
   };
 }

@@ -156,6 +156,27 @@
     return /^[A-G]$/.test(letter) ? letter : null;
   }
 
+  /** Numéro d'étage depuis hardFacts SeLoger (`numberOfFloors`). */
+  function floorFromHardFacts(sections) {
+    const facts =
+      sections && sections.hardFacts && Array.isArray(sections.hardFacts.facts)
+        ? sections.hardFacts.facts
+        : [];
+    const fact = facts.find((entry) => entry && entry.type === "numberOfFloors");
+    if (!fact) return null;
+
+    const label = String(fact.label || "").trim();
+    const slash = label.match(/^(\d{1,2})\s*\/\s*\d+/);
+    if (slash) return Number.parseInt(slash[1], 10);
+
+    const value = String(fact.value || "").trim();
+    const fromValue = value.match(/étage\s*(\d{1,2})\s*\/\s*\d+/i);
+    if (fromValue) return Number.parseInt(fromValue[1], 10);
+    const ordinal = value.match(/(\d{1,2})\s*(?:e|er|ème|eme)?\s*étage/i);
+    if (ordinal) return Number.parseInt(ordinal[1], 10);
+    return null;
+  }
+
   /** Valeur chiffrée d'une échelle, par libellé (consommation, émissions…). */
   function scaleValue(scale, matcher) {
     const values = scale && Array.isArray(scale.values) ? scale.values : [];
@@ -191,6 +212,9 @@
       if (typeof description === "string" && description.trim()) {
         details.description = description.trim();
       }
+
+      const floor = floorFromHardFacts(sections);
+      if (floor != null) details.floor = floor;
 
       const energy = sections.energy;
       if (energy) {

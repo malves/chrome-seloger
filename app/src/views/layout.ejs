@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="csrf-token" content="<%= csrfToken %>" />
-    <title><%= title %> · Carnet de recherche</title>
-    <link rel="stylesheet" href="/public/css/app.css" />
+    <title><%= title %> · Carnet de Visites</title>
+    <link rel="stylesheet" href="/public/css/app.css?v=<%= assetVersion %>" />
     <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" />
     <script src="/public/js/htmx.min.js" defer></script>
-    <script src="/public/js/app.js" defer></script>
+    <script src="/public/js/app.js?v=<%= assetVersion %>" defer></script>
   </head>
   <body>
     <%- include("partials/nav") %>
@@ -21,12 +21,37 @@
 
     <footer class="site-footer">
       <p>
-        Carnet de recherche immobilière — données privées, visibles de vous seul.
+        Carnet de Visites — données privées, visibles de vous seul.
       </p>
     </footer>
 
     <!-- Modale de confirmation réutilisable : alimentée par les formulaires
          portant un attribut `data-confirm` (voir app.js). -->
+    <div class="modal modal--dpe-detail" id="dpe-detail-modal" hidden>
+      <div class="modal__overlay" data-dpe-detail-dismiss></div>
+      <div
+        class="modal__dialog modal__dialog--wide dpe-detail-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dpe-detail-modal-title"
+      >
+        <button
+          type="button"
+          class="modal__close dpe-detail-dialog__close"
+          data-dpe-detail-dismiss
+          aria-label="Fermer"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+        <div class="dpe-detail-dialog__content" data-dpe-detail-content>
+          <p class="dpe-detail-dialog__loading">Chargement…</p>
+        </div>
+      </div>
+    </div>
+
     <div class="modal" id="confirm-modal" hidden>
       <div class="modal__overlay" data-modal-dismiss></div>
       <div

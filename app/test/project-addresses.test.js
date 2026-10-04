@@ -32,7 +32,7 @@ test("le service relie une adresse au projet et la dépose dans le carnet", asyn
   const projects = createProjectsService({ repositories });
   const project = projects.ensureDefault(user.id);
 
-  const { address, error } = projects.addAddress(user.id, project.id, {
+  const { address, error } = await projects.addAddress(user.id, project.id, {
     label: "  Bureau  ",
     address: "  12 rue de Rivoli, 75001 Paris ",
     lat: 48.86,
@@ -56,7 +56,7 @@ test("retirer une adresse d'un projet la conserve dans le carnet", async (t) => 
   const projects = createProjectsService({ repositories });
   const project = projects.ensureDefault(user.id);
 
-  const { address } = projects.addAddress(user.id, project.id, {
+  const { address } = await projects.addAddress(user.id, project.id, {
     address: "10 rue de la Paix, Paris",
   });
 
@@ -75,11 +75,11 @@ test("une même adresse n'est stockée qu'une fois et réutilisée", async (t) =
   const projectA = projects.ensureDefault(user.id);
   const { project: projectB } = projects.create(user.id, "Maison de campagne");
 
-  const first = projects.addAddress(user.id, projectA.id, {
+  const first = await projects.addAddress(user.id, projectA.id, {
     label: "Bureau",
     address: "1 rue A, Paris",
   });
-  const second = projects.addAddress(user.id, projectB.id, {
+  const second = await projects.addAddress(user.id, projectB.id, {
     label: "Autre libellé",
     address: "1 RUE A, paris", // même adresse, casse différente
   });
@@ -97,12 +97,12 @@ test("une adresse vide est refusée et le quota par projet est appliqué", async
   const projects = createProjectsService({ repositories });
   const project = projects.ensureDefault(user.id);
 
-  assert.equal(projects.addAddress(user.id, project.id, { address: "   " }).error !== null, true);
+  assert.equal((await projects.addAddress(user.id, project.id, { address: "   " })).error !== null, true);
 
   for (let i = 0; i < MAX_ADDRESSES; i += 1) {
-    assert.equal(projects.addAddress(user.id, project.id, { address: `Adresse ${i}` }).error, null);
+    assert.equal((await projects.addAddress(user.id, project.id, { address: `Adresse ${i}` })).error, null);
   }
-  const overflow = projects.addAddress(user.id, project.id, { address: "De trop" });
+  const overflow = await projects.addAddress(user.id, project.id, { address: "De trop" });
   assert.match(overflow.error, /limité/);
 });
 
@@ -114,10 +114,10 @@ test("le carnet et les adresses d'un autre compte sont inaccessibles", async (t)
   const projects = createProjectsService({ repositories });
   const projectA = projects.ensureDefault(a.id);
   const projectB = projects.ensureDefault(b.id);
-  const { address } = projects.addAddress(b.id, projectB.id, { address: "Chez B" });
+  const { address } = await projects.addAddress(b.id, projectB.id, { address: "Chez B" });
 
   // A ne peut pas ajouter à un projet de B, ni voir l'adresse de B dans son carnet.
-  assert.equal(projects.addAddress(a.id, projectB.id, { address: "x" }).error, "Projet introuvable.");
+  assert.equal((await projects.addAddress(a.id, projectB.id, { address: "x" })).error, "Projet introuvable.");
   assert.equal(repositories.addresses.findById(a.id, address.id), null);
   // Détacher depuis un projet de A une adresse qu'il n'a pas : sans effet.
   assert.equal(projects.unlinkAddress(a.id, projectA.id, address.id).removed, false);
@@ -145,7 +145,7 @@ test("modifier une adresse du carnet se répercute sur les projets", async (t) =
   const book = createBook(repositories);
   const project = projects.ensureDefault(user.id);
 
-  const { address } = projects.addAddress(user.id, project.id, {
+  const { address } = await projects.addAddress(user.id, project.id, {
     label: "Bureau",
     address: "1 rue A, Paris",
   });
@@ -171,8 +171,8 @@ test("supprimer une adresse du carnet la retire de tous les projets", async (t) 
   const projectA = projects.ensureDefault(user.id);
   const { project: projectB } = projects.create(user.id, "Maison de campagne");
 
-  const { address } = projects.addAddress(user.id, projectA.id, { address: "1 rue A" });
-  projects.addAddress(user.id, projectB.id, { address: "1 rue A" });
+  const { address } = await projects.addAddress(user.id, projectA.id, { address: "1 rue A" });
+  await projects.addAddress(user.id, projectB.id, { address: "1 rue A" });
   assert.equal(repositories.addresses.listByUser(user.id)[0].project_count, 2);
 
   const removed = book.remove(user.id, address.id);
@@ -273,7 +273,7 @@ test("GET /api/v1/projects renvoie les adresses de référence", async (t) => {
   const { user, key } = await createConnectedUser(repositories, "a@example.com");
   const projects = createProjectsService({ repositories });
   const project = projects.ensureDefault(user.id);
-  projects.addAddress(user.id, project.id, { label: "Bureau", address: "Paris", lat: 48.8, lng: 2.3 });
+  await projects.addAddress(user.id, project.id, { label: "Bureau", address: "Paris", lat: 48.8, lng: 2.3 });
 
   const res = await request(app)
     .get("/api/v1/projects")
@@ -319,7 +319,7 @@ test("POST /api/v1/travel-time calcule un trajet par adresse du projet", async (
   const { user, key } = await createConnectedUser(repositories, "a@example.com");
   const projects = createProjectsService({ repositories });
   const project = projects.ensureDefault(user.id);
-  projects.addAddress(user.id, project.id, {
+  await projects.addAddress(user.id, project.id, {
     label: "Bureau",
     address: "Paris",
     lat: 48.86,

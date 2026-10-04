@@ -56,12 +56,13 @@ export default function createAddressbookService({ repositories, travel }) {
       return { address: null, error: "Cette adresse est déjà dans votre carnet." };
     }
 
-    // On ne regéocode que si le texte de l'adresse a changé.
     const addressChanged =
       cleanAddress(current.address).toLowerCase() !== cleaned.toLowerCase();
+    const needsGeocode =
+      addressChanged || current.lat == null || current.lng == null;
     let lat = current.lat;
     let lng = current.lng;
-    if (addressChanged) {
+    if (needsGeocode) {
       const geo = await travel.geocodeAddress(cleaned);
       lat = geo ? geo.lat : null;
       lng = geo ? geo.lon : null;

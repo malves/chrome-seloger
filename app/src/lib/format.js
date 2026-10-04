@@ -2,6 +2,9 @@
  * Formatage pour les vues. Exposé à EJS via `res.locals.fmt`.
  */
 
+import { parseUserAddress } from "./user-address.js";
+import { listingDpeSearchCriteria } from "./listing-dpe-criteria.js";
+
 const STATUSES = {
   new: { label: "À étudier", tone: "neutral" },
   contacted: { label: "Contactée", tone: "info" },
@@ -106,6 +109,22 @@ export function date(iso) {
   return dateFormatter.format(new Date(t));
 }
 
+const dateTimeFormatter = new Intl.DateTimeFormat("fr-FR", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** Date + heure, ex. « 4 oct. 2026 à 18:21 » (détail d'un import, etc.). */
+export function datetime(iso) {
+  if (!iso) return "—";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "—";
+  return dateTimeFormatter.format(new Date(t));
+}
+
 /** « il y a 3 jours » : repère plus lisible qu'une date pour une liste. */
 export function relative(iso) {
   if (!iso) return "—";
@@ -157,6 +176,7 @@ export default {
   surface,
   percent,
   date,
+  datetime,
   relative,
   statusLabel,
   statusTone,
@@ -167,4 +187,6 @@ export default {
   sourceLabel,
   projectColor,
   listingsUrl,
+  parseUserAddress,
+  listingDpeSearchCriteria,
 };

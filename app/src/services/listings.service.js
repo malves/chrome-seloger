@@ -79,6 +79,41 @@ export function dedupKey(source, sourceId, canonicalUrl) {
   return `${source}:${hash}`;
 }
 
+/**
+ * Identifiant d'annonce extrait du chemin URL quand l'extension ne l'envoie pas.
+ *
+ * SeLoger place l'identifiant en dernier segment, quel que soit le format :
+ *   - court   : `/annonce/26Q9YCW4ZDUN`
+ *   - complet : `/annonce/achat/ile-de-france/hauts-de-seine-92/garches-92380/26S3BE9IWZDS`
+ *   - ancien  : `/annonces/.../275190123.htm`
+ *
+ * On ne retombe jamais sur un simple `\d{5,}` : le chemin contient des codes
+ * postaux (`garches-92380`) qui feraient collisionner deux annonces d'une même
+ * commune. En l'absence d'identifiant sûr, on laisse la clé dériver de l'URL.
+ */
+export function sourceIdFromUrl(source, rawUrl) {
+  let url;
+  try {
+    url = new URL(String(rawUrl || "").trim());
+  } catch {
+    return null;
+  }
+
+  const path = url.pathname.replace(/\/+$/, "");
+
+  // Anciennes URLs : l'identifiant précède « .htm ».
+  const legacy = path.match(/(\d{5,})\.html?$/i);
+  if (legacy) return legacy[1];
+
+  // URLs modernes : l'identifiant est le dernier segment de /annonce(s)/…
+  if (/\/annonces?\//i.test(path)) {
+    const last = path.split("/").filter(Boolean).pop();
+    if (last && /^[A-Za-z0-9]+$/.test(last)) return last.toUpperCase();
+  }
+
+  return null;
+}
+
 /** Garde la valeur reçue si elle est définie, sinon celle déjà stockée. */
 function keepOrReplace(incoming, stored) {
   return incoming === undefined || incoming === null ? stored ?? null : incoming;
@@ -145,12 +180,18 @@ export default function createListingsService({ repositories }) {
    */
   function save(user, payload) {
     const canonicalUrl = canonicalizeUrl(payload.url);
-    const key = dedupKey(payload.source, payload.source_id, canonicalUrl);
+    const sourceId =
+      payload.source_id ||
+      sourceIdFromUrl(payload.source, canonicalUrl) ||
+      null;
+    const key = dedupKey(payload.source, sourceId, canonicalUrl);
+    const enriched =
+      sourceId && !payload.source_id ? { ...payload, source_id: sourceId } : payload;
     const observedAt = payload.captured_at || nowIso();
 
     return repositories.transaction(() => {
       const existing = repositories.listings.findByDedupKey(user.id, key);
-      const fields = payloadToFields(payload, canonicalUrl, existing);
+      const fields = payloadToFields(enriched, canonicalUrl, existing);
 
       // Les colonnes JSON déjà renseignées sont conservées si rien n'arrive.
       for (const column of ["agency", "features", "extension_data", "raw"]) {
@@ -213,6 +254,14 @@ export default function createListingsService({ repositories }) {
     try {
       const host = new URL(canonicalUrl).hostname.replace(/^www\./, "");
       const source = host.split(".")[0];
+      const sourceId = sourceIdFromUrl(source, canonicalUrl);
+      if (sourceId) {
+        const bySourceId = repositories.listings.findByDedupKey(
+          user.id,
+          dedupKey(source, sourceId, canonicalUrl)
+        );
+        if (bySourceId) return bySourceId;
+      }
       return repositories.listings.findByDedupKey(
         user.id,
         dedupKey(source, null, canonicalUrl)
@@ -222,5 +271,5 @@ export default function createListingsService({ repositories }) {
     }
   }
 
-  return { save, lookup, canonicalizeUrl, dedupKey };
+  return { save, lookup, canonicalizeUrl, dedupKey, sourceIdFromUrl };
 }

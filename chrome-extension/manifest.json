@@ -1,13 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "Carnet de recherche immobilière",
-  "short_name": "Carnet",
+  "name": "Carnet de Visites",
+  "short_name": "Carnet de Visites",
   "version": "0.2.0",
   "description": "Temps de trajet, prix médians et données de la commune sur chaque annonce, puis sauvegarde du bien dans votre carnet.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "activeTab", "identity"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "identity"
+  ],
   "host_permissions": [
     "http://localhost:3000/*",
+    "https://carnetdevisites.fr/*",
     "https://geo.api.gouv.fr/*"
   ],
   "icons": {
@@ -17,7 +22,7 @@
   },
   "action": {
     "default_popup": "src/popup.html",
-    "default_title": "Carnet de recherche",
+    "default_title": "Carnet de Visites",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -29,8 +34,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*.seloger.com/*", "*://*.bellesdemeures.com/*"],
-      "js": ["src/inject.js"],
+      "matches": [
+        "*://*.seloger.com/*",
+        "*://*.bellesdemeures.com/*"
+      ],
+      "js": [
+        "src/inject.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
@@ -40,7 +50,11 @@
         "*://*.bellesdemeures.com/*",
         "*://*.leboncoin.fr/*"
       ],
-      "js": ["src/listing.js", "src/content.js"],
+      "js": [
+        "src/listing-page.js",
+        "src/listing.js",
+        "src/content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

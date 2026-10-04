@@ -1,0 +1,139 @@
+<%
+  var dash = dvfDashboard || {};
+  var running = dash.running;
+  var latest = dash.latest;
+  var poll = Boolean(running);
+  var blockNew = Boolean(running);
+  var pct = dash.importProgressPct != null ? dash.importProgressPct : (running ? 0 : null);
+  var phase = dash.phase;
+  var phaseLabel =
+    phase === 'medians' ? 'Calcul des médianes…'
+    : phase === 'starting' ? 'Démarrage…'
+    : (running && running.current_year) ? ('Année ' + running.current_year)
+    : 'En cours';
+
+  var recentJobs = dash.recentJobs || [];
+  var jobStatusLabel = function (s) {
+    return s === 'done' ? 'Terminé'
+      : s === 'error' ? 'Échec'
+      : s === 'running' ? 'En cours'
+      : s === 'pending' ? 'En attente'
+      : s;
+  };
+  var jobBadgeTone = function (s) {
+    return s === 'done' ? 'accent'
+      : s === 'error' ? 'error'
+      : 'info';
+  };
+%>
+<div
+  id="dvf-import-status"
+  class="dpe-import-status"
+  data-block-import="<%= blockNew ? 'true' : 'false' %>"
+  <% if (poll) { %>
+    hx-get="/admin/dvf/import/status"
+    hx-trigger="every 2s"
+    hx-target="this"
+    hx-swap="outerHTML"
+  <% } %>
+>
+  <% if (typeof dvfImportError !== 'undefined' && dvfImportError) { %>
+    <p class="dpe-import-status__error" role="alert"><%= dvfImportError %></p>
+  <% } %>
+  <% if (typeof dvfImportNotice !== 'undefined' && dvfImportNotice) { %>
+    <p class="dpe-import-status__notice dpe-import-status__notice--success" role="status"><%= dvfImportNotice %></p>
+  <% } %>
+
+  <p class="field__hint">
+    <%= fmt.number(dash.mutationRows || 0) %> vente(s) retenue(s) en base
+    <% if (dash.statRows) { %>
+      · <%= fmt.number(dash.statRows) %> ligne(s) de médianes communales
+    <% } %>
+  </p>
+
+  <% if (running) { %>
+    <div class="dpe-import-status__current">
+      <div class="dpe-import-status__head">
+        <span class="badge badge--info">Import en cours</span>
+        <span class="dpe-import-status__pct">
+          <%= phaseLabel %><% if (pct != null) { %> · <%= pct %> %<% } %>
+        </span>
+      </div>
+
+      <% if (pct != null) { %>
+        <div class="dpe-progress is-active" role="progressbar"
+          aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= pct %>"
+          aria-label="Progression de l'import DVF">
+          <div class="dpe-progress__bar" style="width: <%= pct %>%"></div>
+        </div>
+      <% } %>
+
+      <p class="dpe-import-status__meta">
+        <% if (dash.totalYears) { %>
+          Années <%= running.year_from %>–<%= running.year_to %>
+          <% if (phase === 'import' && dash.yearsDone != null) { %>
+            (<%= dash.yearsDone %>/<%= dash.totalYears %> terminée<%= dash.yearsDone > 1 ? 's' : '' %>)
+          <% } %>
+          ·
+        <% } %>
+        <%= fmt.number(running.rows_imported || 0) %> ventes retenues
+        · activité <%= fmt.relative(running.updated_at) %>
+      </p>
+      <p class="dpe-import-status__hint">
+        <% if (phase === 'medians') { %>
+          Toutes les années sont téléchargées : calcul des prix médians par commune et par année. Dernière étape.
+        <% } else { %>
+          Import national volumineux (plusieurs Go téléchargés, une année après l'autre).
+          Le compteur de ventes avance au fil de la lecture ; la barre progresse à chaque année terminée.
+        <% } %>
+        Cette zone se met à jour toutes les 2 secondes. Vous pouvez quitter la page : le traitement continue côté serveur.
+      </p>
+    </div>
+  <% } else if (latest && latest.status === 'done') { %>
+    <div class="dpe-import-status__notice dpe-import-status__notice--success" role="status">
+      <p class="dpe-import-status__notice-text">
+        <span class="badge badge--accent">Terminé</span>
+        Dernier import <%= fmt.relative(latest.updated_at) %>
+        — <%= fmt.number(latest.rows_imported) %> ventes
+        (années <%= latest.year_from %> à <%= latest.year_to %>).
+        Vous pouvez actualiser les fiches annonces.
+      </p>
+    </div>
+  <% } else if (latest && latest.status === 'error') { %>
+    <div class="dpe-import-status__notice dpe-import-status__notice--warn" role="alert">
+      <p class="dpe-import-status__notice-text">
+        <span class="badge badge--error">Échec</span>
+        <%= latest.error || 'Import en échec.' %>
+        <% if (latest.rows_imported) { %>
+          (<%= fmt.number(latest.rows_imported) %> ventes avaient été lues avant l'arrêt.)
+        <% } %>
+        Relancez l'import ci-dessus.
+      </p>
+    </div>
+  <% } %>
+
+  <div class="dpe-history">
+    <h3 class="dpe-history__title">10 derniers imports</h3>
+    <% if (!recentJobs.length) { %>
+      <p class="field__hint">Aucun import effectué pour le moment.</p>
+    <% } else { %>
+      <ul class="dpe-history__list">
+        <% recentJobs.forEach(function (j) { %>
+          <li class="dpe-history__item">
+            <div class="dpe-history__summary">
+              <span class="badge badge--<%= jobBadgeTone(j.status) %>"><%= jobStatusLabel(j.status) %></span>
+              <span class="dpe-history__range"><%= j.year_from %>–<%= j.year_to %></span>
+              <span class="dpe-history__rows"><%= fmt.number(j.rows_imported || 0) %> vente<%= (j.rows_imported || 0) > 1 ? 's' : '' %></span>
+              <span class="dpe-history__when" title="<%= j.created_at %>"><%= fmt.relative(j.created_at) %></span>
+            </div>
+            <% if (j.status === 'error' && j.error) { %>
+              <div class="dpe-history__error-row">
+                <span class="dpe-history__error" title="<%= j.error %>"><%= j.error %></span>
+              </div>
+            <% } %>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+  </div>
+</div>

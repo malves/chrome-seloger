@@ -34,6 +34,12 @@ export default function createEnrichmentsRepository(db) {
     removeByListing: db.prepare(
       "DELETE FROM listing_enrichments WHERE listing_id = ? AND provider = ?"
     ),
+    removeCommune: db.prepare(
+      "DELETE FROM commune_data WHERE insee_code = ? AND provider = ?"
+    ),
+    clearCommuneProvider: db.prepare(
+      "DELETE FROM commune_data WHERE provider = ?"
+    ),
 
     getCommune: db.prepare(
       "SELECT * FROM commune_data WHERE insee_code = ? AND provider = ?"
@@ -73,6 +79,15 @@ export default function createEnrichmentsRepository(db) {
 
     removeOne(listingId, provider) {
       statements.removeByListing.run(listingId, provider);
+    },
+
+    removeCommune(inseeCode, provider) {
+      if (!inseeCode) return;
+      statements.removeCommune.run(inseeCode, provider);
+    },
+
+    clearCommuneProvider(provider) {
+      statements.clearCommuneProvider.run(provider);
     },
 
     findCommune(inseeCode, provider) {

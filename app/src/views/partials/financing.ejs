@@ -83,20 +83,38 @@
         </div>
       </div>
 
-      <label class="field">
-        <span class="field__label">Durée (ans)</span>
-        <input class="input input--sm" type="number" name="years" min="1" max="40" value="<%= params.years %>" />
-      </label>
+      <div class="field">
+        <label class="field__label" for="financing-years">Durée (ans)</label>
+        <div class="amount-stepper">
+          <input id="financing-years" class="input input--sm" type="text" inputmode="numeric" autocomplete="off" name="years" data-step="1" data-min="1" data-max="40" data-decimals="0" value="<%= params.years %>" />
+          <span class="amount-stepper__controls">
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter la durée d'un an"></button>
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer la durée d'un an"></button>
+          </span>
+        </div>
+      </div>
 
-      <label class="field">
-        <span class="field__label">Taux nominal (%)</span>
-        <input class="input input--sm" type="number" name="interest_rate" min="0" max="25" step="0.01" value="<%= (params.interestRate * 100).toFixed(2) %>" />
-      </label>
+      <div class="field">
+        <label class="field__label" for="financing-interest-rate">Taux nominal (%)</label>
+        <div class="amount-stepper">
+          <input id="financing-interest-rate" class="input input--sm" type="text" inputmode="decimal" autocomplete="off" name="interest_rate" data-step="0.01" data-min="0" data-max="25" data-decimals="2" value="<%= (params.interestRate * 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %>" />
+          <span class="amount-stepper__controls">
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le taux nominal de 0,01 point"></button>
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le taux nominal de 0,01 point"></button>
+          </span>
+        </div>
+      </div>
 
-      <label class="field">
-        <span class="field__label">Assurance (%)</span>
-        <input class="input input--sm" type="number" name="insurance_rate" min="0" max="5" step="0.01" value="<%= (params.insuranceRate * 100).toFixed(2) %>" />
-      </label>
+      <div class="field">
+        <label class="field__label" for="financing-insurance-rate">Assurance (%)</label>
+        <div class="amount-stepper">
+          <input id="financing-insurance-rate" class="input input--sm" type="text" inputmode="decimal" autocomplete="off" name="insurance_rate" data-step="0.01" data-min="0" data-max="5" data-decimals="2" value="<%= (params.insuranceRate * 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %>" />
+          <span class="amount-stepper__controls">
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter l'assurance de 0,01 point"></button>
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer l'assurance de 0,01 point"></button>
+          </span>
+        </div>
+      </div>
 
     </form>
   </section>

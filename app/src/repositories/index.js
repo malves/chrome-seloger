@@ -11,6 +11,10 @@ import createListingsRepository from "./listings.repo.js";
 import createProjectsRepository from "./projects.repo.js";
 import createAddressesRepository from "./addresses.repo.js";
 import createEnrichmentsRepository from "./enrichments.repo.js";
+import createDpeRepository from "./dpe.repo.js";
+import createAppSettingsRepository from "./app-settings.repo.js";
+import createSsmsiRepository from "./ssmsi.repo.js";
+import createDvfRepository from "./dvf.repo.js";
 
 export default function createRepositories(db) {
   const projects = createProjectsRepository(db);
@@ -22,6 +26,10 @@ export default function createRepositories(db) {
     addresses: createAddressesRepository(db),
     listings: createListingsRepository(db, { projects }),
     enrichments: createEnrichmentsRepository(db),
+    dpe: createDpeRepository(db),
+    appSettings: createAppSettingsRepository(db),
+    ssmsi: createSsmsiRepository(db),
+    dvf: createDvfRepository(db),
 
     /** Exécute plusieurs écritures de façon atomique. */
     transaction(fn) {

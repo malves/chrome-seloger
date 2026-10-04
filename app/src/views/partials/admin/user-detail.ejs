@@ -1,0 +1,125 @@
+<%
+  var isAccountAdmin = user.email && user.email.toLowerCase() === adminEmail;
+  var isSelf = user.id === currentUserId;
+  var canDelete = !isSelf && !isAccountAdmin;
+%>
+<div class="admin-user-detail">
+  <header class="admin-user-detail__head">
+    <div>
+      <p class="panel__eyebrow">Compte utilisateur</p>
+      <h2 class="admin-user-detail__title" id="admin-user-modal-title"><%= user.email %></h2>
+      <p class="admin-user-detail__meta">
+        Inscrit le <%= fmt.date(user.created_at) %>
+        · <%= fmt.number(listingCount) %> annonce<%= listingCount > 1 ? 's' : '' %>
+        · <%= fmt.number(projectCount) %> projet<%= projectCount > 1 ? 's' : '' %>
+      </p>
+    </div>
+    <div class="admin-user-detail__badges">
+      <% if (isAccountAdmin) { %><span class="badge badge--accent">Administrateur</span><% } %>
+      <% if (isSelf) { %><span class="badge badge--muted">Votre session</span><% } %>
+    </div>
+  </header>
+
+  <% if (notice) { %>
+    <p class="admin-users-notice admin-users-notice--success" role="status"><%= notice %></p>
+  <% } %>
+
+  <% if (errors && errors.length) { %>
+    <div class="form-errors" role="alert">
+      <ul>
+        <% errors.forEach(function (error) { %>
+          <li><%= error %></li>
+        <% }); %>
+      </ul>
+    </div>
+  <% } %>
+
+  <section class="admin-user-detail__section">
+    <h3 class="admin-user-detail__section-title">Mot de passe</h3>
+    <p class="field__hint admin-user-detail__hint">
+      Définissez un nouveau mot de passe sans connaître l'ancien. Les extensions
+      connectées seront déconnectées.
+    </p>
+    <form
+      class="form admin-user-detail__form"
+      method="post"
+      action="/admin/users/<%= user.id %>/password"
+      hx-post="/admin/users/<%= user.id %>/password"
+      hx-target="[data-admin-user-content]"
+      hx-swap="innerHTML"
+    >
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <div class="field">
+        <label class="field__label" for="admin-user-password-<%= user.id %>">Nouveau mot de passe</label>
+        <input
+          class="input"
+          type="password"
+          id="admin-user-password-<%= user.id %>"
+          name="password"
+          autocomplete="new-password"
+          minlength="10"
+          required
+        />
+        <span class="field__hint">10 caractères minimum.</span>
+      </div>
+      <div class="field">
+        <label class="field__label" for="admin-user-password-confirm-<%= user.id %>">Confirmation</label>
+        <input
+          class="input"
+          type="password"
+          id="admin-user-password-confirm-<%= user.id %>"
+          name="password_confirm"
+          autocomplete="new-password"
+          minlength="10"
+          required
+        />
+      </div>
+      <button class="btn btn--green" type="submit">Enregistrer le mot de passe</button>
+    </form>
+  </section>
+
+  <% if (extensionSessions && extensionSessions.length) { %>
+    <section class="admin-user-detail__section">
+      <h3 class="admin-user-detail__section-title">Extension</h3>
+      <ul class="admin-user-detail__sessions">
+        <% extensionSessions.forEach(function (session) { %>
+          <li>
+            <%= session.label || 'Navigateur' %>
+            <span class="admin-user-detail__session-meta">· connecté <%= fmt.relative(session.created_at) %></span>
+          </li>
+        <% }); %>
+      </ul>
+    </section>
+  <% } %>
+
+  <% if (canDelete) { %>
+    <section class="admin-user-detail__section admin-user-detail__section--danger">
+      <h3 class="admin-user-detail__section-title">Suppression</h3>
+      <p class="field__hint admin-user-detail__hint">
+        Annonces, projets, carnet d'adresses et connexions extension seront
+        définitivement effacés.
+      </p>
+      <form
+        method="post"
+        action="/admin/users/<%= user.id %>/delete"
+        hx-post="/admin/users/<%= user.id %>/delete"
+        hx-target="#admin-users-results"
+        hx-swap="outerHTML"
+        data-confirm="Supprimer définitivement le compte <%= user.email %> ? Cette action est irréversible."
+        data-confirm-title="Supprimer le compte"
+        data-confirm-label="Supprimer"
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button class="btn btn--danger-solid" type="submit">Supprimer ce compte</button>
+      </form>
+    </section>
+  <% } else { %>
+    <p class="field__hint admin-user-detail__protected">
+      <% if (isSelf) { %>
+        Pour supprimer votre compte, utilisez les paramètres de votre profil.
+      <% } else { %>
+        Le compte administrateur ne peut pas être supprimé depuis cette interface.
+      <% } %>
+    </p>
+  <% } %>
+</div>

@@ -75,7 +75,13 @@ function withFixtureApp(name, fn) {
 withFixtureApp("un nouveau provider est découvert sans inscription", async (ctx) => {
   const keys = (await ctx.enrichment.listProviders()).map((p) => p.key);
   // Trié par `order` : la résolution de commune reste le prérequis initial.
-  assert.deepEqual(keys, ["commune", "financing", FIXTURE_KEY]);
+  assert.deepEqual(keys, [
+    "commune",
+    "financing",
+    "delinquance",
+    "prix-m2",
+    FIXTURE_KEY,
+  ]);
 });
 
 withFixtureApp("son résultat est stocké et affiché par son partial", async (ctx) => {
@@ -134,6 +140,39 @@ withFixtureApp("le bouton Réessayer relance le provider ciblé", async (ctx) =>
 
   assert.doesNotMatch(res.text, /<!DOCTYPE html>/);
   assert.match(res.text, /Marqueur : valeur-de-test/);
+});
+
+withFixtureApp("Actualiser le territoire recharge tous les providers communaux", async (ctx) => {
+  const { app, repositories, listingsService, enrichment } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+  const { id } = listingsService.save(user, listingPayload({ city: "Versailles", postal_code: "78000" }));
+  await enrichment.runForListing(user.id, id, { only: "commune" });
+
+  const listing = repositories.listings.findById(user.id, id);
+  repositories.enrichments.saveCommune(listing.insee_code, "commune", {
+    insee_code: listing.insee_code,
+    name: "Versailles",
+    department: { code: "78", name: "Yvelines" },
+  });
+
+  const agent = await loginAgent(app, "a@example.com");
+  const page = await agent.get(`/listings/${id}`).expect(200);
+  const csrf = /name="_csrf" value="([^"]+)"/.exec(page.text)[1];
+
+  const territoryButtons = page.text.match(/enrich\/territoire/g) || [];
+  assert.equal(territoryButtons.length, 1);
+
+  const res = await agent
+    .post(`/listings/${id}/enrich/territoire`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf })
+    .expect(200);
+
+  assert.doesNotMatch(res.text, /<!DOCTYPE html>/);
+  assert.match(res.text, /id="listing-territory"/);
+  assert.match(res.text, /Code INSEE/);
+  assert.match(res.text, /Population/);
 });
 
 test("le financement est ignoré pour une location", async (t) => {

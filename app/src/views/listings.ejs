@@ -20,6 +20,14 @@
       <% } %>
     </p>
   </div>
+
+  <button type="button" class="btn btn--add-listing" data-add-listing-open>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+    Ajouter une annonce
+  </button>
 </div>
 
 <nav class="filters filters--toolbar" aria-label="Filtrer les annonces">
@@ -176,3 +184,126 @@
 
   <%- include("partials/pagination", { pagination: pagination, query: query }) %>
 <% } %>
+
+<%
+  // Projet(s) présélectionné(s) dans la popup : le projet actif s'il filtre la
+  // liste, sinon le projet par défaut du compte.
+  const defaultProject = projects.find(function (p) { return p.is_default; });
+  const preselectedId = activeProject
+    ? activeProject.id
+    : (defaultProject ? defaultProject.id : null);
+%>
+
+<div class="modal add-listing-modal" id="add-listing-modal" hidden data-add-listing>
+  <div class="modal__overlay" data-add-listing-dismiss></div>
+  <div
+    class="modal__dialog add-listing-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="add-listing-title"
+  >
+    <button
+      type="button"
+      class="modal__close"
+      data-add-listing-dismiss
+      aria-label="Fermer"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+
+    <h2 class="modal__title" id="add-listing-title">Ajouter une annonce</h2>
+
+    <!-- État 1 : saisie de l'URL + projet -->
+    <form class="add-listing-form" data-add-listing-form novalidate>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <p class="add-listing__lead">
+        Collez le lien d'une annonce <strong>SeLoger</strong>,
+        <strong>Belles Demeures</strong> ou <strong>Leboncoin</strong> : nous
+        lisons la fiche pour vous.
+      </p>
+
+      <label class="field add-listing__field">
+        <span class="field__label">URL de l'annonce</span>
+        <input
+          type="url"
+          name="url"
+          class="input"
+          inputmode="url"
+          autocomplete="off"
+          placeholder="https://www.seloger.com/annonce/…"
+          data-add-listing-url
+          required
+        />
+      </label>
+
+      <% if (projects.length) { %>
+        <fieldset class="add-listing__projects">
+          <legend class="field__label">Classer dans</legend>
+          <div class="add-listing__project-options">
+            <% projects.forEach(function (project) { %>
+              <label class="add-listing__project <%= project.id === preselectedId ? 'is-active' : '' %>">
+                <input
+                  type="checkbox"
+                  name="project_ids"
+                  value="<%= project.id %>"
+                  <%= project.id === preselectedId ? 'checked' : '' %>
+                />
+                <span
+                  class="project-dot"
+                  style="--project-color: <%= fmt.projectColor(project.color) %>"
+                  aria-hidden="true"
+                ></span>
+                <span class="add-listing__project-name"><%= project.name %></span>
+              </label>
+            <% }); %>
+          </div>
+        </fieldset>
+      <% } %>
+
+      <p class="add-listing__error" data-add-listing-error role="alert" hidden></p>
+
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-add-listing-dismiss>
+          Annuler
+        </button>
+        <button type="submit" class="btn btn--dark" data-add-listing-submit>
+          <span class="btn__spinner" aria-hidden="true"></span>
+          <span class="btn__label">Vérifier l'annonce</span>
+        </button>
+      </div>
+    </form>
+
+    <!-- État 3 : aperçu du bien à valider -->
+    <div class="add-listing-preview" data-add-listing-preview hidden>
+      <div class="add-listing-card">
+        <div class="add-listing-card__media" data-preview-media>
+          <img alt="" data-preview-photo hidden />
+          <span class="add-listing-card__placeholder" data-preview-placeholder>
+            Aperçu
+          </span>
+        </div>
+        <div class="add-listing-card__body">
+          <span class="add-listing-card__source" data-preview-source></span>
+          <h3 class="add-listing-card__title" data-preview-title></h3>
+          <p class="add-listing-card__price" data-preview-price></p>
+          <p class="add-listing-card__meta" data-preview-meta></p>
+          <p class="add-listing-card__city" data-preview-city></p>
+          <p class="add-listing-card__note" data-preview-note hidden></p>
+        </div>
+      </div>
+
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-add-listing-back>
+          Modifier l'URL
+        </button>
+        <button type="button" class="btn btn--green" data-add-listing-confirm>
+          <span class="btn__spinner" aria-hidden="true"></span>
+          <span class="btn__label">Ajouter au carnet</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

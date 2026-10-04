@@ -3,10 +3,14 @@
   // état d'erreur commun avec bouton « Réessayer ».
 %>
 <%
-  // Sans titre explicite (rafraîchissement HTMX), le provider communal
-  // réaffiche « Commune » comme titre du bloc.
-  const resolvedTitle =
-    typeof sectionTitle !== "undefined"
+  // Pour le bloc communal, le titre reprend le nom de la commune (évite de
+  // répéter « Commune » en titre puis en ligne de détail). Fallback « Commune »
+  // si la donnée n'est pas encore disponible.
+  const communeName =
+    provider.scope === "commune" && provider.data ? provider.data.name : null;
+  const resolvedTitle = communeName
+    ? communeName
+    : typeof sectionTitle !== "undefined"
       ? sectionTitle
       : provider.scope === "commune"
         ? "Commune"
@@ -17,6 +21,14 @@
       : resolvedTitle
         ? "Territoire"
         : null;
+  const hideRefresh =
+    typeof hideProviderRefresh !== "undefined" && hideProviderRefresh;
+  const showTerritoryRefresh =
+    typeof territoryRefresh !== "undefined" && territoryRefresh;
+  const territoryRefreshLabel =
+    typeof territoryHasData !== "undefined" && territoryHasData
+      ? "Actualiser"
+      : "Réessayer";
 %>
 <div class="provider-block" id="provider-<%= provider.key %>">
   <div class="panel__head">
@@ -30,15 +42,42 @@
     <% } else { %>
       <h3 class="panel__title"><%= provider.label %></h3>
     <% } %>
-    <% if (provider.fetchedAt) { %>
-      <span class="card__foot-note">
-        Mise à jour <%= fmt.relative(provider.fetchedAt) %>
-      </span>
-    <% } %>
+    <div class="panel__head-aside">
+      <% if (provider.fetchedAt) { %>
+        <span class="card__foot-note">
+          Mise à jour <%= fmt.relative(provider.fetchedAt) %>
+        </span>
+      <% } %>
+      <% if (showTerritoryRefresh) { %>
+        <form
+          class="listing-territory__refresh"
+          hx-post="/listings/<%= listing.id %>/enrich/territoire"
+          hx-target="#listing-territory"
+          hx-swap="outerHTML"
+          hx-indicator="#listing-territory .listing-territory__overlay"
+          hx-disabled-elt="find button"
+        >
+          <button class="btn btn--ghost btn--sm" type="submit">
+            <%= territoryRefreshLabel %>
+          </button>
+        </form>
+      <% } %>
+      <% if (!hideRefresh) { %>
+        <form
+          hx-post="/listings/<%= listing.id %>/enrich/<%= provider.key %>"
+          hx-target="#provider-<%= provider.key %>"
+          hx-swap="outerHTML"
+        >
+          <button class="btn btn--ghost btn--sm" type="submit">
+            <%= provider.status === 'ok' ? 'Actualiser' : 'Réessayer' %>
+          </button>
+        </form>
+      <% } %>
+    </div>
   </div>
 
   <% if (provider.status === 'ok' && provider.data) { %>
-    <%- include(provider.partial, { data: provider.data, listing: listing }) %>
+    <%- include(provider.partial, { data: provider.data, listing: listing, provider: provider }) %>
   <% } else if (provider.status === 'pending') { %>
     <p class="field__hint">Donnée en cours de récupération…</p>
   <% } else { %>
@@ -50,19 +89,15 @@
     </p>
   <% } %>
 
-  <div class="btn-row" style="margin-top: var(--space-3)">
-    <form
-      hx-post="/listings/<%= listing.id %>/enrich/<%= provider.key %>"
-      hx-target="#provider-<%= provider.key %>"
-      hx-swap="outerHTML"
-    >
-      <button class="btn btn--ghost btn--sm" type="submit">
-        <%= provider.status === 'ok' ? 'Actualiser' : 'Réessayer' %>
-      </button>
-    </form>
-  </div>
-
-  <% if (provider.source) { %>
+  <%
+    const sourceInDelinquancePartial =
+      provider.key === 'delinquance' &&
+      provider.status === 'ok' &&
+      provider.data &&
+      provider.data.indicators &&
+      provider.data.indicators.length;
+  %>
+  <% if (provider.source && !sourceInDelinquancePartial) { %>
     <p class="provider-source">
       Source :
       <% if (provider.sourceUrl) { %>

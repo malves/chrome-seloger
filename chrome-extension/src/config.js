@@ -1,12 +1,17 @@
 /**
- * Configuration de compilation de l'extension.
+ * Configuration de l'extension.
  *
- * `CARNET_BASE_URL` est la seule valeur à changer pour viser un autre serveur.
- * Elle doit rester cohérente avec `host_permissions` dans `manifest.json` :
- * sans permission sur cette origine, les appels à l'API sont bloqués.
+ * URL du carnet : par défaut production. En développement, copiez
+ * `config.local.example.js` vers `config.local.js` (gitignored) pour viser
+ * localhost. Ne pas inclure `config.local.js` dans le zip Chrome Web Store
+ * (`./package.sh` l'exclut).
+ *
+ * Doit rester cohérent avec `host_permissions` dans `manifest.json`.
  */
 
-const CARNET_BASE_URL = "http://localhost:3000";
+const CARNET_BASE_URL =
+  (typeof self !== "undefined" && self.__CARNET_BASE_URL__) ||
+  "https://carnetdevisites.fr";
 
 /** Sites d'annonces où l'extension sait lire une annonce. */
 const CARNET_SUPPORTED_HOSTS =

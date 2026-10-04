@@ -13,6 +13,77 @@
     if (meta) event.detail.headers["X-CSRF-Token"] = meta.content;
   });
 
+  /**
+   * Recharge le bloc « Prix au m² » (même effet qu'un clic sur « Actualiser »).
+   * Appelé après chaque changement d'adresse : le serveur a déjà résolu la
+   * commune (INSEE) de façon synchrone, donc ce recalcul trouve les coordonnées.
+   */
+  function refreshListingPrixM2Block() {
+    var block = document.getElementById("provider-prix-m2");
+    if (!block || !window.htmx) return;
+    var form = block.querySelector('form[hx-post*="/enrich/prix-m2"]');
+    if (form) window.htmx.trigger(form, "submit");
+  }
+  window.refreshListingPrixM2Block = refreshListingPrixM2Block;
+
+  // Toute mise à jour du bloc localisation (saisie, effacement, adresse IA)
+  // passe par un swap de #listing-location-block : on en profite pour relancer
+  // le widget prix au m² une fois le swap stabilisé.
+  document.body.addEventListener("htmx:afterSettle", function (event) {
+    var target = event.detail && event.detail.target;
+    if (!target || target.id !== "listing-location-block") return;
+    refreshListingPrixM2Block();
+  });
+
+  // Bouton « Copier » générique : copie le code du bloc .dpe-cmd voisin.
+  // En écouteur délégué pour survivre aux remplacements htmx du panneau.
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest ? event.target.closest("[data-copy]") : null;
+    if (!button) return;
+    event.preventDefault();
+    var wrapper = button.closest(".dpe-cmd");
+    var code = wrapper ? wrapper.querySelector(".dpe-cmd__code") : null;
+    var text = code ? code.textContent.trim() : "";
+    if (!text) return;
+
+    var done = function () {
+      var original = button.getAttribute("data-copy-label") || button.textContent;
+      button.setAttribute("data-copy-label", original);
+      button.textContent = "Copié !";
+      button.classList.add("is-copied");
+      window.setTimeout(function () {
+        button.textContent = original;
+        button.classList.remove("is-copied");
+      }, 1500);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () {
+        fallbackCopy(text);
+        done();
+      });
+    } else {
+      fallbackCopy(text);
+      done();
+    }
+  });
+
+  function fallbackCopy(text) {
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "absolute";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    try {
+      document.execCommand("copy");
+    } catch (err) {
+      /* ignoré : la sélection reste copiable manuellement */
+    }
+    document.body.removeChild(area);
+  }
+
   // Carnet d'adresses : le retour inline (succès / erreur) s'efface tout seul
   // après quelques secondes, pour ne pas encombrer le panneau.
   document.body.addEventListener("htmx:afterSwap", function (event) {
@@ -663,6 +734,334 @@
     if (root) bindLinkMenu(root, "[data-sort-trigger]", "[data-sort-menu]");
   })();
 
+  function dpeRangeInputs(picker) {
+    var minName = picker.getAttribute("data-range-min");
+    var maxName = picker.getAttribute("data-range-max");
+    return {
+      minInput: minName ? picker.querySelector('[name="' + minName + '"]') : null,
+      maxInput: maxName ? picker.querySelector('[name="' + maxName + '"]') : null,
+    };
+  }
+
+  function formatDpeRangeLabel(picker, minInput, maxInput) {
+    var defaultLabel = picker.getAttribute("data-range-default") || "Plage";
+    var suffix = picker.getAttribute("data-range-suffix") || "";
+    var min = minInput && String(minInput.value || "").trim();
+    var max = maxInput && String(maxInput.value || "").trim();
+    if (!min && !max) return defaultLabel;
+    if (min && max) return min + " – " + max + suffix;
+    if (min) return "≥ " + min + suffix;
+    return "≤ " + max + suffix;
+  }
+
+  function syncDpeRangeTriggerLabel(picker) {
+    if (!picker) return;
+    var label = picker.querySelector("[data-dpe-range-trigger-label]");
+    var inputs = dpeRangeInputs(picker);
+    if (label) {
+      label.textContent = formatDpeRangeLabel(
+        picker,
+        inputs.minInput,
+        inputs.maxInput
+      );
+    }
+  }
+
+  function resetDpeRangePicker(picker) {
+    if (!picker) return;
+    var inputs = dpeRangeInputs(picker);
+    if (inputs.minInput) inputs.minInput.value = "";
+    if (inputs.maxInput) inputs.maxInput.value = "";
+    syncDpeRangeTriggerLabel(picker);
+    var popover = picker.querySelector("[data-dpe-range-popover]");
+    if (popover) popover.hidden = true;
+    var trigger = picker.querySelector("[data-dpe-range-trigger]");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  }
+
+  // Admin DPE : plages min / max (surface, construction) dans un popover.
+  (function initDpeRangePickers() {
+    document.querySelectorAll("[data-dpe-range-picker]").forEach(function (picker) {
+      var trigger = picker.querySelector("[data-dpe-range-trigger]");
+      var popover = picker.querySelector("[data-dpe-range-popover]");
+      var inputs = dpeRangeInputs(picker);
+      if (!trigger || !popover) return;
+
+      var open = false;
+
+      function setOpen(next) {
+        open = next;
+        popover.hidden = !open;
+        trigger.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open && inputs.minInput) inputs.minInput.focus();
+      }
+
+      trigger.addEventListener("click", function () {
+        setOpen(!open);
+      });
+
+      picker.querySelectorAll("[data-dpe-range-dismiss]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          setOpen(false);
+          trigger.focus();
+        });
+      });
+
+      document.addEventListener("click", function (event) {
+        if (open && !picker.contains(event.target)) setOpen(false);
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (open && event.key === "Escape") {
+          event.preventDefault();
+          setOpen(false);
+          trigger.focus();
+        }
+      });
+
+      function onRangeInput() {
+        syncDpeRangeTriggerLabel(picker);
+      }
+
+      if (inputs.minInput) inputs.minInput.addEventListener("input", onRangeInput);
+      if (inputs.maxInput) inputs.maxInput.addEventListener("input", onRangeInput);
+    });
+  })();
+
+  function resetDpeFilterSelect(root) {
+    if (!root) return;
+    var defaultLabel = root.getAttribute("data-default-label") || "Tous";
+    var hidden = root.querySelector('input[type="hidden"]');
+    var label = root.querySelector(".project-select__label");
+    if (hidden) hidden.value = "";
+    if (label) label.textContent = defaultLabel;
+    root.querySelectorAll("[data-dpe-filter-option]").forEach(function (opt) {
+      var match = (opt.getAttribute("data-value") || "") === "";
+      opt.classList.toggle("is-active", match);
+      opt.setAttribute("aria-selected", match ? "true" : "false");
+    });
+  }
+
+  function syncDpeEtiquetteTriggerLabel(picker) {
+    if (!picker) return;
+    var label = picker.querySelector("[data-dpe-etiquette-trigger-label]");
+    var dpe = picker.querySelector('[name="etiquette"]');
+    var ges = picker.querySelector('[name="etiquette_ges"]');
+    var dpeVal = dpe && String(dpe.value || "").trim();
+    var gesVal = ges && String(ges.value || "").trim();
+    if (!label) return;
+    if (!dpeVal && !gesVal) {
+      label.textContent = "Étiquettes";
+      return;
+    }
+    if (dpeVal && gesVal) {
+      label.textContent = "DPE " + dpeVal + " · GES " + gesVal;
+      return;
+    }
+    if (dpeVal) label.textContent = "DPE " + dpeVal;
+    else label.textContent = "GES " + gesVal;
+  }
+
+  function resetDpeEtiquettePicker(picker) {
+    if (!picker) return;
+    var dpe = picker.querySelector('[name="etiquette"]');
+    var ges = picker.querySelector('[name="etiquette_ges"]');
+    if (dpe) dpe.value = "";
+    if (ges) ges.value = "";
+    picker.querySelectorAll("[data-dpe-etiquette-option]").forEach(function (opt) {
+      var match = (opt.getAttribute("data-value") || "") === "";
+      opt.classList.toggle("is-active", match);
+      opt.setAttribute("aria-pressed", match ? "true" : "false");
+    });
+    syncDpeEtiquetteTriggerLabel(picker);
+    var popover = picker.querySelector("[data-dpe-etiquette-popover]");
+    if (popover) popover.hidden = true;
+    var trigger = picker.querySelector("[data-dpe-etiquette-trigger]");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  }
+
+  function syncDpePostalTriggerLabel(picker) {
+    if (!picker) return;
+    var label = picker.querySelector("[data-dpe-postal-trigger-label]");
+    var input = picker.querySelector('[name="code_postal"]');
+    if (!label || !input) return;
+    var value = String(input.value || "").trim();
+    label.textContent = value || "Code postal";
+  }
+
+  function resetDpePostalPicker(picker) {
+    if (!picker) return;
+    var input = picker.querySelector('[name="code_postal"]');
+    if (input) input.value = "";
+    syncDpePostalTriggerLabel(picker);
+    var popover = picker.querySelector("[data-dpe-postal-popover]");
+    if (popover) popover.hidden = true;
+    var trigger = picker.querySelector("[data-dpe-postal-trigger]");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  }
+
+  // Admin DPE : code postal dans un popover (même principe que surface).
+  (function initDpePostalPicker() {
+    var picker = document.querySelector("[data-dpe-postal-picker]");
+    if (!picker) return;
+
+    var trigger = picker.querySelector("[data-dpe-postal-trigger]");
+    var popover = picker.querySelector("[data-dpe-postal-popover]");
+    var input = picker.querySelector('[name="code_postal"]');
+    if (!trigger || !popover) return;
+
+    var open = false;
+
+    function setOpen(next) {
+      open = next;
+      popover.hidden = !open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open && input) {
+        input.focus();
+        input.select();
+      }
+    }
+
+    trigger.addEventListener("click", function () {
+      setOpen(!open);
+    });
+
+    picker.querySelectorAll("[data-dpe-postal-dismiss]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setOpen(false);
+        trigger.focus();
+      });
+    });
+
+    document.addEventListener("click", function (event) {
+      if (open && !picker.contains(event.target)) setOpen(false);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (open && event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        trigger.focus();
+      }
+    });
+
+    if (input) {
+      input.addEventListener("input", function () {
+        syncDpePostalTriggerLabel(picker);
+      });
+    }
+  })();
+
+  // Admin DPE : DPE & GES dans un popover (même principe que surface).
+  (function initDpeEtiquettePicker() {
+    var picker = document.querySelector("[data-dpe-etiquette-picker]");
+    if (!picker) return;
+
+    var trigger = picker.querySelector("[data-dpe-etiquette-trigger]");
+    var popover = picker.querySelector("[data-dpe-etiquette-popover]");
+    if (!trigger || !popover) return;
+
+    var open = false;
+
+    function setOpen(next) {
+      open = next;
+      popover.hidden = !open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    trigger.addEventListener("click", function () {
+      setOpen(!open);
+    });
+
+    picker.querySelectorAll("[data-dpe-etiquette-dismiss]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setOpen(false);
+        trigger.focus();
+      });
+    });
+
+    document.addEventListener("click", function (event) {
+      if (open && !picker.contains(event.target)) setOpen(false);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (open && event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        trigger.focus();
+      }
+    });
+
+    popover.addEventListener("click", function (event) {
+      var opt = event.target.closest("[data-dpe-etiquette-option]");
+      if (!opt) return;
+      event.preventDefault();
+
+      var field = opt.getAttribute("data-field");
+      var value = opt.getAttribute("data-value") || "";
+      var hidden = field ? picker.querySelector('[name="' + field + '"]') : null;
+      if (!hidden) return;
+
+      hidden.value = value;
+      var group = opt.closest("[data-dpe-etiquette-group]");
+      if (group) {
+        group.querySelectorAll("[data-dpe-etiquette-option]").forEach(function (item) {
+          var match =
+            item.getAttribute("data-field") === field &&
+            (item.getAttribute("data-value") || "") === value;
+          item.classList.toggle("is-active", match);
+          item.setAttribute("aria-pressed", match ? "true" : "false");
+        });
+      }
+
+      syncDpeEtiquetteTriggerLabel(picker);
+      hidden.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  })();
+
+  // Admin DPE : filtres pilule + menu (type de bâtiment).
+  (function initDpeFilterSelects() {
+    document.querySelectorAll("[data-dpe-filter-select]").forEach(function (root) {
+      bindLinkMenu(root, "[data-dpe-filter-trigger]", "[data-dpe-filter-menu]");
+
+      var hidden = root.querySelector('input[type="hidden"]');
+      var label = root.querySelector(".project-select__label");
+      var trigger = root.querySelector("[data-dpe-filter-trigger]");
+      var menu = root.querySelector("[data-dpe-filter-menu]");
+      var defaultLabel = root.getAttribute("data-default-label") || "Tous";
+      if (!hidden || !label || !menu) return;
+
+      function closeMenu() {
+        menu.hidden = true;
+        if (trigger) trigger.setAttribute("aria-expanded", "false");
+      }
+
+      function setActive(value) {
+        menu.querySelectorAll("[data-dpe-filter-option]").forEach(function (opt) {
+          var match = (opt.getAttribute("data-value") || "") === value;
+          opt.classList.toggle("is-active", match);
+          opt.setAttribute("aria-selected", match ? "true" : "false");
+        });
+      }
+
+      menu.addEventListener("click", function (event) {
+        var opt = event.target.closest("[data-dpe-filter-option]");
+        if (!opt) return;
+        event.preventDefault();
+
+        var value = opt.getAttribute("data-value") || "";
+        hidden.value = value;
+        var nameEl = opt.querySelector(".project-select__option-name");
+        label.textContent = nameEl ? nameEl.textContent : defaultLabel;
+        setActive(value);
+        closeMenu();
+        if (trigger) trigger.focus();
+
+        hidden.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+  })();
+
   // Menus de l'en-tête de fiche (projets, statut). L'enregistrement passe par
   // htmx ; ici on ne gère que l'ouverture et la fermeture. La délégation sur
   // `document` survit aux swaps htmx.
@@ -909,7 +1308,19 @@
 
     function amountInputFrom(target) {
       var stepper = target.closest ? target.closest(".amount-stepper") : null;
-      return stepper ? stepper.querySelector("[data-amount]") : null;
+      return stepper ? stepper.querySelector("input") : null;
+    }
+
+    function parseDecimal(value) {
+      var normalized = String(value).replace(/\s/g, "").replace(",", ".");
+      if (!normalized) return 0;
+      var n = Number(normalized);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function roundTo(value, decimals) {
+      var factor = Math.pow(10, decimals);
+      return Math.round(value * factor) / factor;
     }
 
     function scheduleCommit(input) {
@@ -925,14 +1336,42 @@
     }
 
     function stepAmount(input, direction, deferCommit) {
-      var step = Number(input.getAttribute("data-step")) || 1000;
+      var step = Number(input.getAttribute("data-step"));
+      if (!Number.isFinite(step) || step <= 0 || !direction) {
+        step = input.hasAttribute("data-amount") ? 1000 : 0;
+      }
       if (!step || !direction) return;
-      var digits = String(input.value).replace(/\D/g, "");
-      var current = digits ? Number(digits) : 0;
-      var next = current + direction * step;
-      if (next < 0) next = 0;
+
+      var decimals = input.hasAttribute("data-decimals")
+        ? Number(input.getAttribute("data-decimals"))
+        : 0;
+      if (!Number.isFinite(decimals) || decimals < 0) decimals = 0;
+      var min = input.hasAttribute("data-min")
+        ? Number(input.getAttribute("data-min"))
+        : 0;
+      var max = input.hasAttribute("data-max")
+        ? Number(input.getAttribute("data-max"))
+        : Infinity;
+      if (!Number.isFinite(min)) min = 0;
+      if (!Number.isFinite(max)) max = Infinity;
+
+      var current = input.hasAttribute("data-amount")
+        ? Number(String(input.value).replace(/\D/g, "")) || 0
+        : parseDecimal(input.value);
+      var next = roundTo(current + direction * step, decimals);
+      if (next < min) next = min;
+      if (next > max) next = max;
+      next = roundTo(next, decimals);
       if (next === current) return;
-      input.value = formatAmount(next);
+
+      if (input.hasAttribute("data-amount")) input.value = formatAmount(next);
+      else if (decimals === 0) input.value = String(Math.round(next));
+      else {
+        input.value = next.toLocaleString("fr-FR", {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        });
+      }
       input.dispatchEvent(new Event("input", { bubbles: true }));
       if (deferCommit) pendingInput = input;
       else scheduleCommit(input);
@@ -999,7 +1438,7 @@
 
     document.addEventListener("keydown", function (event) {
       var input = event.target.closest
-        ? event.target.closest("[data-amount]")
+        ? event.target.closest("input[data-step]")
         : null;
       if (!input) return;
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
@@ -1103,4 +1542,1829 @@
     },
     true
   );
+
+  // Admin : sélecteur de plage (popover) pour l'import DPE. Deux clics = début
+  // puis fin ; même jour deux fois = une journée. Une fois la plage fixée, la
+  // liste des jours à importer et le bouton « Lancer l'import » apparaissent.
+  (function initImportCalendar() {
+    var picker = document.querySelector("[data-date-range-picker]");
+    if (!picker) return;
+
+    var root = picker.querySelector("[data-calendar]");
+    if (!root) return;
+
+    var grid = root.querySelector("[data-cal-grid]");
+    var title = root.querySelector("[data-cal-title]");
+    var prev = root.querySelector("[data-cal-prev]");
+    var next = root.querySelector("[data-cal-next]");
+    var form = picker.closest("form");
+    var fromInput = form && form.querySelector("[data-cal-from]");
+    var toInput = form && form.querySelector("[data-cal-to]");
+    var trigger = picker.querySelector("[data-cal-trigger]");
+    var triggerLabel = picker.querySelector("[data-cal-trigger-label]");
+    var popover = picker.querySelector("[data-cal-popover]");
+    var hint = picker.querySelector("[data-cal-hint]");
+    var plan = form && form.querySelector("[data-cal-plan]");
+    var planTitle = form && form.querySelector("[data-cal-plan-title]");
+    var datesList = form && form.querySelector("[data-cal-dates]");
+    var modifyBtn = form && form.querySelector("[data-cal-modify]");
+    var submitBtn = form && form.querySelector("[data-cal-submit]");
+
+    var MONTHS = [
+      "janvier", "février", "mars", "avril", "mai", "juin",
+      "juillet", "août", "septembre", "octobre", "novembre", "décembre"
+    ];
+    var LONG = new Intl.DateTimeFormat("fr-FR", {
+      day: "numeric", month: "long", year: "numeric"
+    });
+    var SHORT = new Intl.DateTimeFormat("fr-FR", {
+      day: "numeric", month: "short", year: "numeric"
+    });
+
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    var view = new Date(today.getFullYear(), today.getMonth(), 1);
+    var start = null;
+    var end = null;
+    var popoverOpen = false;
+    var importedDays = new Set();
+
+    function parseImportedDays() {
+      var raw = root.getAttribute("data-cal-imported-days");
+      if (!raw) return;
+      try {
+        var list = JSON.parse(decodeURIComponent(raw));
+        if (Array.isArray(list)) {
+          importedDays = new Set(list);
+        }
+      } catch (_err) {
+        importedDays = new Set();
+      }
+    }
+
+    function refreshImportedDays() {
+      return fetch("/admin/dpe/imported-days", {
+        credentials: "same-origin",
+        headers: { accept: "application/json" },
+      })
+        .then(function (res) {
+          if (!res.ok) return null;
+          return res.json();
+        })
+        .then(function (list) {
+          if (Array.isArray(list)) {
+            importedDays = new Set(list);
+            root.setAttribute(
+              "data-cal-imported-days",
+              encodeURIComponent(JSON.stringify(list))
+            );
+            render();
+          }
+        })
+        .catch(function () {});
+    }
+
+    parseImportedDays();
+
+    function iso(d) {
+      var m = String(d.getMonth() + 1).padStart(2, "0");
+      var day = String(d.getDate()).padStart(2, "0");
+      return d.getFullYear() + "-" + m + "-" + day;
+    }
+    function sameDay(a, b) {
+      return a && b && a.getTime() === b.getTime();
+    }
+    function sortedRange() {
+      if (!start) return { lo: null, hi: null };
+      var lo = start;
+      var hi = end || start;
+      if (hi.getTime() < lo.getTime()) {
+        var t = lo; lo = hi; hi = t;
+      }
+      return { lo: lo, hi: hi };
+    }
+    function rangeComplete() {
+      return Boolean(start && end);
+    }
+    function expandDays(lo, hi) {
+      var out = [];
+      var cur = new Date(lo.getFullYear(), lo.getMonth(), lo.getDate());
+      var last = new Date(hi.getFullYear(), hi.getMonth(), hi.getDate());
+      while (cur.getTime() <= last.getTime()) {
+        out.push(iso(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+      return out;
+    }
+
+    function setPopoverOpen(open) {
+      popoverOpen = open;
+      if (!popover || !trigger) return;
+      popover.hidden = !open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) refreshImportedDays();
+    }
+
+    function renderDatesList(days) {
+      if (!datesList) return;
+      datesList.textContent = "";
+      days.forEach(function (dayIso, index) {
+        var li = document.createElement("li");
+        li.className = "dpe-import-plan__day";
+        var num = document.createElement("span");
+        num.className = "dpe-import-plan__index";
+        num.textContent = String(index + 1);
+        var label = document.createElement("span");
+        label.textContent = LONG.format(new Date(dayIso + "T12:00:00"));
+        label.title = dayIso;
+        li.appendChild(num);
+        li.appendChild(label);
+        datesList.appendChild(li);
+      });
+    }
+
+    function updateForm() {
+      var range = sortedRange();
+      var lo = range.lo;
+      var hi = range.hi;
+      var complete = rangeComplete();
+
+      if (fromInput) fromInput.value = complete && lo ? iso(lo) : "";
+      if (toInput) toInput.value = complete && hi ? iso(hi) : "";
+
+      if (triggerLabel) {
+        if (!start) {
+          triggerLabel.textContent = "Choisir une plage de dates";
+        } else if (!complete) {
+          if (hoverDate && !sameDay(hoverDate, start)) {
+            var pa = start.getTime() <= hoverDate.getTime() ? start : hoverDate;
+            var pb = start.getTime() <= hoverDate.getTime() ? hoverDate : start;
+            triggerLabel.textContent =
+              SHORT.format(pa) +
+              " → " +
+              SHORT.format(pb) +
+              " · " +
+              expandDays(pa, pb).length +
+              " jours";
+          } else {
+            triggerLabel.textContent =
+              "À partir du " + SHORT.format(start) + " — choisir la fin";
+          }
+        } else if (sameDay(lo, hi)) {
+          triggerLabel.textContent = SHORT.format(lo);
+        } else {
+          var n = expandDays(lo, hi).length;
+          triggerLabel.textContent =
+            SHORT.format(lo) + " → " + SHORT.format(hi) + " · " + n + " jours";
+        }
+      }
+
+      if (hint) {
+        if (!start) {
+          hint.textContent =
+            "Glissez du jour de début au jour de fin (ou cliquez les deux).";
+        } else if (!complete) {
+          hint.textContent =
+            "Relâchez ou cliquez sur le jour de fin (même jour = une journée).";
+        } else {
+          hint.textContent = "Plage enregistrée. Vous pouvez fermer ou modifier.";
+        }
+      }
+
+      if (submitBtn) {
+        var importBlocked =
+          form && form.getAttribute("data-import-blocked") === "true";
+        submitBtn.disabled = !complete || importBlocked;
+      }
+
+      if (plan) {
+        if (complete && lo && hi) {
+          var days = expandDays(lo, hi);
+          plan.hidden = false;
+          if (planTitle) {
+            planTitle.textContent =
+              days.length === 1
+                ? "1 jour sera importé"
+                : days.length + " jours seront importés (un téléchargement par jour)";
+          }
+          renderDatesList(days);
+        } else {
+          plan.hidden = true;
+          if (datesList) datesList.textContent = "";
+        }
+      }
+    }
+
+    var hoverDate = null;
+    var cells = [];
+    var dragging = false;
+    var dragStartDay = null;
+    var dragMoved = false;
+
+    function finalizeSelection() {
+      updateForm();
+      render();
+      setPopoverOpen(false);
+    }
+
+    // Plage à peindre : si seul le début est choisi, on prévisualise jusqu'au
+    // jour survolé pour que l'utilisateur voie la plage « s'allumer » sans
+    // rouvrir le calendrier.
+    function paintableRange() {
+      if (start && !end && hoverDate) {
+        var a = start;
+        var b = hoverDate;
+        if (b.getTime() < a.getTime()) {
+          var t = a;
+          a = b;
+          b = t;
+        }
+        return { lo: a, hi: b, preview: true };
+      }
+      var r = sortedRange();
+      return { lo: r.lo, hi: r.hi, preview: false };
+    }
+
+    function paintRange() {
+      var range = paintableRange();
+      var lo = range.lo;
+      var hi = range.hi || range.lo;
+      cells.forEach(function (cell) {
+        var btn = cell.btn;
+        var date = cell.date;
+        btn.classList.remove(
+          "is-in-range",
+          "is-start",
+          "is-end",
+          "is-preview"
+        );
+        if (!lo) return;
+        var ts = date.getTime();
+        if (ts >= lo.getTime() && ts <= hi.getTime()) {
+          btn.classList.add("is-in-range");
+          if (range.preview) btn.classList.add("is-preview");
+        }
+        if (sameDay(date, lo)) btn.classList.add("is-start");
+        if (sameDay(date, hi)) btn.classList.add("is-end");
+      });
+    }
+
+    function pick(d) {
+      if (!start || (start && end)) {
+        start = d;
+        end = null;
+      } else {
+        end = d;
+      }
+      hoverDate = null;
+      updateForm();
+      render();
+      if (rangeComplete()) {
+        setPopoverOpen(false);
+      }
+    }
+
+    function render() {
+      title.textContent = MONTHS[view.getMonth()] + " " + view.getFullYear();
+      grid.textContent = "";
+      cells = [];
+
+      var year = view.getFullYear();
+      var month = view.getMonth();
+      var first = new Date(year, month, 1);
+      var lead = (first.getDay() + 6) % 7;
+      var daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      for (var i = 0; i < lead; i++) {
+        var blank = document.createElement("span");
+        blank.className = "calendar__cell is-empty";
+        grid.appendChild(blank);
+      }
+
+      for (var day = 1; day <= daysInMonth; day++) {
+        var date = new Date(year, month, day);
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "calendar__cell";
+        btn.textContent = String(day);
+
+        var disabled = date.getTime() > today.getTime();
+        if (disabled) {
+          btn.disabled = true;
+          btn.classList.add("is-disabled");
+        }
+        if (sameDay(date, today)) btn.classList.add("is-today");
+        if (importedDays.has(iso(date))) btn.classList.add("is-imported");
+
+        (function (d, isDisabled) {
+          // Clic simple ou clavier (Entrée/Espace) : sélection en deux temps.
+          btn.addEventListener("click", function (event) {
+            event.stopPropagation();
+            if (isDisabled) return;
+            pick(d);
+          });
+          if (isDisabled) return;
+
+          // Début d'un éventuel glisser-déposer (presser sur le jour de début).
+          btn.addEventListener("pointerdown", function (event) {
+            if (event.button != null && event.button !== 0) return;
+            dragging = true;
+            dragStartDay = d;
+            dragMoved = false;
+          });
+
+          // Survol d'un jour : met la plage en surbrillance au fur et à mesure,
+          // que le bouton soit enfoncé (glisser) ou relâché (après un 1er clic).
+          btn.addEventListener("pointerenter", function () {
+            if (dragging && dragStartDay) {
+              // Au premier déplacement, on valide le jour de début.
+              if (!dragMoved && !sameDay(d, dragStartDay)) {
+                start = dragStartDay;
+                end = null;
+                dragMoved = true;
+              }
+              if (dragMoved) {
+                hoverDate = d;
+                paintRange();
+                updateForm();
+              }
+            } else if (start && !end) {
+              hoverDate = d;
+              paintRange();
+              updateForm();
+            }
+          });
+        })(date, disabled);
+
+        cells.push({ btn: btn, date: date });
+        grid.appendChild(btn);
+      }
+
+      paintRange();
+    }
+
+    grid.addEventListener("pointerleave", function () {
+      // En mode deux clics, on efface la prévisualisation en quittant la grille.
+      // Pendant un glisser, on la conserve (le relâchement peut avoir lieu
+      // ailleurs).
+      if (!dragging && start && !end && hoverDate) {
+        hoverDate = null;
+        paintRange();
+        updateForm();
+      }
+    });
+
+    // Fin du glisser : le jour sous le curseur devient le jour de fin.
+    document.addEventListener("pointerup", function () {
+      if (!dragging) return;
+      dragging = false;
+      if (
+        dragMoved &&
+        dragStartDay &&
+        hoverDate &&
+        !sameDay(hoverDate, dragStartDay)
+      ) {
+        start = dragStartDay;
+        end = hoverDate;
+        dragStartDay = null;
+        dragMoved = false;
+        finalizeSelection();
+      } else {
+        // Simple pression sans déplacement : on laisse le clic faire la
+        // sélection en deux temps.
+        dragStartDay = null;
+        dragMoved = false;
+      }
+    });
+
+    trigger.addEventListener("click", function () {
+      setPopoverOpen(!popoverOpen);
+    });
+
+    if (modifyBtn) {
+      modifyBtn.addEventListener("click", function () {
+        start = null;
+        end = null;
+        updateForm();
+        render();
+        setPopoverOpen(true);
+      });
+    }
+
+    document.addEventListener("click", function (event) {
+      if (!popoverOpen) return;
+      if (picker.contains(event.target)) return;
+      // Plage en cours : ne pas fermer sur un clic « dehors » tant que la fin
+      // n'est pas choisie (évite les fermetures intempestives).
+      if (start && !end) return;
+      setPopoverOpen(false);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && popoverOpen) {
+        setPopoverOpen(false);
+      }
+    });
+
+    prev.addEventListener("click", function (event) {
+      event.stopPropagation();
+      view = new Date(view.getFullYear(), view.getMonth() - 1, 1);
+      render();
+    });
+    next.addEventListener("click", function (event) {
+      event.stopPropagation();
+      view = new Date(view.getFullYear(), view.getMonth() + 1, 1);
+      render();
+    });
+
+    function syncImportFormLock() {
+      var status = document.getElementById("dpe-import-status");
+      if (!form || !status) return;
+      var block = status.getAttribute("data-block-import") === "true";
+      if (block) form.setAttribute("data-import-blocked", "true");
+      else form.removeAttribute("data-import-blocked");
+      updateForm();
+    }
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      var target = event.detail && event.detail.target;
+      if (!target) return;
+      if (target.id === "dpe-import-status" || target.querySelector("#dpe-import-status")) {
+        syncImportFormLock();
+        refreshImportedDays();
+      }
+    });
+
+    updateForm();
+    render();
+    syncImportFormLock();
+  })();
+
+  // Admin : remise à zéro des filtres de recherche DPE puis rafraîchissement htmx.
+  (function initDpeSearchReset() {
+    document.addEventListener("click", function (event) {
+      var btn = event.target.closest("[data-dpe-search-reset]");
+      if (!btn) return;
+      var panel = btn.closest('[data-settings-panel="search"]');
+      var form = panel && panel.querySelector(".dpe-search-form");
+      if (!form) return;
+      event.preventDefault();
+
+      form.querySelectorAll("[data-dpe-filter-select]").forEach(resetDpeFilterSelect);
+      var etiquettePicker = form.querySelector("[data-dpe-etiquette-picker]");
+      if (etiquettePicker) resetDpeEtiquettePicker(etiquettePicker);
+      var postalPicker = form.querySelector("[data-dpe-postal-picker]");
+      if (postalPicker) resetDpePostalPicker(postalPicker);
+      form.querySelectorAll("[data-dpe-range-picker]").forEach(resetDpeRangePicker);
+
+      if (typeof htmx !== "undefined") {
+        htmx.trigger(form, "submit");
+      }
+    });
+  })();
+
+  // Admin : clic sur une ligne DPE → modale de détail (contenu chargé à la demande).
+  (function initDpeDetailModal() {
+    var modal = document.getElementById("dpe-detail-modal");
+    var content = modal && modal.querySelector("[data-dpe-detail-content]");
+    if (!modal || !content) return;
+
+    var activeController = null;
+
+    function closeModal() {
+      if (activeController) {
+        activeController.abort();
+        activeController = null;
+      }
+      modal.hidden = true;
+      document.body.classList.remove("is-modal-open");
+    }
+
+    function openModal() {
+      modal.hidden = false;
+      document.body.classList.add("is-modal-open");
+    }
+
+    function showLoading() {
+      content.innerHTML =
+        '<p class="dpe-detail-dialog__loading">Chargement…</p>';
+    }
+
+    function showError(message) {
+      content.innerHTML =
+        '<p class="dpe-detail-dialog__loading">' +
+        (message || "Impossible de charger ce DPE.") +
+        "</p>";
+    }
+
+    function loadDetail(numero) {
+      if (!numero) return;
+      if (activeController) activeController.abort();
+      activeController = new AbortController();
+      showLoading();
+      openModal();
+
+      var url =
+        "/admin/dpe/record/" + encodeURIComponent(numero);
+      fetch(url, {
+        signal: activeController.signal,
+        headers: { Accept: "text/html" },
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error("not found");
+          return res.text();
+        })
+        .then(function (html) {
+          content.innerHTML = html;
+          activeController = null;
+          var closeBtn = modal.querySelector(".dpe-detail-dialog__close");
+          if (closeBtn) closeBtn.focus();
+        })
+        .catch(function (err) {
+          if (err && err.name === "AbortError") return;
+          showError();
+          activeController = null;
+        });
+    }
+
+    function openFromRow(row) {
+      if (!row || !row.getAttribute) return;
+      var numero = row.getAttribute("data-dpe-numero");
+      if (numero) loadDetail(numero);
+    }
+
+    document.addEventListener("click", function (event) {
+      if (event.target.closest("[data-dpe-detail-dismiss]")) {
+        closeModal();
+        return;
+      }
+      var row = event.target.closest(".dpe-table__row");
+      if (row) {
+        event.preventDefault();
+        openFromRow(row);
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (!modal.hidden && event.key === "Escape") {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+      var row = event.target.closest(".dpe-table__row");
+      if (!row) return;
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openFromRow(row);
+      }
+    });
+
+    modal.addEventListener("click", function (event) {
+      if (event.target === modal.querySelector(".modal__overlay")) {
+        closeModal();
+      }
+    });
+  })();
+
+  // Admin : fiche utilisateur (mot de passe, suppression).
+  (function initAdminUserModal() {
+    var modal = document.getElementById("admin-user-modal");
+    var content = modal && modal.querySelector("[data-admin-user-content]");
+    if (!modal || !content) return;
+
+    var activeController = null;
+
+    function closeModal() {
+      if (activeController) {
+        activeController.abort();
+        activeController = null;
+      }
+      modal.hidden = true;
+      document.body.classList.remove("is-modal-open");
+    }
+
+    function openModal() {
+      modal.hidden = false;
+      document.body.classList.add("is-modal-open");
+    }
+
+    function showLoading() {
+      content.innerHTML =
+        '<p class="admin-user-dialog__loading">Chargement…</p>';
+    }
+
+    function showError(message) {
+      content.innerHTML =
+        '<p class="admin-user-dialog__loading">' +
+        (message || "Impossible de charger ce compte.") +
+        "</p>";
+    }
+
+    function loadUser(userId) {
+      if (!userId) return;
+      if (activeController) activeController.abort();
+      activeController = new AbortController();
+      showLoading();
+      openModal();
+
+      var url = "/admin/users/" + encodeURIComponent(userId);
+      fetch(url, {
+        signal: activeController.signal,
+        headers: { Accept: "text/html" },
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error("not found");
+          return res.text();
+        })
+        .then(function (html) {
+          content.innerHTML = html;
+          activeController = null;
+          var closeBtn = modal.querySelector(".admin-user-dialog__close");
+          if (closeBtn) closeBtn.focus();
+        })
+        .catch(function (err) {
+          if (err && err.name === "AbortError") return;
+          showError();
+          activeController = null;
+        });
+    }
+
+    function openFromUserId(userId) {
+      if (userId) loadUser(userId);
+    }
+
+    document.addEventListener("click", function (event) {
+      if (event.target.closest("[data-admin-user-dismiss]")) {
+        closeModal();
+        return;
+      }
+      var manageBtn = event.target.closest(".admin-users-table__manage");
+      if (manageBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        openFromUserId(manageBtn.getAttribute("data-user-id"));
+        return;
+      }
+      var row = event.target.closest(".admin-users-table__row");
+      if (row) {
+        event.preventDefault();
+        openFromUserId(row.getAttribute("data-user-id"));
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (!modal.hidden && event.key === "Escape") {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+      var row = event.target.closest(".admin-users-table__row");
+      if (!row) return;
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openFromUserId(row.getAttribute("data-user-id"));
+      }
+    });
+
+    modal.addEventListener("click", function (event) {
+      if (event.target === modal.querySelector(".modal__overlay")) {
+        closeModal();
+      }
+    });
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      var target = event.detail && event.detail.target;
+      if (
+        target &&
+        target.getAttribute &&
+        target.getAttribute("data-close-user-modal") === "true"
+      ) {
+        closeModal();
+      }
+    });
+  })();
+
+  // Ajout d'une annonce par URL : popup en deux temps (vérification puis
+  // validation). Tout passe par fetch same-origin avec le jeton CSRF ; aucune
+  // donnée d'annonce ne transite par le client, seul un jeton de brouillon.
+  (function initAddListing() {
+    var modal = document.querySelector("[data-add-listing]");
+    if (!modal) return;
+
+    var form = modal.querySelector("[data-add-listing-form]");
+    var urlInput = modal.querySelector("[data-add-listing-url]");
+    var errorBox = modal.querySelector("[data-add-listing-error]");
+    var submitBtn = modal.querySelector("[data-add-listing-submit]");
+    var preview = modal.querySelector("[data-add-listing-preview]");
+    var confirmBtn = modal.querySelector("[data-add-listing-confirm]");
+    var backBtn = modal.querySelector("[data-add-listing-back]");
+    if (!form || !urlInput || !preview) return;
+
+    var lastFocused = null;
+    var currentToken = null;
+
+    var euro = new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      maximumFractionDigits: 0,
+    });
+    var SOURCE_LABELS = {
+      seloger: "SeLoger",
+      bellesdemeures: "Belles Demeures",
+      leboncoin: "Leboncoin",
+    };
+
+    function csrfToken() {
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      return meta ? meta.content : "";
+    }
+
+    function showError(message) {
+      if (!errorBox) return;
+      errorBox.textContent = message || "Une erreur est survenue.";
+      errorBox.hidden = false;
+    }
+
+    function clearError() {
+      if (!errorBox) return;
+      errorBox.hidden = true;
+      errorBox.textContent = "";
+    }
+
+    function setLoading(button, loading) {
+      if (!button) return;
+      button.classList.toggle("is-loading", loading);
+      button.disabled = loading;
+    }
+
+    function showForm() {
+      preview.hidden = true;
+      form.hidden = false;
+      currentToken = null;
+    }
+
+    function openModal() {
+      lastFocused = document.activeElement;
+      clearError();
+      showForm();
+      modal.hidden = false;
+      document.body.classList.add("is-modal-open");
+      window.setTimeout(function () {
+        urlInput.focus();
+      }, 0);
+    }
+
+    function closeModal() {
+      modal.hidden = true;
+      document.body.classList.remove("is-modal-open");
+      setLoading(submitBtn, false);
+      setLoading(confirmBtn, false);
+      if (lastFocused && typeof lastFocused.focus === "function") {
+        lastFocused.focus();
+      }
+      lastFocused = null;
+    }
+
+    function selectedProjectIds() {
+      return Array.prototype.slice
+        .call(form.querySelectorAll('input[name="project_ids"]:checked'))
+        .map(function (input) {
+          return input.value;
+        });
+    }
+
+    function text(node, value) {
+      var el = preview.querySelector(node);
+      if (el) el.textContent = value || "";
+    }
+
+    function fillPreview(data, alreadySaved) {
+      var photoEl = preview.querySelector("[data-preview-photo]");
+      var placeholder = preview.querySelector("[data-preview-placeholder]");
+      if (photoEl) {
+        if (data.photo) {
+          photoEl.src = data.photo;
+          photoEl.hidden = false;
+          if (placeholder) placeholder.hidden = true;
+        } else {
+          photoEl.removeAttribute("src");
+          photoEl.hidden = true;
+          if (placeholder) placeholder.hidden = false;
+        }
+      }
+
+      text("[data-preview-source]", SOURCE_LABELS[data.source] || data.source || "");
+      text("[data-preview-title]", data.title || "Annonce sans titre");
+      text(
+        "[data-preview-price]",
+        typeof data.price === "number" ? euro.format(data.price) : "Prix non précisé"
+      );
+
+      var metaParts = [];
+      if (data.surface) metaParts.push(Math.round(data.surface) + " m²");
+      if (data.rooms) metaParts.push(data.rooms + " pièce" + (data.rooms > 1 ? "s" : ""));
+      if (data.bedrooms)
+        metaParts.push(data.bedrooms + " chambre" + (data.bedrooms > 1 ? "s" : ""));
+      text("[data-preview-meta]", metaParts.join(" · "));
+
+      var cityParts = [];
+      if (data.city) cityParts.push(data.city);
+      if (data.postal_code) cityParts.push("(" + data.postal_code + ")");
+      text("[data-preview-city]", cityParts.join(" "));
+
+      var note = preview.querySelector("[data-preview-note]");
+      if (note) {
+        if (alreadySaved) {
+          note.textContent =
+            "Cette annonce est déjà dans votre carnet : la valider la mettra à jour.";
+          note.hidden = false;
+        } else {
+          note.textContent = "";
+          note.hidden = true;
+        }
+      }
+    }
+
+    function showPreview(result) {
+      currentToken = result.token;
+      fillPreview(result.preview || {}, result.already_saved);
+      form.hidden = true;
+      preview.hidden = false;
+      if (confirmBtn) {
+        window.setTimeout(function () {
+          confirmBtn.focus();
+        }, 0);
+      }
+    }
+
+    function requestPreview() {
+      clearError();
+      var url = (urlInput.value || "").trim();
+      if (!url) {
+        showError("Collez l'URL d'une annonce.");
+        urlInput.focus();
+        return;
+      }
+
+      setLoading(submitBtn, true);
+      fetch("/listings/preview", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken(),
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({ url: url }),
+      })
+        .then(function (res) {
+          return res.json().catch(function () {
+            return { ok: false };
+          });
+        })
+        .then(function (result) {
+          setLoading(submitBtn, false);
+          if (result && result.ok) {
+            showPreview(result);
+          } else {
+            showError(
+              (result && result.message) ||
+                "Impossible de lire cette annonce. Vérifiez l'URL et réessayez."
+            );
+          }
+        })
+        .catch(function () {
+          setLoading(submitBtn, false);
+          showError("Erreur réseau. Vérifiez votre connexion et réessayez.");
+        });
+    }
+
+    function confirmImport() {
+      if (!currentToken) {
+        showForm();
+        showError("Cet aperçu a expiré. Relancez la vérification.");
+        return;
+      }
+
+      setLoading(confirmBtn, true);
+      fetch("/listings/import", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken(),
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          token: currentToken,
+          project_ids: selectedProjectIds(),
+        }),
+      })
+        .then(function (res) {
+          return res.json().catch(function () {
+            return { ok: false };
+          });
+        })
+        .then(function (result) {
+          if (result && result.ok && result.web_url) {
+            window.location.assign(result.web_url);
+          } else {
+            setLoading(confirmBtn, false);
+            showForm();
+            showError(
+              (result && result.message) ||
+                "L'enregistrement a échoué. Relancez la vérification."
+            );
+          }
+        })
+        .catch(function () {
+          setLoading(confirmBtn, false);
+          showForm();
+          showError("Erreur réseau. Réessayez.");
+        });
+    }
+
+    // Ouverture depuis n'importe quel bouton d'appel de la page.
+    document.addEventListener("click", function (event) {
+      if (event.target.closest("[data-add-listing-open]")) {
+        event.preventDefault();
+        openModal();
+      }
+    });
+
+    modal.addEventListener("click", function (event) {
+      if (event.target.closest("[data-add-listing-dismiss]")) {
+        event.preventDefault();
+        closeModal();
+      }
+    });
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      requestPreview();
+    });
+
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", function () {
+        confirmImport();
+      });
+    }
+
+    if (backBtn) {
+      backBtn.addEventListener("click", function () {
+        clearError();
+        showForm();
+        urlInput.focus();
+      });
+    }
+
+    // Les cases projet reflètent l'état coché visuellement (comme les pilules).
+    form.addEventListener("change", function (event) {
+      var input = event.target.closest('input[name="project_ids"]');
+      if (!input) return;
+      var label = input.closest(".add-listing__project");
+      if (label) label.classList.toggle("is-active", input.checked);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (!modal.hidden && event.key === "Escape") {
+        event.preventDefault();
+        closeModal();
+      }
+    });
+  })();
+
+  // Fiche annonce : modale de saisie de l'adresse réelle (champs structurés).
+  (function initListingAddressModal() {
+    var lastFocused = null;
+
+    function modal() {
+      return document.querySelector("[data-listing-address-modal]");
+    }
+
+    function fields(m) {
+      if (!m) return null;
+      return {
+        street: m.querySelector("[data-listing-address-street]"),
+        complement: m.querySelector("[data-listing-address-complement]"),
+        postal: m.querySelector("[data-listing-address-postal]"),
+        city: m.querySelector("[data-listing-address-city]"),
+      };
+    }
+
+    function openFromButton(button) {
+      var m = modal();
+      if (!m || !button) return;
+      var f = fields(m);
+      if (!f || !f.street) return;
+
+      f.street.value = button.getAttribute("data-street") || "";
+      if (f.complement) {
+        f.complement.value = button.getAttribute("data-complement") || "";
+      }
+      if (f.postal) {
+        f.postal.value = button.getAttribute("data-postal-code") || "";
+      }
+      if (f.city) f.city.value = button.getAttribute("data-city") || "";
+
+      lastFocused = document.activeElement;
+      m.hidden = false;
+      document.body.classList.add("is-modal-open");
+      window.setTimeout(function () {
+        f.street.focus();
+      }, 0);
+    }
+
+    function closeModal() {
+      var m = modal();
+      // Après un enregistrement htmx, le bloc est re-rendu : la modale
+      // fraîche est déjà `hidden`, mais le body garde `is-modal-open`.
+      var wasVisible = m && !m.hidden;
+      if (m) m.hidden = true;
+      document.body.classList.remove("is-modal-open");
+      if (wasVisible && lastFocused && typeof lastFocused.focus === "function") {
+        lastFocused.focus();
+      }
+      lastFocused = null;
+    }
+
+    document.addEventListener("click", function (event) {
+      if (event.target.closest(".listing-location__maps-link")) {
+        return;
+      }
+      var openBtn = event.target.closest("[data-listing-address-open]");
+      if (openBtn) {
+        event.preventDefault();
+        openFromButton(openBtn);
+        return;
+      }
+      if (event.target.closest("[data-listing-address-dismiss]")) {
+        closeModal();
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      var m = modal();
+      if (!m || m.hidden) {
+        if (event.key === "Enter" || event.key === " ") {
+          var trigger = event.target.closest("[data-listing-address-open]");
+          if (
+            trigger &&
+            trigger.classList.contains("listing-location__card--editable")
+          ) {
+            event.preventDefault();
+            openFromButton(trigger);
+          }
+        }
+        return;
+      }
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeModal();
+    });
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      var target = event.detail && event.detail.target;
+      if (!target || target.id !== "listing-location-block") return;
+      closeModal();
+    });
+  })();
+
+  // Fiche annonce : modale « Déterminer l'adresse » (lancement + état analyse).
+  (function initListingAddressAiModal() {
+    var lastFocused = null;
+    var statusTimer = null;
+    var analysisFinishTimer = null;
+    var statusIndex = 0;
+    var MIN_ANALYSIS_MS = 1000;
+    var ANALYSIS_STATUS_LINES = [
+      "Lecture de l'annonce et de ses détails…",
+      "Examen des visuels et du quartier…",
+      "Recoupement avec des données publiques…",
+      "Repérage des adresses les plus probables…",
+    ];
+
+    function csrfTokenFromMeta() {
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      return meta ? meta.content : "";
+    }
+
+    /** Lance la recherche réelle d'adresses candidates (mode précis). */
+    function fetchAddressCandidates(m) {
+      var listingId = m && m.getAttribute("data-listing-id");
+      if (!listingId) return Promise.reject(new Error("missing_listing_id"));
+      return fetch("/listings/" + listingId + "/address-ai/search", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfTokenFromMeta(),
+        },
+        credentials: "same-origin",
+        body: "{}",
+      }).then(function (res) {
+        if (!res.ok) throw new Error("search_http_" + res.status);
+        return res.json();
+      });
+    }
+
+    function mapsHref(query) {
+      return (
+        "https://www.google.com/maps/search/?api=1&query=" +
+        encodeURIComponent(query || "")
+      );
+    }
+
+    /** Construit un <li> de résultat à partir d'un candidat du serveur. */
+    function buildResultRow(candidate, index) {
+      var li = document.createElement("li");
+      li.className =
+        "listing-address-ai-result" +
+        (index === 0 ? " listing-address-ai-result--best" : "");
+      li.setAttribute("data-listing-address-ai-result", "");
+      li.setAttribute("data-result-index", String(index));
+      li.setAttribute("data-result-street", candidate.street || "");
+      li.setAttribute("data-result-locality", candidate.locality || "");
+      li.setAttribute("data-result-postal-code", candidate.postalCode || "");
+      li.setAttribute("data-result-city", candidate.city || "");
+      li.setAttribute("data-result-confidence", String(candidate.confidence || 0));
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", "false");
+      li.tabIndex = -1;
+
+      var rank = document.createElement("span");
+      rank.className = "listing-address-ai-result__rank";
+      rank.setAttribute("aria-hidden", "true");
+      rank.textContent = String(index + 1);
+      li.appendChild(rank);
+
+      var body = document.createElement("div");
+      body.className = "listing-address-ai-result__body";
+
+      var line = document.createElement("p");
+      line.className = "listing-address-ai-result__line";
+
+      var street = document.createElement("span");
+      street.className = "listing-address-ai-result__street";
+      street.textContent = candidate.street || "Adresse inconnue";
+      line.appendChild(street);
+
+      if (candidate.locality) {
+        var locality = document.createElement("span");
+        locality.className = "listing-address-ai-result__locality";
+        locality.textContent = candidate.locality;
+        line.appendChild(locality);
+      }
+      body.appendChild(line);
+
+      if (index === 0) {
+        var badge = document.createElement("span");
+        badge.className = "badge badge--accent listing-address-ai-result__badge";
+        badge.textContent = "Meilleure piste";
+        body.appendChild(badge);
+      }
+      li.appendChild(body);
+
+      var confidence = document.createElement("span");
+      confidence.className = "listing-address-ai-result__confidence";
+      confidence.title = "Score de confiance";
+      confidence.textContent = (candidate.confidence || 0) + "%";
+      li.appendChild(confidence);
+
+      var maps = document.createElement("a");
+      maps.className = "address-book__map listing-address-ai-result__maps";
+      maps.href = mapsHref(candidate.mapsQuery || candidate.street);
+      maps.target = "_blank";
+      maps.rel = "noopener noreferrer";
+      maps.setAttribute(
+        "aria-label",
+        "Ouvrir " + (candidate.street || "cette adresse") + " dans Google Maps (nouvel onglet)"
+      );
+      maps.textContent = "Google Maps ↗";
+      li.appendChild(maps);
+
+      return li;
+    }
+
+    function matchGlyph(value) {
+      if (value === true) return "✓ match";
+      if (value === false) return "✗ non";
+      return "— (absent de l'annonce)";
+    }
+
+    /**
+     * Un seul bloc console par analyse (1 appel POST /address-ai/search).
+     * Variable globale : __lastAddressAiSearch
+     */
+    function logMatchingDebug(payload) {
+      if (!payload) return;
+      window.__lastAddressAiSearch = payload;
+
+      var crit = payload.criteria || {};
+      var candidates = payload.candidates || [];
+      var mode = payload.mode || "?";
+      var missing = payload.champsRequisManquants || [];
+      var rootLabel =
+        "[Déterminer l'adresse] mode " +
+        mode +
+        " — " +
+        candidates.length +
+        " candidat(s)";
+
+      function criteriaRows() {
+        return [
+          { critere: "Code postal", valeur: crit.codePostal ?? "(vide)" },
+          { critere: "Type (annonce)", valeur: crit.typeBien ?? "(vide)" },
+          { critere: "Type DPE", valeur: crit.typeBatiment ?? "(vide)" },
+          { critere: "DPE", valeur: crit.dpe ?? "(vide)" },
+          { critere: "GES", valeur: crit.ges ?? "(vide)" },
+          { critere: "Surface (m²)", valeur: crit.surfaceM2 ?? "(vide)" },
+          { critere: "Étage", valeur: crit.etage ?? "(vide)" },
+          { critere: "Année", valeur: crit.anneeConstruction ?? "(vide)" },
+        ];
+      }
+
+      if (!candidates.length) {
+        console.warn(rootLabel + " — aucun résultat.");
+        if (missing.length) {
+          console.warn("[Déterminer l'adresse] Champs requis manquants:", missing);
+        }
+        console.table(criteriaRows());
+        return;
+      }
+
+      if (console.groupCollapsed) console.groupCollapsed(rootLabel);
+      else console.log(rootLabel);
+
+      if (console.groupCollapsed) console.groupCollapsed("Critères annonce");
+      console.table(criteriaRows());
+      if (missing.length) {
+        console.info("[Déterminer l'adresse] Champs optionnels absents:", missing);
+      }
+      if (console.groupEnd) console.groupEnd();
+
+      candidates.forEach(function (c, i) {
+        var s = c.source || {};
+        var m2 = c.matched || {};
+        var rows = [
+          { critere: "Code postal", annonce: crit.codePostal, base: c.postalCode, resultat: "— (filtre strict)" },
+          { critere: "Type bâtiment", annonce: crit.typeBatiment, base: s.typeBatiment, resultat: "— (filtre strict)" },
+          { critere: "Surface (m²)", annonce: crit.surfaceM2, base: s.surface, resultat: matchGlyph(m2.surface) },
+          { critere: "DPE", annonce: crit.dpe, base: s.dpe, resultat: matchGlyph(m2.dpe) },
+          { critere: "GES", annonce: crit.ges, base: s.ges, resultat: matchGlyph(m2.ges) },
+          {
+            critere: "Étage",
+            annonce: crit.etage,
+            base:
+              s.etage != null
+                ? s.etage +
+                  (s.etageComplement
+                    ? " ← " + s.etageComplement
+                    : s.etageStructure != null
+                      ? " (struct. " + s.etageStructure + ")"
+                      : "")
+                : s.etageComplement || s.etageTexte,
+            resultat: matchGlyph(m2.floor),
+          },
+          {
+            critere: "Année",
+            annonce: crit.anneeConstruction,
+            base: s.annee != null ? s.annee : s.periode ? "période " + s.periode : null,
+            resultat: matchGlyph(m2.year),
+          },
+        ];
+        var label =
+          "#" +
+          (i + 1) +
+          " " +
+          (c.street || "?") +
+          " — " +
+          c.confidence +
+          "% · DPE " +
+          (s.numeroDpe || "?");
+        if (console.groupCollapsed) console.groupCollapsed(label);
+        else console.log(label);
+        console.table(rows);
+        if (console.groupEnd) console.groupEnd();
+      });
+
+      if (console.groupEnd) console.groupEnd();
+    }
+
+    function setApplyButtonVisible(m, visible) {
+      var applyBtn = m && m.querySelector("[data-listing-address-ai-apply]");
+      if (!applyBtn) return;
+      applyBtn.hidden = !visible;
+      applyBtn.disabled = !visible;
+    }
+
+    /** Remplit (ou vide) la liste des résultats dans la modale. */
+    function renderCandidates(m, candidates) {
+      var list = m.querySelector("[data-listing-address-ai-results-list]");
+      var empty = m.querySelector("[data-listing-address-ai-empty]");
+      if (!list) return;
+      list.innerHTML = "";
+
+      if (!candidates || !candidates.length) {
+        list.hidden = true;
+        if (empty) empty.hidden = false;
+        setApplyButtonVisible(m, false);
+        return;
+      }
+
+      list.hidden = false;
+      if (empty) empty.hidden = true;
+      setApplyButtonVisible(m, true);
+      candidates.forEach(function (candidate, index) {
+        list.appendChild(buildResultRow(candidate, index));
+      });
+    }
+
+    function selectedAddressPayload() {
+      var sel = window.__selectedAddressAiResult;
+      if (!sel || !sel.street) return null;
+      var postalCode = sel.postalCode || "";
+      var city = sel.city || "";
+      if (!postalCode && sel.locality) {
+        var locMatch = String(sel.locality).match(/^(\d{5})\s+(.+)$/);
+        if (locMatch) {
+          postalCode = locMatch[1];
+          city = locMatch[2];
+        }
+      }
+      if (!postalCode || !city) return null;
+      return {
+        street: sel.street,
+        postal_code: postalCode,
+        city: city,
+        complement: "",
+      };
+    }
+
+    function applySelectedAddress(m) {
+      var listingId = m && m.getAttribute("data-listing-id");
+      var fields = selectedAddressPayload();
+      if (!listingId || !fields) {
+        console.warn("[Déterminer l'adresse] Aucune adresse sélectionnée à appliquer.");
+        return Promise.resolve();
+      }
+
+      var applyBtn = m.querySelector("[data-listing-address-ai-apply]");
+      if (applyBtn) {
+        applyBtn.disabled = true;
+        applyBtn.classList.add("is-loading");
+      }
+
+      if (!window.htmx || typeof window.htmx.ajax !== "function") {
+        console.error("[Déterminer l'adresse] HTMX indisponible pour enregistrer l'adresse.");
+        if (applyBtn) {
+          applyBtn.disabled = false;
+          applyBtn.classList.remove("is-loading");
+        }
+        return Promise.resolve();
+      }
+
+      return window.htmx
+        .ajax("POST", "/listings/" + listingId + "/address", {
+          target: "#listing-location-block",
+          swap: "outerHTML",
+          values: {
+            _csrf: csrfTokenFromMeta(),
+            street: fields.street,
+            postal_code: fields.postal_code,
+            city: fields.city,
+            complement: fields.complement,
+            address_source: "detected",
+          },
+        })
+        .then(function () {
+          var fresh = document.getElementById("listing-location-block");
+          if (fresh && typeof window.__initListingMaps === "function") {
+            window.__initListingMaps(fresh);
+          }
+          var aiModal = document.querySelector("[data-listing-address-ai-modal]");
+          if (aiModal) aiModal.hidden = true;
+          document.body.classList.remove("is-modal-open");
+          window.__selectedAddressAiResult = null;
+        })
+        .catch(function (err) {
+          console.error("[Déterminer l'adresse] Impossible d'enregistrer l'adresse", err);
+          if (applyBtn) {
+            applyBtn.disabled = false;
+            applyBtn.classList.remove("is-loading");
+          }
+        });
+    }
+
+    function modal() {
+      return document.querySelector("[data-listing-address-ai-modal]");
+    }
+
+    function introPanel(m) {
+      return m && m.querySelector("[data-listing-address-ai-intro]");
+    }
+
+    function runningPanel(m) {
+      return m && m.querySelector("[data-listing-address-ai-running]");
+    }
+
+    function resultsPanel(m) {
+      return m && m.querySelector("[data-listing-address-ai-results]");
+    }
+
+    function clearAnalysisFinishTimer() {
+      if (analysisFinishTimer) {
+        clearTimeout(analysisFinishTimer);
+        analysisFinishTimer = null;
+      }
+    }
+
+    function stopStatusCycle() {
+      if (statusTimer) {
+        clearInterval(statusTimer);
+        statusTimer = null;
+      }
+      statusIndex = 0;
+    }
+
+    function setStatusLine(m, line) {
+      var el = m.querySelector("[data-listing-address-ai-status]");
+      if (!el) return;
+      el.classList.add("is-fading");
+      window.setTimeout(function () {
+        el.textContent = line;
+        el.classList.remove("is-fading");
+      }, 180);
+    }
+
+    function resultRows(m) {
+      return m ? m.querySelectorAll("[data-listing-address-ai-result]") : [];
+    }
+
+    function selectResultRow(row) {
+      var m = modal();
+      if (!m || !row) return;
+      resultRows(m).forEach(function (el) {
+        var selected = el === row;
+        el.classList.toggle("is-selected", selected);
+        el.setAttribute("aria-selected", selected ? "true" : "false");
+        el.tabIndex = selected ? 0 : -1;
+      });
+      window.__selectedAddressAiResult = {
+        index: Number(row.getAttribute("data-result-index")),
+        street: row.getAttribute("data-result-street") || "",
+        locality: row.getAttribute("data-result-locality") || "",
+        postalCode: row.getAttribute("data-result-postal-code") || "",
+        city: row.getAttribute("data-result-city") || "",
+        confidence: Number(row.getAttribute("data-result-confidence")),
+      };
+      var applyBtn = m.querySelector("[data-listing-address-ai-apply]");
+      if (applyBtn) applyBtn.disabled = false;
+      if (typeof row.focus === "function") {
+        row.focus();
+      }
+    }
+
+    function defaultResultSelection(m) {
+      var selected = m.querySelector("[data-listing-address-ai-result].is-selected");
+      if (selected) {
+        selectResultRow(selected);
+        return;
+      }
+      var first = m.querySelector("[data-listing-address-ai-result]");
+      if (first) selectResultRow(first);
+    }
+
+    function showIntro(m) {
+      stopStatusCycle();
+      clearAnalysisFinishTimer();
+      var intro = introPanel(m);
+      var running = runningPanel(m);
+      var results = resultsPanel(m);
+      var title = m.querySelector("[data-listing-address-ai-title]");
+      if (intro) intro.hidden = false;
+      if (running) running.hidden = true;
+      if (results) results.hidden = true;
+      if (title) title.textContent = "Déterminer l'adresse via IA";
+      setStatusLine(m, "Mise en route de l'analyse…");
+      var startBtn = m.querySelector("[data-listing-address-ai-start]");
+      if (startBtn) startBtn.disabled = false;
+      var runningBlock = m.querySelector(".listing-address-ai-dialog__running");
+      if (runningBlock) runningBlock.setAttribute("aria-busy", "false");
+      window.__selectedAddressAiResult = null;
+      setApplyButtonVisible(m, false);
+    }
+
+    function showResults(m) {
+      stopStatusCycle();
+      clearAnalysisFinishTimer();
+      var intro = introPanel(m);
+      var running = runningPanel(m);
+      var results = resultsPanel(m);
+      var title = m.querySelector("[data-listing-address-ai-title]");
+      if (intro) intro.hidden = true;
+      if (running) running.hidden = true;
+      if (results) results.hidden = false;
+      if (title) title.textContent = "Adresses possibles";
+      var runningBlock = m.querySelector(".listing-address-ai-dialog__running");
+      if (runningBlock) runningBlock.setAttribute("aria-busy", "false");
+      defaultResultSelection(m);
+    }
+
+    function moveResultSelection(m, delta) {
+      var rows = Array.prototype.slice.call(resultRows(m));
+      if (!rows.length) return;
+      var currentIndex = rows.findIndex(function (row) {
+        return row.classList.contains("is-selected");
+      });
+      if (currentIndex < 0) currentIndex = 0;
+      var nextIndex = currentIndex + delta;
+      if (nextIndex < 0) nextIndex = rows.length - 1;
+      if (nextIndex >= rows.length) nextIndex = 0;
+      selectResultRow(rows[nextIndex]);
+    }
+
+    function startAnalysis(m) {
+      var intro = introPanel(m);
+      var running = runningPanel(m);
+      var results = resultsPanel(m);
+      var title = m.querySelector("[data-listing-address-ai-title]");
+      if (intro) intro.hidden = true;
+      if (running) running.hidden = false;
+      if (results) results.hidden = true;
+      if (title) title.textContent = "Analyse du bien";
+      stopStatusCycle();
+      clearAnalysisFinishTimer();
+      setStatusLine(m, ANALYSIS_STATUS_LINES[0]);
+      statusIndex = 1;
+      statusTimer = window.setInterval(function () {
+        if (!m || m.hidden) {
+          stopStatusCycle();
+          return;
+        }
+        setStatusLine(m, ANALYSIS_STATUS_LINES[statusIndex % ANALYSIS_STATUS_LINES.length]);
+        statusIndex += 1;
+      }, 650);
+      var runningBlock = m.querySelector(".listing-address-ai-dialog__running");
+      if (runningBlock) {
+        runningBlock.setAttribute("aria-busy", "true");
+        runningBlock.setAttribute("tabindex", "-1");
+        runningBlock.focus();
+      }
+      var startBtn = m.querySelector("[data-listing-address-ai-start]");
+      if (startBtn) startBtn.disabled = true;
+
+      // On attend à la fois la réponse du serveur et un délai minimal (confort
+      // visuel de l'analyse).
+      var minDelay = new Promise(function (resolve) {
+        analysisFinishTimer = window.setTimeout(function () {
+          analysisFinishTimer = null;
+          resolve();
+        }, MIN_ANALYSIS_MS);
+      });
+      var searchResult = fetchAddressCandidates(m).catch(function (err) {
+          console.error("[Déterminer l'adresse] Echec de la recherche", err);
+          return { error: true, candidates: [] };
+        });
+
+      Promise.all([searchResult, minDelay]).then(function (values) {
+        var payload = values[0] || {};
+        if (!m || m.hidden) return;
+        if (startBtn) startBtn.disabled = false;
+        renderCandidates(m, payload.candidates || []);
+        logMatchingDebug(payload);
+        showResults(m);
+      });
+    }
+
+    function openModal() {
+      var m = modal();
+      if (!m) return;
+      showIntro(m);
+      lastFocused = document.activeElement;
+      m.hidden = false;
+      document.body.classList.add("is-modal-open");
+      var startBtn = m.querySelector("[data-listing-address-ai-start]");
+      if (startBtn) startBtn.focus();
+    }
+
+    function closeModal() {
+      var m = modal();
+      if (m) {
+        showIntro(m);
+        m.hidden = true;
+      }
+      stopStatusCycle();
+      clearAnalysisFinishTimer();
+      document.body.classList.remove("is-modal-open");
+      if (lastFocused && typeof lastFocused.focus === "function") {
+        lastFocused.focus();
+      }
+      lastFocused = null;
+    }
+
+    document.addEventListener("click", function (event) {
+      if (event.target.closest("[data-listing-address-ai-open]")) {
+        event.preventDefault();
+        openModal();
+        return;
+      }
+      if (event.target.closest("[data-listing-address-ai-start]")) {
+        event.preventDefault();
+        var m = modal();
+        if (m && !m.hidden) startAnalysis(m);
+        return;
+      }
+      if (event.target.closest("[data-listing-address-ai-retry]")) {
+        event.preventDefault();
+        var modalEl = modal();
+        if (modalEl && !modalEl.hidden) showIntro(modalEl);
+        return;
+      }
+      if (event.target.closest("[data-listing-address-ai-apply]")) {
+        event.preventDefault();
+        var modalApply = modal();
+        if (modalApply && !modalApply.hidden) {
+          applySelectedAddress(modalApply);
+        }
+        return;
+      }
+      if (event.target.closest("a[href*='google.com/maps']")) {
+        return;
+      }
+      var resultRow = event.target.closest("[data-listing-address-ai-result]");
+      if (resultRow) {
+        var modalForResult = modal();
+        var results = resultsPanel(modalForResult);
+        if (modalForResult && !modalForResult.hidden && results && !results.hidden) {
+          selectResultRow(resultRow);
+        }
+        return;
+      }
+      if (event.target.closest("[data-listing-address-ai-dismiss]")) {
+        closeModal();
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      var m = modal();
+      if (!m || m.hidden) return;
+      var results = resultsPanel(m);
+      var resultsOpen = results && !results.hidden;
+
+      if (resultsOpen && event.target.closest("[data-listing-address-ai-results-list]")) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          moveResultSelection(m, 1);
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveResultSelection(m, -1);
+          return;
+        }
+        if (event.key === " " || event.key === "Enter") {
+          var focused = document.activeElement;
+          if (focused && focused.matches("[data-listing-address-ai-result]")) {
+            event.preventDefault();
+            selectResultRow(focused);
+          }
+          return;
+        }
+      }
+
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeModal();
+    });
+  })();
+
+  // Fiche annonce : carte OpenStreetMap (Leaflet) quand l'adresse est géocodée.
+  (function initListingLocationMaps() {
+    var LEAFLET_CSS = "/public/vendor/leaflet/leaflet.css";
+    var LEAFLET_JS = "/public/vendor/leaflet/leaflet.js";
+    var leafletLoadPromise = null;
+
+    function loadLeaflet() {
+      if (window.L) return Promise.resolve(window.L);
+      if (leafletLoadPromise) return leafletLoadPromise;
+      leafletLoadPromise = new Promise(function (resolve, reject) {
+        if (!document.getElementById("leaflet-css")) {
+          var link = document.createElement("link");
+          link.id = "leaflet-css";
+          link.rel = "stylesheet";
+          link.href = LEAFLET_CSS;
+          document.head.appendChild(link);
+        }
+        var script = document.createElement("script");
+        script.src = LEAFLET_JS;
+        script.async = true;
+        script.onload = function () {
+          resolve(window.L);
+        };
+        script.onerror = function () {
+          reject(new Error("leaflet_load_failed"));
+        };
+        document.head.appendChild(script);
+      });
+      return leafletLoadPromise;
+    }
+
+    function parseCoord(value) {
+      var n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function destroyMap(viewEl) {
+      if (viewEl && viewEl._leafletMap) {
+        viewEl._leafletMap.remove();
+        viewEl._leafletMap = null;
+        delete viewEl.dataset.mapReady;
+      }
+    }
+
+    function initMapInView(viewEl, lat, lng) {
+      if (!viewEl || viewEl.dataset.mapReady === "1") return;
+      var host = viewEl.closest("[data-listing-map]");
+      loadLeaflet()
+        .then(function (L) {
+          if (!viewEl.isConnected) return;
+          destroyMap(viewEl);
+          var basemapConfig = null;
+          try {
+            var rawBasemap = host && host.getAttribute("data-basemap-config");
+            if (rawBasemap) basemapConfig = JSON.parse(decodeURIComponent(rawBasemap));
+          } catch (_err) {
+            basemapConfig = null;
+          }
+          var tileUrl = basemapConfig && basemapConfig.url;
+          var tileAttribution =
+            (basemapConfig && basemapConfig.attribution) || "";
+          var tileSubdomains =
+            (basemapConfig && basemapConfig.subdomains) || "";
+          if (!tileUrl) {
+            console.warn("[Carte] Configuration de tuiles absente.");
+            return;
+          }
+          var map = L.map(viewEl, {
+            scrollWheelZoom: false,
+            attributionControl: true,
+          }).setView([lat, lng], 17);
+          var tileOptions = {
+            maxZoom: 19,
+            attribution: tileAttribution,
+          };
+          if (tileSubdomains) tileOptions.subdomains = tileSubdomains;
+          L.tileLayer(tileUrl, tileOptions).addTo(map);
+          L.marker([lat, lng]).addTo(map);
+          viewEl._leafletMap = map;
+          viewEl.dataset.mapReady = "1";
+          window.setTimeout(function () {
+            map.invalidateSize();
+          }, 0);
+        })
+        .catch(function (err) {
+          console.warn("[Carte] Impossible de charger la carte OpenStreetMap.", err);
+        });
+    }
+
+    function scan(root) {
+      var scope = root || document;
+      scope.querySelectorAll("[data-listing-map-view]").forEach(function (viewEl) {
+        var host = viewEl.closest("[data-listing-map]");
+        if (!host) return;
+        var lat = parseCoord(host.getAttribute("data-lat"));
+        var lng = parseCoord(host.getAttribute("data-lng"));
+        if (lat == null || lng == null) return;
+        initMapInView(viewEl, lat, lng);
+      });
+    }
+
+    function onReady() {
+      scan(document);
+    }
+
+    // Permet aux swaps non-HTMX (ex. application de l'adresse détectée) de
+    // (ré)initialiser la carte sur un fragment fraîchement injecté.
+    window.__initListingMaps = scan;
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", onReady);
+    } else {
+      onReady();
+    }
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      var target = event.detail && event.detail.target;
+      if (!target) return;
+      if (
+        target.id === "listing-location-block" ||
+        target.querySelector("[data-listing-map-view]")
+      ) {
+        scan(target);
+      }
+    });
+  })();
+
 })();

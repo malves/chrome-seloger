@@ -1,0 +1,224 @@
+<%
+  const isUser = data.territory_source === 'user';
+  const bench = {};
+  (data.department_benchmark || []).forEach(function (b) { bench[b.key] = b; });
+
+  // Format d'un taux pour mille avec une décimale (fr-FR), ou tiret.
+  const rate = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    return (Math.round(v * 10) / 10).toLocaleString('fr-FR');
+  };
+
+  const score = data.score || {};
+  const scoreIndex = score.index;
+  const personsIndex = score.persons_index;
+  const propertyIndex = score.property_index;
+  const deptIndex = score.department_index;
+  const scoreTone = score.tone || 'neutral';
+  const communeName = data.commune_name || 'Commune';
+
+  // Position sur l'échelle 0–200 (100 = moyenne France, au centre).
+  const pos = function (i) {
+    if (i == null) return null;
+    return Math.max(0, Math.min(100, (Math.min(i, 200) / 200) * 100));
+  };
+  const cityPos = pos(scoreIndex);
+  const deptPos = pos(deptIndex);
+
+  // Libellés d'affichage courts (override par clé, robuste au cache).
+  const displayLabels = {
+    degradations_volontaires: 'Dégradations volontaires',
+  };
+  const labelFor = function (ind) {
+    return displayLabels[ind.key] || ind.label;
+  };
+
+  const groupTitles = {
+    personnes: 'Atteintes aux personnes',
+    biens: 'Atteintes aux biens',
+  };
+  const indicatorGroups = [];
+  (data.indicators || []).forEach(function (ind) {
+    const g = ind.group || 'biens';
+    if (!indicatorGroups.length || indicatorGroups[indicatorGroups.length - 1].key !== g) {
+      indicatorGroups.push({ key: g, title: groupTitles[g] || g, items: [] });
+    }
+    indicatorGroups[indicatorGroups.length - 1].items.push(ind);
+  });
+
+  // Couleur d'une carte selon le ratio commune / département.
+  const cardTone = function (communeRate, deptRate) {
+    if (communeRate == null || deptRate == null || deptRate <= 0) return 'neutral';
+    const ratio = communeRate / deptRate;
+    return ratio <= 0.85 ? 'ok' : ratio <= 1.25 ? 'mid' : 'high';
+  };
+%>
+<div class="delinquance">
+  <div class="delinquance__top">
+    <% if (data.reference_year) { %>
+      <span class="delinquance__year">Année <%= data.reference_year %> · lieu de commission</span>
+    <% } %>
+  </div>
+
+  <% if (data.ssmsi_needs_reimport) { %>
+    <p class="delinquance__note delinquance__note--warn" role="alert">
+      Base SSMSI incomplète sur le serveur (violences et stupéfiants manquants).
+      Un administrateur doit relancer <strong>Administration → Import SSMSI</strong>, attendre « Terminé », puis actualiser ici.
+    </p>
+  <% } %>
+
+  <% if (scoreIndex != null) { %>
+    <div class="delinquance__gauge delinquance__gauge--<%= scoreTone %>">
+      <div class="delinquance__gauge-head">
+        <span class="delinquance__gauge-label">Indice global SSMSI</span>
+        <span class="delinquance__gauge-verdict"><%= score.label %></span>
+      </div>
+
+      <div class="delinquance__gauge-track">
+        <div
+          class="delinquance__gauge-bar"
+          role="img"
+          aria-label="Indice global SSMSI : commune indice <%= scoreIndex %><%= deptIndex != null ? ', département ' + deptIndex : '' %>, moyenne France 100"
+        >
+          <span
+            class="delinquance__gauge-ref-wrap delinquance__gauge-hit"
+            style="left: 50%"
+            data-tooltip="Moyenne France · indice 100"
+            tabindex="0"
+            aria-label="Moyenne France, indice 100"
+          >
+            <span class="delinquance__gauge-ref delinquance__gauge-ref--france" aria-hidden="true"></span>
+          </span>
+          <% if (deptPos != null && deptIndex != null) { %>
+            <span
+              class="delinquance__gauge-ref-wrap delinquance__gauge-hit"
+              style="left: <%= deptPos %>%"
+              data-tooltip="Moyenne département · indice <%= deptIndex %>"
+              tabindex="0"
+              aria-label="Moyenne département, indice <%= deptIndex %>"
+            >
+              <span class="delinquance__gauge-ref delinquance__gauge-ref--dept" aria-hidden="true"></span>
+            </span>
+          <% } %>
+          <span
+            class="delinquance__gauge-marker delinquance__gauge-hit"
+            style="left: <%= cityPos %>%"
+            data-tooltip="<%= communeName %> · indice <%= scoreIndex %>"
+            tabindex="0"
+            aria-label="<%= communeName %>, indice <%= scoreIndex %>"
+          ></span>
+        </div>
+      </div>
+
+      <div class="delinquance__gauge-legend">
+        <span><span class="delinquance__gauge-dot delinquance__gauge-dot--commune"></span><%= communeName %> · indice <%= scoreIndex %></span>
+        <span><span class="delinquance__gauge-dot delinquance__gauge-dot--france"></span>Moyenne France · 100</span>
+        <% if (deptIndex != null) { %>
+          <span><span class="delinquance__gauge-dot delinquance__gauge-dot--dept"></span>Département · <%= deptIndex %></span>
+        <% } %>
+        <% if (personsIndex != null) { %>
+          <span class="delinquance__gauge-sub">Personnes · <%= personsIndex %></span>
+        <% } %>
+        <% if (propertyIndex != null) { %>
+          <span class="delinquance__gauge-sub">Biens · <%= propertyIndex %></span>
+        <% } %>
+      </div>
+    </div>
+  <% } %>
+
+  <% if (data.indicators && data.indicators.length) { %>
+    <details class="delinquance__details">
+      <summary class="delinquance__summary">
+        <span class="delinquance__summary-label">Voir les détails par type d'infraction</span>
+        <span class="delinquance__summary-icon" aria-hidden="true"></span>
+      </summary>
+
+      <% indicatorGroups.forEach(function (section) { %>
+        <p class="delinquance__group-title"><%= section.title %></p>
+        <ul class="delinquance__list">
+        <% section.items.forEach(function (ind) {
+          const b = bench[ind.key];
+          const deptRate = b && b.rate_per_1000 != null ? b.rate_per_1000 : null;
+          const communeRate = ind.rate_per_1000 != null ? ind.rate_per_1000 : null;
+          const tone = cardTone(communeRate, deptRate);
+
+          // Barre : commune remplie, repère = département.
+          const base = Math.max(communeRate || 0, deptRate || 0) || 1;
+          const communeW = Math.min(100, Math.round(((communeRate || 0) / base) * 100));
+          const deptPosBar = deptRate != null ? Math.min(100, Math.round((deptRate / base) * 100)) : null;
+
+          const trend = ind.trend_pct;
+          const trendTitle = ind.trend_from_year && ind.trend_to_year
+            ? 'Évolution du taux communal entre ' + ind.trend_from_year + ' et ' + ind.trend_to_year
+            : '';
+        %>
+          <li class="delinquance__item delinquance__item--<%= tone %>">
+            <div class="delinquance__head">
+              <span class="delinquance__label"><%= labelFor(ind) %></span>
+              <% if (trend != null) { %>
+                <span
+                  class="badge <%= trend > 0 ? 'badge--up' : trend < 0 ? 'badge--down' : 'badge--muted' %> delinquance__trend"
+                  <% if (trendTitle) { %>title="<%= trendTitle %>"<% } %>
+                >
+                  <%= trend > 0 ? '▲' : trend < 0 ? '▼' : '■' %>
+                  <%= trend > 0 ? '+' : '' %><%= rate(trend) %> %
+                </span>
+              <% } %>
+            </div>
+
+            <div class="delinquance__figure">
+              <span class="delinquance__rate"><%= rate(communeRate) %></span>
+              <span class="delinquance__unit">/ 1 000 hab.</span>
+              <% if (ind.volume != null) { %>
+                <span class="delinquance__volume"><%= fmt.number(ind.volume) %> faits</span>
+              <% } %>
+            </div>
+
+            <div
+              class="delinquance__bar"
+              role="img"
+              aria-label="Taux commune <%= rate(communeRate) %><%= deptRate != null ? ', département ' + rate(deptRate) : '' %> pour 1 000 habitants"
+            >
+              <span class="delinquance__bar-fill" style="width: <%= communeW %>%"></span>
+              <% if (deptPosBar != null) { %>
+                <span class="delinquance__bar-mark" style="left: <%= deptPosBar %>%"></span>
+              <% } %>
+            </div>
+
+            <div class="delinquance__legend">
+              <span class="delinquance__legend-item">
+                <span class="delinquance__swatch delinquance__swatch--commune"></span>
+                Commune
+              </span>
+              <% if (deptRate != null) { %>
+                <span class="delinquance__legend-item">
+                  <span class="delinquance__swatch delinquance__swatch--dept"></span>
+                  Moyenne département : <%= rate(deptRate) %>
+                </span>
+              <% } %>
+            </div>
+          </li>
+        <% }); %>
+        </ul>
+      <% }); %>
+
+      <% if (data.disclaimer || (provider && provider.source)) { %>
+        <div class="delinquance__meta">
+          <% if (data.disclaimer) { %>
+            <p class="delinquance__note"><%= data.disclaimer %></p>
+          <% } %>
+          <% if (provider && provider.source) { %>
+            <p class="provider-source delinquance__source">
+              Source :
+              <% if (provider.sourceUrl) { %>
+                <a href="<%= provider.sourceUrl %>" target="_blank" rel="noreferrer noopener"><%= provider.source %></a>
+              <% } else { %>
+                <%= provider.source %>
+              <% } %>
+            </p>
+          <% } %>
+        </div>
+      <% } %>
+    </details>
+  <% } %>
+</div>

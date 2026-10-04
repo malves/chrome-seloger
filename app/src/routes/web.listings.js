@@ -5,13 +5,23 @@
  * autre compte renvoie 404, jamais 403 (on ne révèle pas son existence).
  */
 
+import crypto from "node:crypto";
 import express from "express";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import HttpError from "../lib/http-error.js";
+import config from "../config.js";
 import { requireUser } from "../middlewares/auth.session.js";
 import { DEFAULT_SORT, SORTS } from "../repositories/listings.repo.js";
 import { STATUS_KEYS, PROPERTY_TYPE_KEYS } from "../lib/format.js";
 import { accountFinancingSettings } from "../services/settings.service.js";
 import createProjectsService from "../services/projects.service.js";
+import { userAddressFromBody } from "../lib/user-address.js";
+import { listingDpeSearchCriteria } from "../lib/listing-dpe-criteria.js";
+import createListingsService from "../services/listings.service.js";
+import createListingFetchService from "../services/listing-fetch.service.js";
+import createTravelService from "../services/travel.service.js";
+import createAddressAiService from "../services/address-ai.service.js";
+import { listingPayloadSchema } from "../schemas/listing.payload.js";
 import {
   financingForListing,
   listingFinancingParams,
@@ -19,8 +29,31 @@ import {
 } from "../services/financing.service.js";
 import { logActivity } from "../lib/activity.js";
 
+/** Nombre maximum de brouillons d'import conservés par session. */
+const MAX_DRAFTS = 20;
+
+/** Résumé d'un payload d'annonce envoyé au client pour l'aperçu. */
+function previewSummary(payload) {
+  const location = payload.location || {};
+  return {
+    title: payload.title || null,
+    price: payload.price ?? null,
+    surface: payload.surface ?? null,
+    land_surface: payload.land_surface ?? null,
+    rooms: payload.rooms ?? null,
+    bedrooms: payload.bedrooms ?? null,
+    city: location.city || null,
+    postal_code: location.postal_code || null,
+    photo: (payload.photos && payload.photos[0]) || null,
+    source: payload.source,
+    url: payload.url,
+    property_type: payload.property_type || null,
+    transaction_type: payload.transaction_type || null,
+  };
+}
+
 /** Nombre d'annonces affichées par page de la liste. */
-const PER_PAGE = 24;
+const PER_PAGE = 9;
 
 function parseIntOrNull(value) {
   if (value === undefined || value === "") return null;
@@ -50,8 +83,33 @@ function readFilters(query) {
 export default function createListingsRouter({ repositories, enrichment, logger }) {
   const router = express.Router();
   const projectsService = createProjectsService({ repositories });
+  const listingsService = createListingsService({ repositories });
+  const listingFetch = createListingFetchService({ logger });
+  const travel = createTravelService({ logger });
+  const addressAi = createAddressAiService({ repositories, logger });
+
+  // Ces deux routes reçoivent du JSON (fetch côté client) ; le reste du site
+  // utilise le parseur `urlencoded` global monté dans app.js.
+  const jsonBody = express.json({ limit: "256kb" });
 
   router.use("/listings", requireUser);
+
+  // L'aperçu déclenche un appel réseau sortant : on borne son usage.
+  const previewLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 20,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    skip: () => config.isTest,
+    keyGenerator: (req) =>
+      req.user ? `u:${req.user.id}` : ipKeyGenerator(req.ip),
+    handler: (req, res) =>
+      res.status(429).json({
+        ok: false,
+        reason: "rate_limited",
+        message: "Trop de vérifications d'affilée. Patientez une minute.",
+      }),
+  });
 
   /** Charge l'annonce du compte courant ou lève une 404. */
   function loadListing(req) {
@@ -121,6 +179,106 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       activeProject,
       grandTotal: repositories.listings.countByUser(req.user.id),
     });
+  });
+
+  /* ----------------------- Ajout par URL ----------------------------- */
+
+  // Étape 1 : on récupère et on lit la page, puis on renvoie un aperçu. Le
+  // payload complet est conservé en session sous un jeton, pour éviter de
+  // refaire l'appel réseau (donc un second risque de blocage) à la validation.
+  router.post("/listings/preview", jsonBody, previewLimiter, async (req, res, next) => {
+    try {
+      const url = String(req.body?.url || "").trim();
+      if (!url) {
+        return res.status(400).json({
+          ok: false,
+          reason: "invalid_url",
+          message: "Collez l'URL d'une annonce.",
+        });
+      }
+
+      const result = await listingFetch.fetchAndParse(url);
+      if (!result.ok) {
+        return res.status(200).json(result);
+      }
+
+      const parsed = listingPayloadSchema.safeParse(result.payload);
+      if (!parsed.success) {
+        return res.status(200).json({
+          ok: false,
+          reason: "parse_failed",
+          message:
+            "Les données lues sur la page sont incomplètes ou invalides.",
+        });
+      }
+
+      // Déjà dans le carnet ? On le signale sans empêcher la ré-import.
+      const existing = listingsService.lookup(req.user, parsed.data.url);
+
+      const token = crypto.randomBytes(16).toString("hex");
+      if (!req.session.listingDrafts) req.session.listingDrafts = {};
+      const drafts = req.session.listingDrafts;
+      const tokens = Object.keys(drafts);
+      if (tokens.length >= MAX_DRAFTS) delete drafts[tokens[0]];
+      drafts[token] = parsed.data;
+
+      logActivity(logger, req, "aperçu d'annonce par URL", {
+        source: parsed.data.source,
+      });
+
+      return res.json({
+        ok: true,
+        token,
+        preview: previewSummary(parsed.data),
+        already_saved: existing ? { id: existing.id } : null,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  // Étape 2 : validation. Le payload vient de la session (jamais du client),
+  // seuls les projets choisis sont acceptés depuis la requête.
+  router.post("/listings/import", jsonBody, (req, res, next) => {
+    try {
+      const token = String(req.body?.token || "");
+      const drafts = req.session.listingDrafts || {};
+      const payload = drafts[token];
+      if (!payload) {
+        return res.status(410).json({
+          ok: false,
+          reason: "expired",
+          message:
+            "Cet aperçu a expiré. Relancez la vérification de l'URL.",
+        });
+      }
+
+      const projectIds = []
+        .concat(req.body.project_ids ?? [])
+        .filter((value) => value !== "" && value != null);
+
+      const { id, created } = listingsService.save(req.user, {
+        ...payload,
+        projects: projectIds,
+      });
+
+      delete drafts[token];
+
+      logActivity(logger, req, created ? "annonce ajoutée (URL)" : "annonce mise à jour (URL)", {
+        listingId: id,
+      });
+
+      enrichment.schedule(req.user.id, id);
+
+      return res.json({
+        ok: true,
+        id,
+        created,
+        web_url: `/listings/${id}`,
+      });
+    } catch (err) {
+      return next(err);
+    }
   });
 
   /* ------------------------------ Fiche ------------------------------ */
@@ -211,6 +369,123 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     }
   });
 
+  /* ------------------------ Adresse réelle --------------------------- */
+
+  /**
+   * Adresse réelle du bien, saisie à la main (souvent absente des annonces).
+   * On géocode « best-effort » (BAN puis ORS, gratuit) pour obtenir un point
+   * précis réutilisable (carte, et plus tard trajet / enrichissement). Le
+   * géocodage ne doit jamais faire échouer l'enregistrement : s'il échoue,
+   * l'adresse texte est conservée sans coordonnées.
+   */
+  router.post(
+    "/listings/:id/address-ai/criteria",
+    jsonBody,
+    (req, res, next) => {
+      try {
+        const listing = loadListing(req);
+        const payload = listingDpeSearchCriteria(listing);
+        logActivity(logger, req, "critères recherche DPE (déterminer l'adresse)", {
+          listingId: listing.id,
+          criteres: payload.criteres,
+          champsManquants: payload.champsManquants,
+          filtresRechercheDpe: payload.filtresRechercheDpe,
+        });
+        logger.info(
+          {
+            listingId: listing.id,
+            criteres: payload.criteres,
+            champsManquants: payload.champsManquants,
+            filtresRechercheDpe: payload.filtresRechercheDpe,
+          },
+          "address-ai/criteria"
+        );
+        return res.json(payload);
+      } catch (err) {
+        return next(err);
+      }
+    }
+  );
+
+  /**
+   * Recherche réelle des adresses candidates (mode précis) dans la base DPE.
+   * Renvoie une liste d'adresses notées par score de confiance.
+   */
+  router.post(
+    "/listings/:id/address-ai/search",
+    jsonBody,
+    (req, res, next) => {
+      try {
+        const listing = loadListing(req);
+        const result = addressAi.search(listing);
+        logActivity(logger, req, "recherche DPE (déterminer l'adresse)", {
+          listingId: listing.id,
+          mode: result.mode,
+          candidates: result.candidates.length,
+          champsRequisManquants: result.champsRequisManquants,
+        });
+        return res.json(result);
+      } catch (err) {
+        return next(err);
+      }
+    }
+  );
+
+  router.post("/listings/:id/address", async (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const cleaned = userAddressFromBody(req.body);
+
+      if (cleaned) {
+        const geo = await travel.geocodeAddress(cleaned);
+        const source =
+          req.body.address_source === "detected" ? "detected" : "manual";
+        repositories.listings.setUserAddress(req.user.id, listing.id, {
+          address: cleaned,
+          lat: geo?.lat ?? null,
+          lng: geo?.lon ?? null,
+          source,
+        });
+        logActivity(logger, req, "adresse réelle saisie", {
+          listingId: listing.id,
+          geocoded: Boolean(geo),
+        });
+      } else {
+        repositories.listings.setUserAddress(req.user.id, listing.id, {
+          address: null,
+        });
+        logActivity(logger, req, "adresse réelle effacée", {
+          listingId: listing.id,
+        });
+      }
+
+      repositories.listings.setInseeCode(listing.id, null, { force: true });
+      repositories.enrichments.removeOne(listing.id, "prix-m2");
+
+      // Le prix au m² a besoin de l'INSEE : on résout la commune de façon
+      // synchrone AVANT de répondre, pour que le rafraîchissement client du
+      // widget (déclenché après le swap) trouve un code INSEE à jour.
+      if (req.get("hx-request")) {
+        await enrichment.runForListing(req.user.id, listing.id, {
+          only: "commune",
+        });
+      }
+      enrichment.schedule(req.user.id, listing.id);
+
+      const updated = repositories.listings.findById(req.user.id, listing.id);
+
+      if (!req.get("hx-request")) {
+        return res.redirect(`/listings/${listing.id}`);
+      }
+      return res.render("partials/listing-location-block", {
+        layout: false,
+        listing: updated,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
   /* ------------------------------ Projets ---------------------------- */
 
   router.post("/listings/:id/projects", (req, res, next) => {
@@ -269,6 +544,55 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     }
   });
 
+  /* ------------- Actualisation de tout le bloc Territoire ------------- */
+
+  function resetCommuneScopeCache(listing, key) {
+    repositories.enrichments.removeOne(listing.id, key);
+    if (listing.insee_code) {
+      repositories.enrichments.removeCommune(listing.insee_code, key);
+    }
+  }
+
+  async function refreshTerritoryProviders(userId, listing) {
+    const providers = await enrichment.listProviders();
+    const communeKeys = providers
+      .filter((provider) => provider.scope === "commune")
+      .map((provider) => provider.key);
+
+    for (const key of communeKeys) {
+      resetCommuneScopeCache(listing, key);
+    }
+
+    for (const key of communeKeys) {
+      await enrichment.runForListing(userId, listing.id, {
+        only: key,
+        force: true,
+      });
+    }
+
+    return repositories.listings.findById(userId, listing.id);
+  }
+
+  router.post("/listings/:id/enrich/territoire", async (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const refreshed = await refreshTerritoryProviders(req.user.id, listing);
+      const blocks = await enrichment.viewModel(refreshed);
+      const communeProviders = blocks.filter((provider) => provider.scope === "commune");
+
+      if (!req.get("hx-request")) {
+        return res.redirect(`/listings/${listing.id}`);
+      }
+      return res.render("partials/listing-territory", {
+        layout: false,
+        listing: refreshed,
+        communeProviders,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
   /* ------------------- Nouvel essai d'un provider -------------------- */
 
   router.post("/listings/:id/enrich/:provider", async (req, res, next) => {
@@ -280,8 +604,16 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         throw HttpError.notFound("Provider inconnu.");
       }
 
-      repositories.enrichments.removeOne(listing.id, key);
-      await enrichment.runForListing(req.user.id, listing.id, { only: key });
+      const providerDef = providers.find((provider) => provider.key === key);
+      if (providerDef?.scope === "commune") {
+        resetCommuneScopeCache(listing, key);
+      } else {
+        repositories.enrichments.removeOne(listing.id, key);
+      }
+      await enrichment.runForListing(req.user.id, listing.id, {
+        only: key,
+        force: providerDef?.scope === "commune",
+      });
 
       const refreshed = repositories.listings.findById(req.user.id, listing.id);
       const blocks = await enrichment.viewModel(refreshed);

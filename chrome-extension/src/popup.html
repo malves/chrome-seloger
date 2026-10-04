@@ -2,14 +2,14 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <title>Carnet de recherche</title>
+    <title>Carnet de Visites</title>
     <link rel="stylesheet" href="../styles/popup.css" />
   </head>
   <body>
     <header class="topbar">
       <span class="brand">
         <span class="brand__mark" aria-hidden="true">C</span>
-        <span class="brand__name">Carnet</span>
+        <span class="brand__name">Carnet de Visites</span>
       </span>
 
       <div class="topbar__account hidden" id="account">
@@ -21,6 +21,13 @@
     </header>
 
     <main>
+      <p
+        class="page-banner hidden"
+        id="page-banner"
+        role="status"
+        aria-live="polite"
+      ></p>
+
       <!-- ------------------------ Non authentifié ------------------------ -->
       <section class="panel panel--green hidden" id="auth-card">
         <h1 class="panel__title">Gardez vos annonces au même endroit</h1>
@@ -184,18 +191,18 @@
         </div>
       </section>
 
-      <section class="panel panel--flat" id="empty-section">
+      <section class="panel panel--flat hidden" id="empty-section">
         <p class="muted">
           Ouvrez une annonce SeLoger, Belles Demeures ou Leboncoin : le temps de
           trajet s'affiche ici et sur la page.
         </p>
       </section>
 
-      <button class="btn btn--ghost btn--block" id="recompute" type="button">
+      <button class="btn btn--ghost btn--block hidden" id="recompute" type="button">
         Recalculer sur l'onglet actif
       </button>
 
-      <p class="footer-hint">
+      <p class="footer-hint hidden" id="footer-hint">
         Les adresses de référence du temps de trajet se gèrent projet par projet
         dans le carnet.
       </p>
@@ -208,6 +215,7 @@
     </footer>
 
     <script src="config.js"></script>
+    <script src="listing-page.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

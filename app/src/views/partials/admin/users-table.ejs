@@ -1,0 +1,122 @@
+<%
+  function listUrl(page) {
+    var params = new URLSearchParams();
+    if (filters.q) params.set("user_q", filters.q);
+    if (page > 1) params.set("user_page", String(page));
+    var qs = params.toString();
+    return qs ? "/admin/users/list?" + qs : "/admin/users/list";
+  }
+  var p = pagination;
+%>
+
+<div
+  class="admin-users-results"
+  id="admin-users-results"
+  <% if (typeof closeUserModal !== "undefined" && closeUserModal) { %>data-close-user-modal="true"<% } %>
+>
+  <% if (typeof listNotice !== "undefined" && listNotice) { %>
+    <p class="admin-users-notice admin-users-notice--success" role="status"><%= listNotice %></p>
+  <% } %>
+  <% if (typeof listError !== "undefined" && listError) { %>
+    <p class="admin-users-notice admin-users-notice--error" role="alert"><%= listError %></p>
+  <% } %>
+
+  <div class="dpe-results__toolbar">
+    <p class="dpe-results__summary">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+      <% if (p.total) { %>
+        <%= fmt.number(p.from) %>–<%= fmt.number(p.to) %> sur <%= fmt.number(p.total) %> compte<%= p.total > 1 ? 's' : '' %>
+      <% } else { %>
+        Aucun compte
+      <% } %>
+    </p>
+  </div>
+
+  <% if (records.length) { %>
+    <div class="dpe-table-wrap">
+      <table class="dpe-table admin-users-table">
+        <thead>
+          <tr>
+            <th>Compte</th>
+            <th>Inscription</th>
+            <th>Annonces</th>
+            <th>Projets</th>
+            <th class="admin-users-table__actions-head" aria-label="Actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% records.forEach(function (u) {
+            var isAccountAdmin = u.email && u.email.toLowerCase() === adminEmail;
+            var isSelf = u.id === currentUserId;
+          %>
+            <tr
+              class="dpe-table__row admin-users-table__row"
+              tabindex="0"
+              role="button"
+              data-user-id="<%= u.id %>"
+              aria-label="Gérer le compte <%= u.email %>"
+            >
+              <td>
+                <span class="admin-users-table__email"><%= u.email %></span>
+                <% if (isAccountAdmin) { %>
+                  <span class="badge badge--accent admin-users-table__badge">Admin</span>
+                <% } %>
+                <% if (isSelf) { %>
+                  <span class="badge badge--muted admin-users-table__badge">Vous</span>
+                <% } %>
+              </td>
+              <td>
+                <span title="<%= u.created_at %>"><%= fmt.date(u.created_at) %></span>
+              </td>
+              <td><%= fmt.number(u.listing_count) %></td>
+              <td><%= fmt.number(u.project_count) %></td>
+              <td class="admin-users-table__actions">
+                <button
+                  type="button"
+                  class="btn btn--ghost btn--sm admin-users-table__manage"
+                  data-user-id="<%= u.id %>"
+                  aria-label="Gérer <%= u.email %>"
+                >
+                  Gérer
+                </button>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (p.pageCount > 1) { %>
+      <nav class="pagination" aria-label="Pagination des comptes">
+        <% if (p.page > 1) { %>
+          <a
+            class="pagination__link"
+            href="<%= listUrl(p.page - 1) %>"
+            hx-get="<%= listUrl(p.page - 1) %>"
+            hx-target="#admin-users-results"
+            hx-swap="outerHTML"
+          >Précédent</a>
+        <% } %>
+        <span class="pagination__status">Page <%= p.page %> / <%= p.pageCount %></span>
+        <% if (p.page < p.pageCount) { %>
+          <a
+            class="pagination__link"
+            href="<%= listUrl(p.page + 1) %>"
+            hx-get="<%= listUrl(p.page + 1) %>"
+            hx-target="#admin-users-results"
+            hx-swap="outerHTML"
+          >Suivant</a>
+        <% } %>
+      </nav>
+    <% } %>
+  <% } else if (filters.q) { %>
+    <p class="admin-users-empty">Aucun compte ne correspond à « <%= filters.q %> ».</p>
+  <% } else { %>
+    <p class="admin-users-empty">Aucun compte enregistré.</p>
+  <% } %>
+</div>

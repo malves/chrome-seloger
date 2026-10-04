@@ -56,8 +56,18 @@
   }
 
   function idFromUrl() {
-    const matches = location.pathname.match(/\d{5,}/g);
-    return matches ? matches[matches.length - 1] : null;
+    // SeLoger place l'identifiant en dernier segment du chemin, quel que soit
+    // le format d'URL. On évite tout repli sur `\d{5,}` : le chemin contient
+    // des codes postaux (ex. « garches-92380 ») qui feraient collisionner deux
+    // annonces d'une même commune.
+    const path = location.pathname.replace(/\/+$/, "");
+    const legacy = path.match(/(\d{5,})\.htm(?:l)?$/i);
+    if (legacy) return legacy[1];
+    if (/\/annonces?\//i.test(path)) {
+      const last = path.split("/").filter(Boolean).pop();
+      if (last && /^[A-Za-z0-9]+$/.test(last)) return last.toUpperCase();
+    }
+    return null;
   }
 
   /** « 385 000 », « 385.000 » → 385000. Les séparateurs sont ignorés. */
@@ -345,6 +355,7 @@
     const rooms = text.match(/(\d+)\s*pi[èe]ces?/i);
     const bedrooms = text.match(/(\d+)\s*chambres?/i);
     const dpe = text.match(/\bDPE\s*:?\s*([A-G])\b/i);
+    const floorMatch = text.match(/étage\s*(\d{1,2})(?:\s*\/\s*\d+)?/i);
 
     return {
       surface: surface ? decimalFrom(surface[1]) : null,
@@ -352,6 +363,7 @@
       rooms: rooms ? integerFrom(rooms[1]) : null,
       bedrooms: bedrooms ? integerFrom(bedrooms[1]) : null,
       dpe: dpe ? dpe[1].toUpperCase() : null,
+      floor: floorMatch ? integerFrom(floorMatch[1]) : null,
     };
   }
 
@@ -395,6 +407,7 @@
       land_surface: structured.land_surface ?? text.land_surface,
       rooms: structured.rooms ?? text.rooms,
       bedrooms: structured.bedrooms ?? text.bedrooms,
+      floor: text.floor,
       dpe: text.dpe,
       property_type: propertyTypeFrom(haystack),
       transaction_type: transactionTypeFrom(haystack),
@@ -414,6 +427,12 @@
     const source = sourceFor(location.hostname);
     const url = canonicalUrl();
     if (!source || !url) return null;
+    if (
+      self.CarnetListingPage &&
+      !self.CarnetListingPage.isListingDetailUrl(location.href)
+    ) {
+      return null;
+    }
 
     const page = fromPage();
     const specific = source === "leboncoin" ? fromLeboncoin() : {};

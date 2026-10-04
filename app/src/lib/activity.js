@@ -8,6 +8,12 @@ export function logActivity(logger, req, message, fields = {}) {
   const payload = {};
   if (userId != null) payload.userId = userId;
 
+  const extensionVersion =
+    fields.extensionVersion ?? req?.extensionClientVersion ?? null;
+  if (extensionVersion && fields.extensionVersion == null) {
+    payload.extensionVersion = extensionVersion;
+  }
+
   for (const [key, value] of Object.entries(fields)) {
     if (key === "userId" || value == null || value === "") continue;
     payload[key] = value;

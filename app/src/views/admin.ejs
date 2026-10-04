@@ -1,0 +1,1108 @@
+<div class="settings-layout">
+  <!-- --------------------------- Menu gauche --------------------------- -->
+  <aside class="settings-menu">
+    <div class="settings-menu__head">
+      <h1 class="settings-menu__title">Administration</h1>
+      <p class="settings-menu__subtitle">
+        <%= fmt.number(recordCount) %> DPE enregistré<%= recordCount > 1 ? 's' : '' %>
+      </p>
+    </div>
+
+    <nav class="settings-menu__nav" aria-label="Sections de l'administration">
+      <button
+        type="button"
+        class="settings-menu__item is-active"
+        data-settings-tab="import"
+        aria-selected="true"
+      >
+        <span class="settings-menu__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <path d="M7 10l5 5 5-5" />
+            <path d="M12 15V3" />
+          </svg>
+        </span>
+        <span class="settings-menu__text">
+          <span class="settings-menu__label">Import DPE</span>
+          <span class="settings-menu__hint">Open data ADEME</span>
+        </span>
+        <span class="settings-menu__chevron" aria-hidden="true">›</span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-menu__item"
+        data-settings-tab="ssmsi"
+        aria-selected="false"
+      >
+        <span class="settings-menu__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+        </span>
+        <span class="settings-menu__text">
+          <span class="settings-menu__label">Import SSMSI</span>
+          <span class="settings-menu__hint">Délinquance enregistrée</span>
+        </span>
+        <span class="settings-menu__chevron" aria-hidden="true">›</span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-menu__item"
+        data-settings-tab="dvf"
+        aria-selected="false"
+      >
+        <span class="settings-menu__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18" />
+            <path d="M7 15l4-4 3 3 5-6" />
+          </svg>
+        </span>
+        <span class="settings-menu__text">
+          <span class="settings-menu__label">Import DVF</span>
+          <span class="settings-menu__hint">Prix au m² (ventes réelles)</span>
+        </span>
+        <span class="settings-menu__chevron" aria-hidden="true">›</span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-menu__item"
+        data-settings-tab="search"
+        aria-selected="false"
+      >
+        <span class="settings-menu__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+        </span>
+        <span class="settings-menu__text">
+          <span class="settings-menu__label">Recherche DPE</span>
+          <span class="settings-menu__hint">Explorer la base</span>
+        </span>
+        <span class="settings-menu__chevron" aria-hidden="true">›</span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-menu__item"
+        data-settings-tab="users"
+        aria-selected="false"
+      >
+        <span class="settings-menu__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+        </span>
+        <span class="settings-menu__text">
+          <span class="settings-menu__label">Utilisateurs</span>
+          <span class="settings-menu__hint"><%= fmt.number(userCount) %> compte<%= userCount > 1 ? 's' : '' %></span>
+        </span>
+        <span class="settings-menu__chevron" aria-hidden="true">›</span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-menu__item"
+        data-settings-tab="financing"
+        aria-selected="false"
+      >
+        <span class="settings-menu__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="5" width="20" height="14" rx="2" />
+            <path d="M2 10h20" />
+          </svg>
+        </span>
+        <span class="settings-menu__text">
+          <span class="settings-menu__label">Financement</span>
+          <span class="settings-menu__hint">Taux forfaitaires</span>
+        </span>
+        <span class="settings-menu__chevron" aria-hidden="true">›</span>
+      </button>
+    </nav>
+  </aside>
+
+  <!-- -------------------------- Contenu droite ------------------------- -->
+  <div class="settings-content">
+    <!-- ----------------------------- Import --------------------------- -->
+    <section class="panel settings-panel is-active" data-settings-panel="import">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Open data ADEME</p>
+          <h2 class="panel__title">Import de la base DPE</h2>
+        </div>
+      </div>
+
+      <form
+        class="dpe-import-form"
+        method="post"
+        action="/admin/dpe/import"
+        hx-post="/admin/dpe/import"
+        hx-target="#dpe-import-status"
+        hx-swap="outerHTML"
+        <% if (jobView && jobView.blockNewImport) { %>data-import-blocked="true"<% } %>
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="date_from" data-cal-from />
+        <input type="hidden" name="date_to" data-cal-to />
+
+        <div class="dpe-import-form__toolbar">
+        <div class="field date-range-picker" data-date-range-picker>
+          <span class="field__label" id="dpe-import-range-label">Période à importer (dernière modification DPE)</span>
+          <button
+            type="button"
+            class="date-range-picker__trigger"
+            data-cal-trigger
+            aria-labelledby="dpe-import-range-label"
+            aria-expanded="false"
+            aria-haspopup="dialog"
+          >
+            <svg class="date-range-picker__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4M8 2v4M3 10h18" />
+            </svg>
+            <span class="date-range-picker__label" data-cal-trigger-label>Choisir une plage de dates</span>
+            <svg class="date-range-picker__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+
+          <div class="date-range-picker__popover" data-cal-popover hidden role="dialog" aria-label="Choisir une plage de dates">
+            <div
+              class="calendar"
+              data-calendar
+              data-cal-imported-days="<%= encodeURIComponent(JSON.stringify(dpeImportedDays || [])) %>"
+            >
+              <div class="calendar__head">
+                <button type="button" class="calendar__nav" data-cal-prev aria-label="Mois précédent">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+                </button>
+                <span class="calendar__title" data-cal-title aria-live="polite"></span>
+                <button type="button" class="calendar__nav" data-cal-next aria-label="Mois suivant">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+                </button>
+              </div>
+              <div class="calendar__weekdays" aria-hidden="true">
+                <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+              </div>
+              <div class="calendar__grid" data-cal-grid role="grid"></div>
+            </div>
+            <p class="date-range-picker__hint" data-cal-hint>Cliquez la date de début, puis la date de fin.</p>
+          </div>
+        </div>
+
+          <button
+            class="btn btn--green dpe-import-form__submit"
+            type="submit"
+            data-cal-submit
+            disabled
+          >
+            Lancer l'import
+          </button>
+        </div>
+
+        <div class="dpe-import-plan" data-cal-plan hidden>
+          <div class="dpe-import-plan__head">
+            <h3 class="dpe-import-plan__title" data-cal-plan-title>Jours à importer</h3>
+            <button type="button" class="btn btn--ghost btn--sm" data-cal-modify>Modifier</button>
+          </div>
+          <ol class="dpe-import-plan__list" data-cal-dates></ol>
+        </div>
+      </form>
+
+      <div style="margin-top: var(--space-4)">
+        <%- include("partials/admin/dpe-import-status", {
+          importDashboard: importDashboard,
+          jobView: jobView,
+          recentJobs: recentJobs,
+          importError: null,
+        }) %>
+      </div>
+    </section>
+
+    <!-- ----------------------------- SSMSI ---------------------------- -->
+    <section class="panel settings-panel" data-settings-panel="ssmsi" hidden>
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Open data SSMSI</p>
+          <h2 class="panel__title">Import délinquance enregistrée</h2>
+        </div>
+      </div>
+
+      <p class="field__hint">
+        Télécharge automatiquement les fichiers officiels
+        <a href="https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales" target="_blank" rel="noopener noreferrer">SSMSI sur data.gouv</a>
+        (COM ~40 Mo + DEP ~2 Mo, comptez 3 à 8 min). Aucune URL à copier-coller : cliquez sur le bouton ci-dessous et attendez le badge <strong>Terminé</strong> dans le statut.
+      </p>
+
+      <form
+        class="dpe-import-form"
+        method="post"
+        action="/admin/ssmsi/import"
+        hx-post="/admin/ssmsi/import"
+        hx-target="#ssmsi-import-status"
+        hx-swap="outerHTML"
+        <% if (ssmsiDashboard && ssmsiDashboard.running) { %>data-import-blocked="true"<% } %>
+        style="margin-top: var(--space-4)"
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="commune_url" value="<%= ssmsiDefaultCommuneUrl %>" />
+        <input type="hidden" name="dep_url" value="<%= ssmsiDefaultDepUrl %>" />
+        <button class="btn btn--green" type="submit" <%= ssmsiDashboard && ssmsiDashboard.running ? 'disabled' : '' %>>
+          Télécharger et importer depuis data.gouv
+        </button>
+      </form>
+
+      <details class="field" style="margin-top: var(--space-3)">
+        <summary class="field__label" style="cursor: pointer">URL personnalisées (nouveau millésime SSMSI)</summary>
+        <p class="field__hint">Laisser vide pour garder les sources par défaut du serveur.</p>
+        <form
+          class="dpe-import-form"
+          method="post"
+          action="/admin/ssmsi/import"
+          hx-post="/admin/ssmsi/import"
+          hx-target="#ssmsi-import-status"
+          hx-swap="outerHTML"
+          style="margin-top: var(--space-2)"
+        >
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <div class="field">
+            <label class="field__label" for="ssmsi-commune-url">Fichier communal (COM, csv.gz)</label>
+            <input
+              class="field__input"
+              type="url"
+              id="ssmsi-commune-url"
+              name="commune_url"
+              placeholder="<%= ssmsiDefaultCommuneUrl %>"
+            />
+          </div>
+          <div class="field">
+            <label class="field__label" for="ssmsi-dep-url">Fichier départemental (DEP, csv)</label>
+            <input
+              class="field__input"
+              type="url"
+              id="ssmsi-dep-url"
+              name="dep_url"
+              placeholder="<%= ssmsiDefaultDepUrl %>"
+            />
+          </div>
+          <button class="btn btn--ghost btn--sm" type="submit" <%= ssmsiDashboard && ssmsiDashboard.running ? 'disabled' : '' %>>
+            Importer avec ces URL
+          </button>
+        </form>
+      </details>
+
+      <div style="margin-top: var(--space-4)">
+        <%- include("partials/admin/ssmsi-import-status", {
+          ssmsiDashboard: ssmsiDashboard,
+          ssmsiImportError: null,
+          ssmsiImportNotice: null,
+        }) %>
+      </div>
+    </section>
+
+    <!-- ------------------------------ DVF ----------------------------- -->
+    <section class="panel settings-panel" data-settings-panel="dvf" hidden>
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Open data DVF</p>
+          <h2 class="panel__title">Import prix au m² (ventes réelles)</h2>
+        </div>
+      </div>
+
+      <p class="field__hint">
+        Télécharge automatiquement les fichiers géolocalisés
+        <a href="https://files.data.gouv.fr/geo-dvf/latest/csv/" target="_blank" rel="noopener noreferrer">geo-dvf (Etalab)</a>,
+        un par année (<%= dvfDashboard.yearFrom %> à <%= dvfDashboard.yearTo %>). Import national : plusieurs Go téléchargés,
+        comptez un temps conséquent. Les ventes alimentent le prix médian commune, le rayon de 500 m et l'évolution sur ~10 ans.
+        <strong>L'Alsace-Moselle (57, 67, 68) et Mayotte ne sont pas couvertes</strong> (livre foncier).
+      </p>
+
+      <form
+        class="dpe-import-form"
+        method="post"
+        action="/admin/dvf/import"
+        hx-post="/admin/dvf/import"
+        hx-target="#dvf-import-status"
+        hx-swap="outerHTML"
+        <% if (dvfDashboard && dvfDashboard.running) { %>data-import-blocked="true"<% } %>
+        style="margin-top: var(--space-4)"
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <div class="dvf-year-fields">
+          <div class="field dvf-year-fields__field">
+            <label class="field__label" for="dvf-year-from">Année de début</label>
+            <div class="amount-stepper">
+              <input
+                id="dvf-year-from"
+                class="input input--sm"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                name="year_from"
+                data-step="1"
+                data-min="2000"
+                data-max="2100"
+                data-decimals="0"
+                value="<%= dvfDashboard.yearFrom %>"
+                required
+              />
+              <span class="amount-stepper__controls">
+                <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter l'année de début"></button>
+                <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer l'année de début"></button>
+              </span>
+            </div>
+          </div>
+
+          <div class="field dvf-year-fields__field">
+            <label class="field__label" for="dvf-year-to">Année de fin</label>
+            <div class="amount-stepper">
+              <input
+                id="dvf-year-to"
+                class="input input--sm"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                name="year_to"
+                data-step="1"
+                data-min="2000"
+                data-max="2100"
+                data-decimals="0"
+                value="<%= dvfDashboard.yearTo %>"
+                required
+              />
+              <span class="amount-stepper__controls">
+                <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter l'année de fin"></button>
+                <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer l'année de fin"></button>
+              </span>
+            </div>
+          </div>
+
+          <button class="btn btn--green dvf-year-fields__submit" type="submit" <%= dvfDashboard && dvfDashboard.running ? 'disabled' : '' %>>
+            Télécharger et importer
+          </button>
+        </div>
+      </form>
+
+      <div style="margin-top: var(--space-4)">
+        <%- include("partials/admin/dvf-import-status", {
+          dvfDashboard: dvfDashboard,
+          dvfImportError: null,
+          dvfImportNotice: null,
+        }) %>
+      </div>
+    </section>
+
+    <!-- ---------------------------- Recherche ------------------------- -->
+    <section class="panel settings-panel" data-settings-panel="search" hidden>
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Base DPE</p>
+          <h2 class="panel__title">Recherche</h2>
+        </div>
+      </div>
+
+      <form
+        class="dpe-search-form"
+        hx-get="/admin/dpe/search"
+        hx-target="#dpe-results"
+        hx-swap="innerHTML"
+        hx-trigger="submit, input delay:400ms, change"
+      >
+        <%
+          var typeBatiment = search.filters.typeBatiment || '';
+          var typeBatimentLabel = 'Tous';
+          buildingTypes.forEach(function (entry) {
+            if (entry.value === typeBatiment) typeBatimentLabel = entry.label;
+          });
+          var codePostalVal = search.filters.codePostal || '';
+          var codePostalLabel = codePostalVal || 'Code postal';
+          var etiquetteDpe = search.filters.etiquette || '';
+          var etiquetteGes = search.filters.etiquetteGes || '';
+          var etiquettePickerLabel = 'Étiquettes';
+          if (etiquetteDpe && etiquetteGes) {
+            etiquettePickerLabel = 'DPE ' + etiquetteDpe + ' · GES ' + etiquetteGes;
+          } else if (etiquetteDpe) {
+            etiquettePickerLabel = 'DPE ' + etiquetteDpe;
+          } else if (etiquetteGes) {
+            etiquettePickerLabel = 'GES ' + etiquetteGes;
+          }
+          var surfaceMinVal = search.filters.surfaceMin;
+          var surfaceMaxVal = search.filters.surfaceMax;
+          var surfacePickerLabel = 'Surface';
+          if (surfaceMinVal != null && surfaceMaxVal != null) {
+            surfacePickerLabel = surfaceMinVal + ' – ' + surfaceMaxVal + ' m²';
+          } else if (surfaceMinVal != null) {
+            surfacePickerLabel = '≥ ' + surfaceMinVal + ' m²';
+          } else if (surfaceMaxVal != null) {
+            surfacePickerLabel = '≤ ' + surfaceMaxVal + ' m²';
+          }
+          var anneeMinVal = search.filters.anneeMin;
+          var anneeMaxVal = search.filters.anneeMax;
+          var constructionPickerLabel = 'Construction';
+          if (anneeMinVal != null && anneeMaxVal != null) {
+            constructionPickerLabel = anneeMinVal + ' – ' + anneeMaxVal;
+          } else if (anneeMinVal != null) {
+            constructionPickerLabel = '≥ ' + anneeMinVal;
+          } else if (anneeMaxVal != null) {
+            constructionPickerLabel = '≤ ' + anneeMaxVal;
+          }
+        %>
+        <div class="dpe-search-filters">
+          <div
+            class="project-select sort-select dpe-search-filters__type"
+            data-dpe-filter-select
+            data-default-label="Tous"
+          >
+            <input type="hidden" name="type_batiment" value="<%= typeBatiment %>" />
+            <button
+              type="button"
+              class="project-select__trigger"
+              data-dpe-filter-trigger
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-label="Type de bâtiment"
+            >
+              <span class="project-select__label"><%= typeBatimentLabel %></span>
+              <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div class="project-select__menu" data-dpe-filter-menu role="listbox" hidden>
+              <button
+                type="button"
+                class="project-select__option <%= typeBatiment ? '' : 'is-active' %>"
+                data-dpe-filter-option
+                data-value=""
+                role="option"
+                aria-selected="<%= typeBatiment ? 'false' : 'true' %>"
+              >
+                <span class="project-select__option-name">Tous</span>
+              </button>
+              <% buildingTypes.forEach(function (entry) { %>
+                <% var active = typeBatiment === entry.value; %>
+                <button
+                  type="button"
+                  class="project-select__option <%= active ? 'is-active' : '' %>"
+                  data-dpe-filter-option
+                  data-value="<%= entry.value %>"
+                  role="option"
+                  aria-selected="<%= active ? 'true' : 'false' %>"
+                >
+                  <span class="project-select__option-name"><%= entry.label %></span>
+                </button>
+              <% }); %>
+            </div>
+          </div>
+          <div
+            class="dpe-range-picker dpe-postal-picker sort-select"
+            data-dpe-postal-picker
+          >
+            <button
+              type="button"
+              class="project-select__trigger"
+              data-dpe-postal-trigger
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="dpe-postal-popover"
+            >
+              <span class="project-select__label" data-dpe-postal-trigger-label><%= codePostalLabel %></span>
+              <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div
+              class="dpe-range-picker__popover dpe-postal-picker__popover"
+              id="dpe-postal-popover"
+              data-dpe-postal-popover
+              hidden
+              role="dialog"
+              aria-label="Filtrer par code postal"
+            >
+              <div class="dpe-range-picker__head">
+                <button
+                  type="button"
+                  class="dpe-range-picker__close"
+                  data-dpe-postal-dismiss
+                  aria-label="Fermer"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+                <p class="dpe-range-picker__title">Code postal</p>
+              </div>
+              <label class="dpe-postal-picker__field">
+                <span class="dpe-range-picker__field-label">Code postal</span>
+                <input
+                  class="input"
+                  type="text"
+                  name="code_postal"
+                  placeholder="Ex. 75001"
+                  value="<%= codePostalVal %>"
+                  aria-label="Code postal"
+                  inputmode="numeric"
+                  autocomplete="postal-code"
+                />
+              </label>
+            </div>
+          </div>
+          <div
+            class="dpe-range-picker dpe-etiquette-picker sort-select"
+            data-dpe-etiquette-picker
+          >
+            <input type="hidden" name="etiquette" value="<%= etiquetteDpe %>" />
+            <input type="hidden" name="etiquette_ges" value="<%= etiquetteGes %>" />
+            <button
+              type="button"
+              class="project-select__trigger"
+              data-dpe-etiquette-trigger
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="dpe-etiquette-popover"
+            >
+              <span class="project-select__label" data-dpe-etiquette-trigger-label><%= etiquettePickerLabel %></span>
+              <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div
+              class="dpe-range-picker__popover dpe-etiquette-picker__popover"
+              id="dpe-etiquette-popover"
+              data-dpe-etiquette-popover
+              hidden
+              role="dialog"
+              aria-label="Filtrer par étiquette DPE et GES"
+            >
+              <div class="dpe-range-picker__head">
+                <button
+                  type="button"
+                  class="dpe-range-picker__close"
+                  data-dpe-etiquette-dismiss
+                  aria-label="Fermer"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+                <p class="dpe-range-picker__title">DPE &amp; GES</p>
+              </div>
+              <div class="dpe-etiquette-picker__group">
+                <p class="dpe-etiquette-picker__group-label">Étiquette DPE</p>
+                <div class="dpe-etiquette-picker__letters" data-dpe-etiquette-group="etiquette" role="group" aria-label="Étiquette DPE">
+                  <button
+                    type="button"
+                    class="dpe-etiquette-picker__option dpe-etiquette-picker__option--all <%= etiquetteDpe ? '' : 'is-active' %>"
+                    data-dpe-etiquette-option
+                    data-field="etiquette"
+                    data-value=""
+                    aria-pressed="<%= etiquetteDpe ? 'false' : 'true' %>"
+                  >
+                    Toutes
+                  </button>
+                  <% labels.forEach(function (letter) { %>
+                    <% var dpeActive = etiquetteDpe === letter; %>
+                    <button
+                      type="button"
+                      class="dpe-etiquette-picker__option dpe-label dpe-label--<%= letter.toLowerCase() %> <%= dpeActive ? 'is-active' : '' %>"
+                      data-dpe-etiquette-option
+                      data-field="etiquette"
+                      data-value="<%= letter %>"
+                      aria-pressed="<%= dpeActive ? 'true' : 'false' %>"
+                      aria-label="DPE <%= letter %>"
+                    >
+                      <%= letter %>
+                    </button>
+                  <% }); %>
+                </div>
+              </div>
+              <div class="dpe-etiquette-picker__group">
+                <p class="dpe-etiquette-picker__group-label">Étiquette GES</p>
+                <div class="dpe-etiquette-picker__letters" data-dpe-etiquette-group="etiquette_ges" role="group" aria-label="Étiquette GES">
+                  <button
+                    type="button"
+                    class="dpe-etiquette-picker__option dpe-etiquette-picker__option--all <%= etiquetteGes ? '' : 'is-active' %>"
+                    data-dpe-etiquette-option
+                    data-field="etiquette_ges"
+                    data-value=""
+                    aria-pressed="<%= etiquetteGes ? 'false' : 'true' %>"
+                  >
+                    Toutes
+                  </button>
+                  <% labels.forEach(function (letter) { %>
+                    <% var gesActive = etiquetteGes === letter; %>
+                    <button
+                      type="button"
+                      class="dpe-etiquette-picker__option dpe-label dpe-label--<%= letter.toLowerCase() %> <%= gesActive ? 'is-active' : '' %>"
+                      data-dpe-etiquette-option
+                      data-field="etiquette_ges"
+                      data-value="<%= letter %>"
+                      aria-pressed="<%= gesActive ? 'true' : 'false' %>"
+                      aria-label="GES <%= letter %>"
+                    >
+                      <%= letter %>
+                    </button>
+                  <% }); %>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            class="dpe-range-picker sort-select"
+            data-dpe-range-picker
+            data-range-default="Surface"
+            data-range-suffix=" m²"
+            data-range-min="surface_min"
+            data-range-max="surface_max"
+          >
+            <button
+              type="button"
+              class="project-select__trigger"
+              data-dpe-range-trigger
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="dpe-surface-range-popover"
+            >
+              <span class="project-select__label" data-dpe-range-trigger-label><%= surfacePickerLabel %></span>
+              <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div
+              class="dpe-range-picker__popover"
+              id="dpe-surface-range-popover"
+              data-dpe-range-popover
+              hidden
+              role="dialog"
+              aria-label="Filtrer par surface habitable"
+            >
+              <div class="dpe-range-picker__head">
+                <button
+                  type="button"
+                  class="dpe-range-picker__close"
+                  data-dpe-range-dismiss
+                  aria-label="Fermer"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+                <p class="dpe-range-picker__title">Surface habitable</p>
+              </div>
+              <div class="dpe-range-picker__range">
+                <div class="dpe-range-picker__field">
+                  <span class="dpe-range-picker__field-label">Min</span>
+                  <div class="dpe-range-picker__input-wrap">
+                    <input
+                      class="input"
+                      type="number"
+                      name="surface_min"
+                      placeholder="—"
+                      min="0"
+                      step="1"
+                      inputmode="decimal"
+                      value="<%= surfaceMinVal != null ? surfaceMinVal : '' %>"
+                      aria-label="Surface habitable minimum en m²"
+                    />
+                    <span class="dpe-range-picker__unit" aria-hidden="true">m²</span>
+                  </div>
+                </div>
+                <div class="dpe-range-picker__field">
+                  <span class="dpe-range-picker__field-label">Max</span>
+                  <div class="dpe-range-picker__input-wrap">
+                    <input
+                      class="input"
+                      type="number"
+                      name="surface_max"
+                      placeholder="—"
+                      min="0"
+                      step="1"
+                      inputmode="decimal"
+                      value="<%= surfaceMaxVal != null ? surfaceMaxVal : '' %>"
+                      aria-label="Surface habitable maximum en m²"
+                    />
+                    <span class="dpe-range-picker__unit" aria-hidden="true">m²</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            class="dpe-range-picker sort-select"
+            data-dpe-range-picker
+            data-range-default="Construction"
+            data-range-suffix=""
+            data-range-min="annee_min"
+            data-range-max="annee_max"
+          >
+            <button
+              type="button"
+              class="project-select__trigger"
+              data-dpe-range-trigger
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="dpe-construction-range-popover"
+            >
+              <span class="project-select__label" data-dpe-range-trigger-label><%= constructionPickerLabel %></span>
+              <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div
+              class="dpe-range-picker__popover"
+              id="dpe-construction-range-popover"
+              data-dpe-range-popover
+              hidden
+              role="dialog"
+              aria-label="Filtrer par année de construction"
+            >
+              <div class="dpe-range-picker__head">
+                <button
+                  type="button"
+                  class="dpe-range-picker__close"
+                  data-dpe-range-dismiss
+                  aria-label="Fermer"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+                <p class="dpe-range-picker__title">Année de construction</p>
+              </div>
+              <div class="dpe-range-picker__range">
+                <div class="dpe-range-picker__field">
+                  <span class="dpe-range-picker__field-label">Min</span>
+                  <div class="dpe-range-picker__input-wrap">
+                    <input
+                      class="input"
+                      type="number"
+                      name="annee_min"
+                      placeholder="—"
+                      min="1000"
+                      max="2100"
+                      step="1"
+                      inputmode="numeric"
+                      value="<%= anneeMinVal != null ? anneeMinVal : '' %>"
+                      aria-label="Année de construction minimum"
+                    />
+                  </div>
+                </div>
+                <div class="dpe-range-picker__field">
+                  <span class="dpe-range-picker__field-label">Max</span>
+                  <div class="dpe-range-picker__input-wrap">
+                    <input
+                      class="input"
+                      type="number"
+                      name="annee_max"
+                      placeholder="—"
+                      min="1000"
+                      max="2100"
+                      step="1"
+                      inputmode="numeric"
+                      value="<%= anneeMaxVal != null ? anneeMaxVal : '' %>"
+                      aria-label="Année de construction maximum"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+
+      <div id="dpe-results">
+        <%- include("partials/admin/dpe-table", {
+          records: search.records,
+          filters: search.filters,
+          pagination: search.pagination,
+        }) %>
+      </div>
+    </section>
+
+    <!-- --------------------------- Utilisateurs ----------------------- -->
+    <section class="panel settings-panel" data-settings-panel="users" hidden>
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Comptes</p>
+          <h2 class="panel__title">Utilisateurs</h2>
+        </div>
+      </div>
+
+      <p class="field__hint" style="margin-bottom: var(--space-4)">
+        Réinitialisez un mot de passe ou supprimez un utilisateur.
+        Cliquez sur une ligne ou sur « Gérer » pour ouvrir la fiche du compte.
+      </p>
+
+      <form
+        class="admin-users-search"
+        role="search"
+        hx-get="/admin/users/list"
+        hx-trigger="input changed delay:300ms, submit"
+        hx-target="#admin-users-results"
+        hx-swap="outerHTML"
+      >
+        <div class="field admin-users-search__field">
+          <label class="field__label" for="admin-users-q">Rechercher par e-mail</label>
+          <div class="admin-users-search__wrap">
+            <svg class="admin-users-search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              class="input admin-users-search__input"
+              type="search"
+              id="admin-users-q"
+              name="user_q"
+              value="<%= users.filters.q || '' %>"
+              placeholder="ex. nom@domaine.fr"
+              autocomplete="off"
+            />
+          </div>
+        </div>
+      </form>
+
+      <%- include("partials/admin/users-table", {
+        records: users.records,
+        filters: users.filters,
+        pagination: users.pagination,
+        adminEmail: adminEmail,
+        currentUserId: currentUserId,
+      }) %>
+    </section>
+
+    <!-- ---------------------- Paramétrage financement ----------------- -->
+    <section class="panel settings-panel" data-settings-panel="financing" hidden>
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Tableau de financement</p>
+          <h2 class="panel__title">Financement</h2>
+        </div>
+      </div>
+
+      <p class="field__hint" style="margin-bottom: var(--space-5)">
+        Taux indicatifs appliqués à toutes les simulations (frais de notaire forfaitaires,
+        garantie, valeurs par défaut du crédit et taux d'endettement). Les droits de mutation
+        varient selon le département : ces valeurs restent des estimations.
+      </p>
+
+      <%
+        var pct = function (rate) {
+          return (rate * 100).toLocaleString('fr-FR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+        };
+      %>
+
+      <form class="financing-admin-form" method="post" action="/admin/financing">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+        <div class="financing-admin-form__columns">
+          <div class="financing-admin-form__rule" aria-hidden="true"></div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--left financing-admin-form__field--row-1">
+          <label class="field__label" for="admin-notary-rate-old">Frais de notaire — ancien (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-notary-rate-old"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="notary_rate_old"
+              data-step="0.01"
+              data-min="0"
+              data-max="25"
+              data-decimals="2"
+              value="<%= pct(financing.notaryRateOld) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter les frais de notaire ancien de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer les frais de notaire ancien de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--right financing-admin-form__field--row-1">
+          <label class="field__label" for="admin-notary-rate-new">Frais de notaire — neuf (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-notary-rate-new"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="notary_rate_new"
+              data-step="0.01"
+              data-min="0"
+              data-max="25"
+              data-decimals="2"
+              value="<%= pct(financing.notaryRateNew) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter les frais de notaire neuf de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer les frais de notaire neuf de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--left financing-admin-form__field--row-2">
+          <label class="field__label" for="admin-guarantee-rate">Garantie emprunteur (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-guarantee-rate"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="guarantee_rate"
+              data-step="0.01"
+              data-min="0"
+              data-max="10"
+              data-decimals="2"
+              value="<%= pct(financing.guaranteeRate) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter la garantie de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer la garantie de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--right financing-admin-form__field--row-2">
+          <label class="field__label" for="admin-debt-ratio">Taux d'endettement max. (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-debt-ratio"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="debt_ratio"
+              data-step="1"
+              data-min="1"
+              data-max="100"
+              data-decimals="0"
+              value="<%= pct(financing.debtRatio) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le taux d'endettement d'un point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le taux d'endettement d'un point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--left financing-admin-form__field--row-3">
+          <label class="field__label" for="admin-interest-rate">Taux nominal par défaut (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-interest-rate"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="interest_rate"
+              data-step="0.01"
+              data-min="0"
+              data-max="25"
+              data-decimals="2"
+              value="<%= pct(financing.interestRate) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le taux nominal de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le taux nominal de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--right financing-admin-form__field--row-3">
+          <label class="field__label" for="admin-insurance-rate">Assurance emprunteur par défaut (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-insurance-rate"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="insurance_rate"
+              data-step="0.01"
+              data-min="0"
+              data-max="5"
+              data-decimals="2"
+              value="<%= pct(financing.insuranceRate) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter l'assurance de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer l'assurance de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--left financing-admin-form__field--row-4">
+          <label class="field__label" for="admin-years">Durée par défaut (ans)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-years"
+              class="input input--sm"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              name="years"
+              data-step="1"
+              data-min="1"
+              data-max="40"
+              data-decimals="0"
+              value="<%= financing.years %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter la durée d'un an"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer la durée d'un an"></button>
+            </span>
+          </div>
+        </div>
+        </div>
+
+        <div class="financing-admin-form__actions">
+          <button class="btn btn--green" type="submit">Enregistrer</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+
+<div class="modal modal--admin-user" id="admin-user-modal" hidden>
+  <div class="modal__overlay" data-admin-user-dismiss></div>
+  <div
+    class="modal__dialog modal__dialog--wide admin-user-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="admin-user-modal-title"
+  >
+    <button
+      type="button"
+      class="modal__close admin-user-dialog__close"
+      data-admin-user-dismiss
+      aria-label="Fermer"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+    <div class="admin-user-dialog__content" data-admin-user-content>
+      <p class="admin-user-dialog__loading">Chargement…</p>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,138 @@
+<div
+  class="modal listing-address-modal"
+  id="listing-address-modal"
+  hidden
+  data-listing-address-modal
+>
+  <div class="modal__overlay" data-listing-address-dismiss></div>
+  <div
+    class="modal__dialog listing-address-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="listing-address-modal-title"
+  >
+    <button
+      type="button"
+      class="modal__close"
+      data-listing-address-dismiss
+      aria-label="Fermer"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+
+    <h2 class="modal__title" id="listing-address-modal-title">Adresse réelle du bien</h2>
+    <p class="listing-address-dialog__lead">
+      Indiquez l'adresse la plus précise possible. Elle sera géocodée pour
+      afficher le bien sur la carte.
+    </p>
+
+    <form
+      id="listing-address-form"
+      class="listing-address-form"
+      method="post"
+      action="/listings/<%= listing.id %>/address"
+      hx-post="/listings/<%= listing.id %>/address"
+      hx-target="#listing-location-block"
+      hx-swap="outerHTML"
+      hx-indicator="#listing-address-modal .listing-address-dialog__overlay"
+      data-listing-address-form
+    >
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+      <div class="listing-address-dialog__overlay" aria-hidden="true">
+        <span class="spinner" role="status" aria-label="Enregistrement…"></span>
+      </div>
+
+      <label class="field">
+        <span class="field__label">Numéro et voie</span>
+        <input
+          class="input"
+          type="text"
+          name="street"
+          maxlength="120"
+          placeholder="12 rue de Rivoli"
+          autocomplete="address-line1"
+          required
+          data-listing-address-street
+        />
+      </label>
+
+      <div class="listing-address-form__row">
+        <label class="field listing-address-form__postal">
+          <span class="field__label">Code postal</span>
+          <input
+            class="input"
+            type="text"
+            name="postal_code"
+            inputmode="numeric"
+            pattern="[0-9]{5}"
+            maxlength="5"
+            placeholder="75001"
+            autocomplete="postal-code"
+            required
+            data-listing-address-postal
+          />
+        </label>
+        <label class="field listing-address-form__city">
+          <span class="field__label">Ville</span>
+          <input
+            class="input"
+            type="text"
+            name="city"
+            maxlength="80"
+            placeholder="Paris"
+            autocomplete="address-level2"
+            required
+            data-listing-address-city
+          />
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field__label">Complément <span class="field__optional">(facultatif)</span></span>
+        <input
+          class="input"
+          type="text"
+          name="complement"
+          maxlength="80"
+          placeholder="Bâtiment B, 3ᵉ étage…"
+          autocomplete="address-line2"
+          data-listing-address-complement
+        />
+      </label>
+    </form>
+
+    <div class="modal__actions listing-address-form__actions">
+      <button type="button" class="btn btn--ghost" data-listing-address-dismiss>
+        Annuler
+      </button>
+      <% if (listing.user_address) { %>
+        <form
+          class="listing-address-form__clear"
+          method="post"
+          action="/listings/<%= listing.id %>/address"
+          hx-post="/listings/<%= listing.id %>/address"
+          hx-target="#listing-location-block"
+          hx-swap="outerHTML"
+          hx-indicator="#listing-address-modal .listing-address-dialog__overlay"
+          data-confirm="Effacer l'adresse réelle de ce bien ?"
+        >
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <input type="hidden" name="street" value="" />
+          <input type="hidden" name="postal_code" value="" />
+          <input type="hidden" name="city" value="" />
+          <button type="submit" class="btn btn--ghost btn--danger-ghost">
+            Effacer
+          </button>
+        </form>
+      <% } %>
+      <button type="submit" class="btn btn--green" form="listing-address-form">
+        <span class="btn__spinner" aria-hidden="true"></span>
+        <span class="btn__label">Enregistrer</span>
+      </button>
+    </div>
+  </div>
+</div>

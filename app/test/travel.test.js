@@ -65,8 +65,18 @@ test("sans clé ORS, le calcul se déclare indisponible", async () => {
         }),
       (err) => err.code === "travel_unavailable" && err.status === 503
     );
-    // Le géocodage best-effort ne lève jamais : il renvoie simplement null.
-    assert.equal(await service.geocodeAddress("Paris"), null);
+    stubFetch([
+      [
+        "api-adresse.data.gouv.fr",
+        () => geocode(48.86, 2.35, "Paris"),
+      ],
+    ]);
+    // Sans clé ORS, repli sur la BAN.
+    assert.deepEqual(await service.geocodeAddress("Paris"), {
+      lat: 48.86,
+      lon: 2.35,
+      label: "Paris",
+    });
   } finally {
     config.openRouteService.apiKey = original;
   }
@@ -187,6 +197,23 @@ test("geocodeAddress renvoie des coordonnées quand ORS répond", async () => {
       lat: 48.86,
       lon: 2.35,
       label: "Paris, France",
+    });
+  } finally {
+    restore();
+  }
+});
+
+test("geocodeAddress utilise la BAN si ORS refuse le géocodage", async () => {
+  const { service, restore } = configuredService();
+  stubFetch([
+    ["/geocode/search", () => jsonResponse({ error: "disallowed" }, { ok: false, status: 403 })],
+    ["api-adresse.data.gouv.fr", () => geocode(48.86, 2.35, "Paris")],
+  ]);
+  try {
+    assert.deepEqual(await service.geocodeAddress("Paris"), {
+      lat: 48.86,
+      lon: 2.35,
+      label: "Paris",
     });
   } finally {
     restore();

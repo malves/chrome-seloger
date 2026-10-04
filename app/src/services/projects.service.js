@@ -6,6 +6,8 @@
  * retombe dans le projet par défaut du compte.
  */
 
+import { normalizeAddressKey } from "../lib/address-normalize.js";
+
 export const MAX_NAME_LENGTH = 60;
 export const DEFAULT_PROJECT_NAME = "Recherche principale";
 
@@ -260,12 +262,33 @@ export default function createProjectsService({ repositories }) {
    * puis est reliée au projet. Les coordonnées fournies (géocodage côté serveur)
    * complètent une entrée de carnet encore non localisée ; `null` est accepté.
    */
-  function addAddress(userId, projectId, { label, address, lat = null, lng = null }) {
+  async function addAddress(
+    userId,
+    projectId,
+    { label, address, lat = null, lng = null },
+    travel = null
+  ) {
     const project = repositories.projects.findById(userId, projectId);
     if (!project) return { address: null, error: "Projet introuvable." };
 
     const cleaned = cleanAddress(address);
     if (!cleaned) return { address: null, error: "Saisissez une adresse." };
+
+    let resolvedLat = lat;
+    let resolvedLng = lng;
+    if (resolvedLat == null || resolvedLng == null) {
+      const known = findUserAddressCoords(userId, cleaned);
+      if (known) {
+        resolvedLat = known.lat;
+        resolvedLng = known.lng;
+      } else if (travel?.geocodeAddress) {
+        const geo = await travel.geocodeAddress(cleaned);
+        if (geo) {
+          resolvedLat = geo.lat;
+          resolvedLng = geo.lon;
+        }
+      }
+    }
 
     // Upsert dans le carnet : réutilise l'entrée existante, sinon la crée.
     let entry = repositories.addresses.findByAddress(userId, cleaned);
@@ -274,18 +297,17 @@ export default function createProjectsService({ repositories }) {
         userId,
         label: cleanLabel(label),
         address: cleaned,
-        lat,
-        lng,
+        lat: resolvedLat,
+        lng: resolvedLng,
       });
-    } else if (entry.lat == null && lat != null && lng != null) {
-      // Complète les coordonnées manquantes avec un géocodage frais.
+    } else if (entry.lat == null && resolvedLat != null && resolvedLng != null) {
       entry = repositories.addresses.update({
         id: entry.id,
         userId,
         label: entry.label,
         address: entry.address,
-        lat,
-        lng,
+        lat: resolvedLat,
+        lng: resolvedLng,
       });
     }
 
@@ -333,10 +355,24 @@ export default function createProjectsService({ repositories }) {
   function findUserAddressCoords(userId, addressText) {
     const cleaned = cleanAddress(addressText);
     if (!cleaned) return null;
-    const entry = repositories.addresses.findByAddress(userId, cleaned);
-    return entry && entry.lat != null && entry.lng != null
-      ? { lat: entry.lat, lng: entry.lng }
-      : null;
+
+    const exact = repositories.addresses.findByAddress(userId, cleaned);
+    if (exact?.lat != null && exact?.lng != null) {
+      return { lat: exact.lat, lng: exact.lng };
+    }
+
+    const key = normalizeAddressKey(cleaned);
+    if (!key) return null;
+    for (const row of repositories.addresses.listByUser(userId)) {
+      if (
+        row.lat != null &&
+        row.lng != null &&
+        normalizeAddressKey(row.address) === key
+      ) {
+        return { lat: row.lat, lng: row.lng };
+      }
+    }
+    return null;
   }
 
   /**

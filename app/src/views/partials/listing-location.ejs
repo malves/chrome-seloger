@@ -1,0 +1,191 @@
+<%
+  var declaredCity = listing.city || null;
+  var declaredPostal = listing.postal_code || null;
+  var declaredLine = [declaredCity, declaredPostal ? '(' + declaredPostal + ')' : null]
+    .filter(Boolean)
+    .join(' ');
+  var parts = fmt.parseUserAddress(listing.user_address);
+  var hasAddress = Boolean(listing.user_address);
+  var located = listing.user_lat != null && listing.user_lng != null;
+  var mapsQuery = located
+    ? listing.user_lat + ',' + listing.user_lng
+    : listing.user_address;
+  var sourceLabel = listing.user_address_source === 'detected'
+    ? 'Détectée automatiquement'
+    : 'Adresse saisie manuellement';
+%>
+<div class="panel listing-location" id="listing-location">
+  <div class="address-book__overlay listing-location__overlay" aria-hidden="true">
+    <span class="spinner" role="status" aria-label="Chargement…"></span>
+  </div>
+
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Localisation</p>
+      <h2 class="panel__title">Aide à la localisation</h2>
+    </div>
+  </div>
+
+  <div class="listing-location__grid">
+    <!-- Colonne gauche : annonce puis adresse réelle -->
+    <div class="listing-location__col listing-location__col--stack">
+      <section class="listing-location__section" aria-labelledby="listing-location-declared-title">
+        <h3 class="listing-location__col-title" id="listing-location-declared-title">
+          Localisation annoncée
+        </h3>
+        <p class="field__hint listing-location__col-hint">
+          Repère issu de l'annonce (souvent imprécis).
+        </p>
+        <div class="listing-location__card listing-location__card--muted">
+          <% if (declaredLine) { %>
+            <p class="listing-location__place"><%= declaredCity || declaredLine %></p>
+            <% if (declaredPostal) { %>
+              <p class="listing-location__postal"><%= declaredPostal %></p>
+            <% } %>
+          <% } else { %>
+            <p class="listing-location__empty">Non précisée</p>
+          <% } %>
+        </div>
+      </section>
+
+      <section class="listing-location__section" aria-labelledby="listing-location-real-title">
+        <h3 class="listing-location__col-title" id="listing-location-real-title">Adresse réelle</h3>
+        <p class="field__hint listing-location__col-hint">
+          Saisissez l'adresse manuellement si vous la connaissez, ou laissez l'IA la déterminer.
+        </p>
+
+        <% if (hasAddress) { %>
+          <div
+            class="listing-location__card listing-location__card--accent listing-location__card--editable"
+            data-listing-address-open
+            data-street="<%= parts.street %>"
+            data-complement="<%= parts.complement %>"
+            data-postal-code="<%= parts.postalCode %>"
+            data-city="<%= parts.city %>"
+            role="button"
+            tabindex="0"
+            aria-label="Modifier l'adresse réelle du bien"
+          >
+            <% if (located) { %>
+              <span class="badge listing-location__geo-badge listing-location__geo-badge--ok">Localisée</span>
+            <% } else { %>
+              <span class="badge listing-location__geo-badge listing-location__geo-badge--pending">À géocoder</span>
+            <% } %>
+            <p class="listing-location__street"><%= parts.street %></p>
+            <% if (parts.complement) { %>
+              <p class="listing-location__complement"><%= parts.complement %></p>
+            <% } %>
+            <div class="listing-location__locality-row">
+              <% if (parts.postalCode || parts.city) { %>
+                <p class="listing-location__locality">
+                  <%= [parts.postalCode, parts.city].filter(Boolean).join(' ') %>
+                </p>
+              <% } else { %>
+                <span class="listing-location__locality listing-location__locality--empty"></span>
+              <% } %>
+              <span class="badge badge--muted listing-location__source-badge"><%= sourceLabel %></span>
+            </div>
+          </div>
+          <div class="address-book__meta listing-location__meta">
+            <div class="listing-location__meta-toolbar">
+              <a
+                class="address-book__map listing-location__maps-link"
+                href="https://www.google.com/maps/search/?api=1&amp;query=<%= encodeURIComponent(mapsQuery) %>"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Ouvrir l'adresse dans Google Maps (nouvel onglet)"
+              >Google Maps ↗</a>
+              <div class="listing-location__actions">
+                <button
+                  type="button"
+                  class="btn btn--ghost btn--sm listing-location__cta listing-location__cta--inline"
+                  data-listing-address-open
+                  data-street="<%= parts.street %>"
+                  data-complement="<%= parts.complement %>"
+                  data-postal-code="<%= parts.postalCode %>"
+                  data-city="<%= parts.city %>"
+                >
+                  Modifier l'adresse
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--ghost btn--sm listing-location__ai-btn"
+                  data-listing-address-ai-open
+                  aria-haspopup="dialog"
+                >
+                  Déterminer l'adresse via IA
+                </button>
+              </div>
+            </div>
+          </div>
+        <% } else { %>
+          <div class="listing-location__card listing-location__card--empty">
+            <p class="listing-location__empty-title">Aucune adresse renseignée</p>
+            <p class="listing-location__empty-text">
+              Ajoutez l'adresse exacte pour localiser le bien sur la carte.
+            </p>
+            <div class="listing-location__empty-actions">
+              <button
+                type="button"
+                class="btn btn--green btn--sm"
+                data-listing-address-open
+                data-street=""
+                data-complement=""
+                data-postal-code="<%= declaredPostal || '' %>"
+                data-city="<%= declaredCity || '' %>"
+              >
+                Saisir une adresse
+              </button>
+              <button
+                type="button"
+                class="btn btn--ghost btn--sm listing-location__ai-btn"
+                data-listing-address-ai-open
+                aria-haspopup="dialog"
+              >
+                Déterminer l'adresse via IA
+              </button>
+            </div>
+          </div>
+        <% } %>
+      </section>
+    </div>
+
+    <!-- Colonne droite : carte OSM si localisée, sinon visuel d'attente -->
+    <div class="listing-location__col listing-location__col--map">
+      <h3 class="listing-location__col-title listing-location__map-title">Carte</h3>
+      <% if (located) { %>
+        <div
+          class="listing-location__map listing-location__map--live"
+          data-listing-map
+          data-lat="<%= listing.user_lat %>"
+          data-lng="<%= listing.user_lng %>"
+          data-basemap-config="<%= encodeURIComponent(JSON.stringify(basemap)) %>"
+        >
+          <div
+            class="listing-location__map-view"
+            data-listing-map-view
+            role="application"
+            aria-label="Carte OpenStreetMap du bien"
+            tabindex="0"
+          ></div>
+        </div>
+      <% } else { %>
+        <div
+          class="listing-location__map"
+          data-listing-map
+          role="img"
+          aria-label="Carte indisponible tant qu'aucune adresse réelle n'est localisée"
+        >
+          <div class="listing-location__map-grid" aria-hidden="true"></div>
+          <div class="listing-location__map-placeholder">
+            <span class="listing-location__map-icon" aria-hidden="true">📍</span>
+            <p class="listing-location__map-placeholder-title">Carte en attente</p>
+            <p class="listing-location__map-placeholder-text">
+              Saisissez ou déterminez l'adresse réelle pour afficher le bien ici.
+            </p>
+          </div>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
