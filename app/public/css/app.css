@@ -771,14 +771,22 @@ img {
   color: #fff;
 }
 
-.card__fav {
+.card__actions {
   position: absolute;
   top: var(--space-3);
   right: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
-/* Bouton favori : fond clair toujours visible par-dessus la photo. */
-.card__fav-btn {
+.card__fav,
+.card__delete {
+  margin: 0;
+}
+
+/* Boutons favori / suppression : fond clair par-dessus la photo. */
+.card__action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -794,26 +802,37 @@ img {
   cursor: pointer;
   box-shadow: var(--shadow-card);
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
-    transform 0.15s ease;
+    transform 0.15s ease, opacity 0.15s ease;
 }
 
-.card__fav-btn:hover {
+.card__action-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.card__action-btn:hover {
   background: #ffffff;
   transform: scale(1.05);
 }
 
-/* Étoile vide (ajout aux favoris) : visible seulement au survol de la carte. */
+/* Poubelle et étoile vide : visibles seulement au survol de la carte. */
+.card__delete-btn,
 .card__fav-btn:not(.is-active) {
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease,
-    border-color 0.15s ease, transform 0.15s ease;
 }
 
+.card:hover .card__delete-btn,
+.card:focus-within .card__delete-btn,
 .card:hover .card__fav-btn:not(.is-active),
 .card:focus-within .card__fav-btn:not(.is-active) {
   opacity: 1;
   pointer-events: auto;
+}
+
+.card__delete-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 /* En favori : fond jaune et étoile toujours présente sur son fond. */

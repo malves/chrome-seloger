@@ -24,8 +24,33 @@
     </span>
   </a>
 
-  <div class="card__fav">
+  <div class="card__actions">
     <form
+      class="card__delete"
+      method="post"
+      action="/listings/<%= listing.id %>/delete"
+      hx-post="/listings/<%= listing.id %>/delete"
+      hx-target="closest .card"
+      hx-swap="delete"
+      data-confirm="Supprimer cette annonce ? Cette action est irréversible."
+      data-confirm-title="Supprimer l'annonce"
+    >
+      <button
+        class="card__action-btn card__delete-btn"
+        type="submit"
+        title="Supprimer l'annonce"
+        aria-label="Supprimer l'annonce"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 6h18" />
+          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+        </svg>
+      </button>
+    </form>
+
+    <form
+      class="card__fav"
       hx-post="/listings/<%= listing.id %>"
       hx-target="closest .card"
       hx-swap="outerHTML"
@@ -33,7 +58,7 @@
       <input type="hidden" name="view" value="card" />
       <input type="hidden" name="is_favorite" value="<%= listing.is_favorite ? '0' : '1' %>" />
       <button
-        class="card__fav-btn<%= listing.is_favorite ? ' is-active' : '' %>"
+        class="card__action-btn card__fav-btn<%= listing.is_favorite ? ' is-active' : '' %>"
         type="submit"
         title="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"
         aria-label="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"

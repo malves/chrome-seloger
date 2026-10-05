@@ -644,6 +644,9 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       const listing = loadListing(req);
       repositories.listings.remove(req.user.id, listing.id);
       logActivity(logger, req, "annonce supprimée", { listingId: listing.id });
+      if (req.get("hx-request")) {
+        return res.status(200).send("");
+      }
       req.session.flash = { type: "success", message: "Annonce supprimée." };
       return res.redirect("/listings");
     } catch (err) {

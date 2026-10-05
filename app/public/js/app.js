@@ -1186,13 +1186,19 @@
       var total = slides.length;
       var index = 0;
 
-      function render() {
+      function render(scrollActiveThumb) {
         track.style.transform = "translateX(" + -index * 100 + "%)";
         if (counter) counter.textContent = index + 1 + " / " + total;
         thumbs.forEach(function (thumb, i) {
           var active = i === index;
           thumb.classList.toggle("is-active", active);
-          if (active && typeof thumb.scrollIntoView === "function") {
+          // Ne pas scroller la page au chargement : scrollIntoView sur la
+          // miniature active remontait l'utilisateur au-dessus de l'en-tête.
+          if (
+            scrollActiveThumb &&
+            active &&
+            typeof thumb.scrollIntoView === "function"
+          ) {
             thumb.scrollIntoView({ block: "nearest", inline: "nearest" });
           }
         });
@@ -1201,7 +1207,7 @@
       // Navigation circulaire : les flèches restent toujours actives.
       function go(target) {
         index = (target % total + total) % total;
-        render();
+        render(true);
       }
 
       if (prev) {
@@ -1256,7 +1262,7 @@
         });
       }
 
-      render();
+      render(false);
     });
   })();
 
@@ -2765,9 +2771,13 @@
       var candidates = payload.candidates || [];
       var mode = payload.mode || "?";
       var missing = payload.champsRequisManquants || [];
+      var fallbackNote = payload.fallbackFrom
+        ? " (repli depuis " + payload.fallbackFrom + ")"
+        : "";
       var rootLabel =
         "[Déterminer l'adresse] mode " +
         mode +
+        fallbackNote +
         " — " +
         candidates.length +
         " candidat(s)";
@@ -2775,6 +2785,7 @@
       function criteriaRows() {
         return [
           { critere: "Code postal", valeur: crit.codePostal ?? "(vide)" },
+          { critere: "Département", valeur: crit.departement ?? "(vide)" },
           { critere: "Type (annonce)", valeur: crit.typeBien ?? "(vide)" },
           { critere: "Type DPE", valeur: crit.typeBatiment ?? "(vide)" },
           { critere: "DPE", valeur: crit.dpe ?? "(vide)" },

@@ -1,13 +1,10 @@
 /**
- * « Déterminer l'adresse » — mode de recherche précis.
+ * « Déterminer l'adresse » — recherche DPE puis repli département.
  *
- * À partir des critères d'une annonce (code postal, type de bien, surface,
- * étiquettes DPE/GES, étage, année), on interroge la base DPE open data avec
- * des filtres stricts (CP + type + surface ±3%), puis on note chaque DPE selon
- * le nombre de critères concordants et on regroupe les résultats par adresse.
- *
- * C'est le premier maillon : des modes de recherche élargis (moins de critères)
- * viendront en repli plus tard.
+ * 1. Mode précis : code postal + type + surface ±3 %, scoring multi-critères.
+ * 2. Repli département : mêmes filtres type/surface, territoire = département
+ *    (ex. 92 au lieu de 92210) si aucun candidat ou si toutes les confiances
+ *    sont très basses.
  */
 
 import {
@@ -21,6 +18,14 @@ const SURFACE_MARGIN = 0.03;
 
 /** Nombre maximum d'adresses candidates renvoyées. */
 const MAX_CANDIDATES = 6;
+
+/** En dessous, on relance la même recherche au niveau département. */
+export const LOW_CONFIDENCE_THRESHOLD = 50;
+
+export function needsDepartmentFallback(candidates) {
+  if (!candidates?.length) return true;
+  return candidates.every((c) => (c.confidence ?? 0) < LOW_CONFIDENCE_THRESHOLD);
+}
 
 /** Points attribués par critère concordant (base = appartenance CP + type). */
 const WEIGHTS = {
@@ -193,19 +198,95 @@ function addressKey(record) {
   ).trim();
 }
 
+function buildCandidates(records, criteria) {
+  const byAddress = new Map();
+  for (const record of records) {
+    const { confidence, matched } = scoreRecord(record, criteria);
+    const key = addressKey(record);
+    const postalCode = record.code_postal_ban || criteria.codePostal;
+    const city = record.nom_commune_ban || null;
+    const street =
+      streetFromBan(record.adresse_ban, postalCode, city) ||
+      record.adresse_brut ||
+      null;
+    const locality = [postalCode, city].filter(Boolean).join(" ");
+    const mapsQuery =
+      record.adresse_ban ||
+      [street, postalCode, city].filter(Boolean).join(", ");
+
+    const existing = byAddress.get(key);
+    if (!existing) {
+      byAddress.set(key, {
+        street,
+        locality,
+        postalCode: postalCode || null,
+        city,
+        confidence,
+        dpeCount: 1,
+        mapsQuery,
+        matched,
+        numeroDpe: record.numero_dpe,
+        source: recordDebug(record),
+      });
+    } else {
+      existing.dpeCount += 1;
+      if (confidence > existing.confidence) {
+        existing.confidence = confidence;
+        existing.matched = matched;
+        existing.numeroDpe = record.numero_dpe;
+        existing.source = recordDebug(record);
+      }
+    }
+  }
+
+  return Array.from(byAddress.values())
+    .sort((a, b) => b.confidence - a.confidence || b.dpeCount - a.dpeCount)
+    .slice(0, MAX_CANDIDATES);
+}
+
 export default function createAddressAiService({ repositories, logger } = {}) {
   const repo = repositories.dpe;
 
+  function runTerritorySearch({ criteria, typeBatiments, territory, listingId }) {
+    const surfaceMin = criteria.surfaceM2 * (1 - SURFACE_MARGIN);
+    const surfaceMax = criteria.surfaceM2 * (1 + SURFACE_MARGIN);
+    const filters = {
+      typeBatiments,
+      surfaceMin,
+      surfaceMax,
+      ...(territory === "departement"
+        ? { departement: criteria.departement }
+        : { codePostal: criteria.codePostal }),
+    };
+    const records = repo.searchAddressCandidates(filters);
+    const candidates = buildCandidates(records, criteria);
+    logger?.info?.(
+      {
+        listingId,
+        mode: territory,
+        records: records.length,
+        candidates: candidates.length,
+        ...(territory === "departement"
+          ? { departement: criteria.departement }
+          : { codePostal: criteria.codePostal }),
+      },
+      territory === "departement"
+        ? "address-ai/search (mode département)"
+        : "address-ai/search (mode précis)"
+    );
+    return { records, candidates };
+  }
+
   /**
-   * Recherche précise des adresses candidates pour une annonce.
-   * @returns {{ mode: string, criteria: object, champsRequisManquants: string[], candidates: object[] }}
+   * Recherche des adresses candidates pour une annonce (CP puis repli département).
+   * @returns {{ mode: string, criteria: object, champsRequisManquants: string[], candidates: object[], fallbackFrom?: string }}
    */
   function search(listing) {
     const payload = listingDpeSearchCriteria(listing);
     const criteria = payload.criteres;
     const typeBatiments = dpeBuildingTypesFor(listing.property_type);
 
-    // Prérequis du mode précis : code postal, type de bien, surface.
+    // Prérequis : code postal, type de bien, surface.
     const champsRequisManquants = [];
     if (!criteria.codePostal) champsRequisManquants.push("codePostal");
     if (!typeBatiments.length) champsRequisManquants.push("typeBatiment");
@@ -215,72 +296,39 @@ export default function createAddressAiService({ repositories, logger } = {}) {
       return { mode: "precise", criteria, champsRequisManquants, candidates: [] };
     }
 
-    const surfaceMin = criteria.surfaceM2 * (1 - SURFACE_MARGIN);
-    const surfaceMax = criteria.surfaceM2 * (1 + SURFACE_MARGIN);
-
-    const records = repo.searchAddressCandidates({
-      codePostal: criteria.codePostal,
+    const precise = runTerritorySearch({
+      criteria,
       typeBatiments,
-      surfaceMin,
-      surfaceMax,
+      territory: "precise",
+      listingId: listing.id,
     });
 
-    // Regroupement par adresse : on retient le meilleur score et le nombre de
-    // DPE rattachés.
-    const byAddress = new Map();
-    for (const record of records) {
-      const { confidence, matched } = scoreRecord(record, criteria);
-      const key = addressKey(record);
-      const postalCode = record.code_postal_ban || criteria.codePostal;
-      const city = record.nom_commune_ban || null;
-      const street =
-        streetFromBan(record.adresse_ban, postalCode, city) ||
-        record.adresse_brut ||
-        null;
-      const locality = [postalCode, city].filter(Boolean).join(" ");
-      const mapsQuery =
-        record.adresse_ban ||
-        [street, postalCode, city].filter(Boolean).join(", ");
-
-      const existing = byAddress.get(key);
-      if (!existing) {
-        byAddress.set(key, {
-          street,
-          locality,
-          postalCode: postalCode || null,
-          city,
-          confidence,
-          dpeCount: 1,
-          mapsQuery,
-          matched,
-          numeroDpe: record.numero_dpe,
-          source: recordDebug(record),
-        });
-      } else {
-        existing.dpeCount += 1;
-        if (confidence > existing.confidence) {
-          existing.confidence = confidence;
-          existing.matched = matched;
-          existing.numeroDpe = record.numero_dpe;
-          existing.source = recordDebug(record);
-        }
-      }
+    if (
+      !needsDepartmentFallback(precise.candidates) ||
+      !criteria.departement
+    ) {
+      return {
+        mode: "precise",
+        criteria,
+        champsRequisManquants: [],
+        candidates: precise.candidates,
+      };
     }
 
-    const candidates = Array.from(byAddress.values())
-      .sort((a, b) => b.confidence - a.confidence || b.dpeCount - a.dpeCount)
-      .slice(0, MAX_CANDIDATES);
+    const dept = runTerritorySearch({
+      criteria,
+      typeBatiments,
+      territory: "departement",
+      listingId: listing.id,
+    });
 
-    logger?.info?.(
-      {
-        listingId: listing.id,
-        records: records.length,
-        candidates: candidates.length,
-      },
-      "address-ai/search (mode précis)"
-    );
-
-    return { mode: "precise", criteria, champsRequisManquants: [], candidates };
+    return {
+      mode: "departement",
+      fallbackFrom: "precise",
+      criteria,
+      champsRequisManquants: [],
+      candidates: dept.candidates,
+    };
   }
 
   return { search };

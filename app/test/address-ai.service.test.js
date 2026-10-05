@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import createAddressAiService, {
+  needsDepartmentFallback,
   periodContainsYear,
 } from "../src/services/address-ai.service.js";
 
@@ -60,15 +61,23 @@ test("search : prérequis manquants (pas de surface) → aucun candidat", () => 
 });
 
 test("search : filtres stricts transmis au repo (appartement + immeuble, surface ±3%)", () => {
-  const capture = {};
+  const capture = { calls: [] };
   const service = createAddressAiService({
-    repositories: stubRepositories([], capture),
+    repositories: {
+      dpe: {
+        searchAddressCandidates(filters) {
+          capture.calls.push({ ...filters });
+          return [];
+        },
+      },
+    },
   });
   service.search(APARTMENT);
-  assert.equal(capture.filters.codePostal, "75011");
-  assert.deepEqual(capture.filters.typeBatiments, ["appartement", "immeuble"]);
-  assert.equal(capture.filters.surfaceMin, 50 * 0.97);
-  assert.equal(capture.filters.surfaceMax, 50 * 1.03);
+  assert.equal(capture.calls[0].codePostal, "75011");
+  assert.deepEqual(capture.calls[0].typeBatiments, ["appartement", "immeuble"]);
+  assert.equal(capture.calls[0].surfaceMin, 50 * 0.97);
+  assert.equal(capture.calls[0].surfaceMax, 50 * 1.03);
+  assert.equal(capture.calls[1].departement, "75");
 });
 
 test("search : regroupement par adresse, meilleur score retenu, tri décroissant", () => {
@@ -189,4 +198,118 @@ test("search : l'étage parsé depuis le complément d'adresse booste le score",
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].matched.floor, true);
   assert.equal(candidates[0].confidence, 95);
+});
+
+test("needsDepartmentFallback : vide ou confiances toutes basses", () => {
+  assert.equal(needsDepartmentFallback([]), true);
+  assert.equal(needsDepartmentFallback([{ confidence: 49 }]), true);
+  assert.equal(needsDepartmentFallback([{ confidence: 40 }, { confidence: 45 }]), true);
+  assert.equal(needsDepartmentFallback([{ confidence: 55 }]), false);
+  assert.equal(needsDepartmentFallback([{ confidence: 40 }, { confidence: 60 }]), false);
+});
+
+test("search : repli département si le CP ne renvoie rien", () => {
+  const deptRecord = dpeRecord({
+    adresse_ban: "1 Avenue Dept 92100 Boulogne-Billancourt",
+    nom_commune_ban: "Boulogne-Billancourt",
+    code_postal_ban: "92100",
+    surface_habitable_logement: 50,
+    etiquette_dpe: "D",
+    etiquette_ges: "C",
+    annee_construction: 1970,
+    raw: { complement_adresse_logement: "3ème étage" },
+  });
+  const calls = [];
+  const service = createAddressAiService({
+    repositories: {
+      dpe: {
+        searchAddressCandidates(filters) {
+          calls.push({ ...filters });
+          if (filters.codePostal === "92210") return [];
+          if (filters.departement === "92") return [deptRecord];
+          return [];
+        },
+      },
+    },
+  });
+
+  const listing = { ...APARTMENT, postal_code: "92210" };
+  const result = service.search(listing);
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].codePostal, "92210");
+  assert.equal(calls[1].departement, "92");
+  assert.equal(result.mode, "departement");
+  assert.equal(result.fallbackFrom, "precise");
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].postalCode, "92100");
+});
+
+test("search : repli département si toutes les confiances CP sont faibles", () => {
+  const weakCp = dpeRecord({
+    adresse_ban: "2 Rue Faible 92210 Saint-Cloud",
+    nom_commune_ban: "Saint-Cloud",
+    code_postal_ban: "92210",
+    surface_habitable_logement: 50,
+    etiquette_dpe: "G",
+    etiquette_ges: "G",
+    annee_construction: 2010,
+    raw: {},
+  });
+  const strongDept = dpeRecord({
+    adresse_ban: "10 Rue Forte 92100 Boulogne-Billancourt",
+    nom_commune_ban: "Boulogne-Billancourt",
+    code_postal_ban: "92100",
+    surface_habitable_logement: 50,
+    etiquette_dpe: "D",
+    etiquette_ges: "C",
+    annee_construction: 1970,
+    raw: { complement_adresse_logement: "3ème étage" },
+  });
+  const service = createAddressAiService({
+    repositories: {
+      dpe: {
+        searchAddressCandidates(filters) {
+          if (filters.codePostal === "92210") return [weakCp];
+          if (filters.departement === "92") return [strongDept];
+          return [];
+        },
+      },
+    },
+  });
+
+  const listing = { ...APARTMENT, postal_code: "92210" };
+  const result = service.search(listing);
+
+  assert.equal(result.mode, "departement");
+  assert.ok(result.candidates[0].confidence >= 50);
+  assert.equal(result.candidates[0].street, "10 Rue Forte");
+});
+
+test("search : pas de second appel département si le CP suffit", () => {
+  let callCount = 0;
+  const good = dpeRecord({
+    adresse_ban: "1 Rue OK 92210 Saint-Cloud",
+    nom_commune_ban: "Saint-Cloud",
+    code_postal_ban: "92210",
+    surface_habitable_logement: 50,
+    etiquette_dpe: "D",
+    etiquette_ges: "C",
+    annee_construction: 1970,
+    raw: { complement_adresse_logement: "3ème étage" },
+  });
+  const service = createAddressAiService({
+    repositories: {
+      dpe: {
+        searchAddressCandidates() {
+          callCount += 1;
+          return [good];
+        },
+      },
+    },
+  });
+
+  const result = service.search({ ...APARTMENT, postal_code: "92210" });
+  assert.equal(callCount, 1);
+  assert.equal(result.mode, "precise");
 });

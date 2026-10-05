@@ -168,16 +168,17 @@ export default function createDpeRepository(db) {
     },
 
     /**
-     * Recherche « précise » pour déterminer l'adresse d'une annonce.
+     * Recherche pour déterminer l'adresse d'une annonce.
      *
-     * Filtres stricts : code postal, type(s) de bâtiment et fenêtre de surface
-     * ±marge. Les DPE d'immeuble (surface du logement souvent absente) sont
+     * Filtres stricts : code postal **ou** département (`code_departement_ban`),
+     * type(s) de bâtiment et fenêtre de surface ±marge.
      * conservés même hors fenêtre de surface : ils serviront de repli et seront
      * simplement moins bien notés. Renvoie des lignes hydratées (avec `raw`)
      * pour que le service lise les champs additionnels (étage, complément…).
      */
     searchAddressCandidates({
       codePostal,
+      departement,
       typeBatiments,
       surfaceMin,
       surfaceMax,
@@ -186,10 +187,20 @@ export default function createDpeRepository(db) {
       const types = Array.isArray(typeBatiments)
         ? typeBatiments.filter((t) => DPE_BUILDING_TYPES.some((b) => b.value === t))
         : [];
-      if (!codePostal || !types.length) return [];
+      if (!types.length) return [];
 
-      const where = ["code_postal_ban = @code_postal"];
-      const params = { code_postal: String(codePostal) };
+      const where = [];
+      const params = {};
+
+      if (codePostal) {
+        where.push("code_postal_ban = @code_postal");
+        params.code_postal = String(codePostal);
+      } else if (departement) {
+        where.push("code_departement_ban = @departement");
+        params.departement = String(departement);
+      } else {
+        return [];
+      }
 
       const typeKeys = types.map((t, i) => {
         params[`type_${i}`] = t;
