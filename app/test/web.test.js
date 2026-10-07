@@ -125,6 +125,7 @@ withApp("le carnet vide explique la démarche", async ({ app, repositories }) =>
   const res = await agent.get("/listings").expect(200);
   assert.match(res.text, /Votre carnet est vide/);
   assert.match(res.text, /Enregistrez une annonce/);
+  assert.doesNotMatch(res.text, /Pagination des annonces/);
 });
 
 withApp("la liste n'affiche que 9 annonces par page", async (ctx) => {
@@ -298,6 +299,85 @@ withApp("le financement n'est pas proposé pour une location", async (ctx) => {
 });
 
 /* ---------------------------- Actions htmx ---------------------------- */
+
+withApp("la fiche affiche le pipeline de suivi et le met à jour", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+  const { id } = listingsService.save(user, listingPayload());
+  const agent = await loginAgent(app, "a@example.com");
+
+  const page = await agent.get(`/listings/${id}`).expect(200);
+  assert.match(page.text, /id="listing-lead"/);
+  assert.match(page.text, /id="status-pipeline"/);
+  assert.match(page.text, /À étudier/);
+  assert.match(page.text, /status-pipe__step is-done/);
+
+  const csrf = extractCsrf(page.text);
+  const res = await agent
+    .post(`/listings/${id}`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf, view: "header", status: "visit_planned" })
+    .expect(200);
+
+  assert.doesNotMatch(res.text, /<!DOCTYPE html>/);
+  assert.match(res.text, /id="listing-lead"/);
+  assert.match(res.text, /Visite prévue/);
+  assert.match(res.text, /aria-current="step"/);
+  assert.equal(
+    repositories.listings.findById(user.id, id).status,
+    "visit_planned"
+  );
+});
+
+withApp("écartée mémorise et affiche la progression du parcours", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+  const { id } = listingsService.save(user, listingPayload());
+  const agent = await loginAgent(app, "a@example.com");
+
+  let page = await agent.get(`/listings/${id}`).expect(200);
+  let csrf = extractCsrf(page.text);
+
+  await agent
+    .post(`/listings/${id}`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf, view: "header", status: "visited" })
+    .expect(200);
+
+  page = await agent.get(`/listings/${id}`).expect(200);
+  csrf = extractCsrf(page.text);
+
+  const rejected = await agent
+    .post(`/listings/${id}`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf, view: "header", status: "rejected" })
+    .expect(200);
+
+  const row = repositories.listings.findById(user.id, id);
+  assert.equal(row.status, "rejected");
+  assert.equal(row.status_progress, "visited");
+
+  assert.match(rejected.text, /status-pipe is-rejected/);
+  assert.match(rejected.text, /status-pipe__step is-done/);
+  assert.match(rejected.text, /M6\.5 12\.5 10 16l7\.5-8/);
+
+  csrf = extractCsrf(rejected.text);
+  const restored = await agent
+    .post(`/listings/${id}`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf, view: "header", status: "rejected" })
+    .expect(200);
+
+  const back = repositories.listings.findById(user.id, id);
+  assert.equal(back.status, "visited");
+  assert.equal(back.status_progress, null);
+  assert.doesNotMatch(restored.text, /status-pipe is-rejected/);
+  assert.match(restored.text, /aria-current="step"/);
+});
 
 withApp("le statut se change depuis la carte", async (ctx) => {
   const { app, repositories, listingsService } = ctx;
@@ -590,7 +670,7 @@ withApp("un provider inconnu ne peut pas être relancé", async (ctx) => {
     .post(`/listings/${id}/enrich/inexistant`)
     .type("form")
     .send({ _csrf: csrf })
-    .expect(404);
+    .expect(403);
 });
 
 withApp("une annonce se supprime avec ses dépendances", async (ctx) => {
@@ -613,6 +693,22 @@ withApp("une annonce se supprime avec ses dépendances", async (ctx) => {
     0
   );
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM price_history").get().n, 0);
+});
+
+withApp("supprimer la dernière annonce en HTMX recharge le carnet vide", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+  const { id } = listingsService.save(user, listingPayload());
+  const agent = await loginAgent(app, "a@example.com");
+  const csrf = extractCsrf((await agent.get("/listings")).text);
+
+  await agent
+    .post(`/listings/${id}/delete`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf })
+    .expect(200)
+    .expect("HX-Refresh", "true");
 });
 
 /* ----------------------------- Paramètres ----------------------------- */
@@ -928,6 +1024,270 @@ withApp("l'admin gère les comptes utilisateurs", async ({ app, repositories }) 
     .expect(200);
 
   assert.equal(repositories.users.findById(victim.id), null);
+});
+
+function hexasmalCsvFixture(extraRows = 0) {
+  let csv = "#Code_commune_INSEE;Nom;Code_postal;Libelle\n";
+  csv += "78517;RAMBOUILLET;78120;RAMBOUILLET;\n";
+  for (let i = 0; i < extraRows; i++) {
+    const insee = String(10000 + i).padStart(5, "0");
+    csv += `${insee};COMMUNE ${i};75001;PARIS;\n`;
+  }
+  return csv;
+}
+
+withApp("l'admin importe le fichier HexaSmal", async ({ app, repositories }) => {
+  await createUser(repositories, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmail);
+  const page = await agent.get("/admin").expect(200);
+  assert.match(page.text, /HexaSmal/);
+  assert.match(page.text, /data\.laposte\.fr\/datasets\/laposte-hexasmal/);
+
+  const csrf = extractCsrf(page.text);
+  const csv = hexasmalCsvFixture(999);
+  const res = await agent
+    .post("/admin/hexasmal/import")
+    .set("HX-Request", "true")
+    .field("_csrf", csrf)
+    .attach("file", Buffer.from(csv, "utf8"), "019HexaSmal.csv")
+    .expect(200);
+
+  assert.match(res.text, /associations code postal/i);
+  assert.equal(repositories.postalInsee.count(), 1000);
+});
+
+withApp("l'admin parcourt la base HexaSmal avec recherche", async ({ app, repositories }) => {
+  await createUser(repositories, config.adminEmail);
+  repositories.postalInsee.replaceAll([
+    { postal_code: "78120", insee_code: "78517" },
+    { postal_code: "75001", insee_code: "75101" },
+  ]);
+  const agent = await loginAgent(app, config.adminEmail);
+
+  const table = await agent
+    .get("/admin/hexasmal/browse?hexasmal_q=78120")
+    .set("HX-Request", "true")
+    .expect(200);
+  assert.match(table.text, /78517/);
+  assert.doesNotMatch(table.text, /75101/);
+
+  const admin = await agent.get("/admin").expect(200);
+  assert.match(admin.text, /Explorer la base/);
+  assert.match(admin.text, /hexasmal-browse-q/);
+});
+
+withApp(
+  "la fiche annonce affiche l'INSEE résolu depuis le code postal (pas celui du site)",
+  async ({ app, repositories, listingsService }) => {
+    const user = await createUser(repositories, "buyer@example.com");
+    repositories.postalInsee.replaceAll([
+      { postal_code: "78120", insee_code: "78517" },
+    ]);
+    const { id } = listingsService.save(
+      user,
+      listingPayload({
+        location: {
+          city: "Rambouillet",
+          postal_code: "78120",
+          insee_code: "99999",
+        },
+      })
+    );
+    repositories.listings.setInseeCode(id, "99999", { force: true });
+
+    const agent = await loginAgent(app, "buyer@example.com");
+    const page = await agent.get(`/listings/${id}`).expect(200);
+    assert.match(page.text, /Code INSEE/);
+    assert.match(page.text, /78517/);
+    assert.doesNotMatch(page.text, /99999/);
+  }
+);
+
+withApp("l'admin consulte et révoque une entrée du cache enrichissement", async ({
+  app,
+  repositories,
+  listingsService,
+}) => {
+  await createUser(repositories, config.adminEmail);
+  const user = await createUser(repositories, "cache-user@example.com");
+  const { id: listingId } = listingsService.save(
+    user,
+    listingPayload({ title: "Cache test", city: "Paris", postal_code: "75001" })
+  );
+
+  repositories.listings.setInseeCode(listingId, "75101", { force: true });
+  repositories.enrichments.saveCommune("75101", "commune", {
+    insee_code: "75101",
+    name: "Paris 1er",
+  });
+  repositories.enrichments.saveListingResult(listingId, "commune", {
+    status: "ok",
+    data: null,
+  });
+  repositories.enrichments.saveListingResult(listingId, "financing", {
+    status: "ok",
+    data: { monthly: 1200 },
+  });
+
+  const agent = await loginAgent(app, config.adminEmail);
+  const page = await agent.get("/admin").expect(200);
+  assert.match(page.text, /Cache enrichissements/);
+  assert.match(page.text, /75101/);
+
+  const browse = await agent
+    .get("/admin/enrichment-cache/browse?cache_scope=listing&cache_q=Cache")
+    .set("HX-Request", "true")
+    .expect(200);
+  assert.match(browse.text, /financing/);
+  assert.match(browse.text, new RegExp(`#${listingId}`));
+
+  const csrf = extractCsrf(page.text);
+  await agent
+    .post("/admin/enrichment-cache/revoke")
+    .set("HX-Request", "true")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      scope: "commune",
+      provider: "commune",
+      insee_code: "75101",
+      cache_scope: "commune",
+      cache_provider: "",
+      cache_q: "",
+      cache_page: "1",
+    })
+    .expect(200);
+
+  assert.equal(repositories.enrichments.findCommune("75101", "commune"), null);
+  assert.equal(repositories.enrichments.findOne(listingId, "commune"), null);
+  assert.ok(repositories.enrichments.findOne(listingId, "financing"));
+});
+
+withApp("l'admin parcourt et révoque le cache départemental", async ({
+  app,
+  repositories,
+}) => {
+  await createUser(repositories, config.adminEmail);
+  repositories.enrichments.saveDepartment("92", "immo-data-dept", {
+    department: { code: "92", name: "Hauts-de-Seine" },
+    by_type: { apartment: { points: [] }, house: { points: [] } },
+  });
+
+  const agent = await loginAgent(app, config.adminEmail);
+  const page = await agent.get("/admin").expect(200);
+
+  const browse = await agent
+    .get("/admin/enrichment-cache/browse?cache_scope=department")
+    .set("HX-Request", "true")
+    .expect(200);
+  assert.match(browse.text, /immo-data-dept/);
+  assert.match(browse.text, /\b92\b/);
+
+  const detail = await agent
+    .get(
+      "/admin/enrichment-cache/detail?scope=department&provider=immo-data-dept&dept_code=92"
+    )
+    .set("HX-Request", "true")
+    .expect(200);
+  assert.match(detail.text, /Département 92/);
+  assert.match(detail.text, /Hauts-de-Seine/);
+
+  const csrf = extractCsrf(page.text);
+  await agent
+    .post("/admin/enrichment-cache/revoke")
+    .set("HX-Request", "true")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      scope: "department",
+      provider: "immo-data-dept",
+      dept_code: "92",
+      cache_scope: "department",
+      cache_provider: "",
+      cache_q: "",
+      cache_page: "1",
+    })
+    .expect(200);
+
+  assert.equal(repositories.enrichments.findDepartment("92", "immo-data-dept"), null);
+});
+
+withApp("l'admin peut vider tout le cache enrichissement", async ({
+  app,
+  repositories,
+  listingsService,
+}) => {
+  await createUser(repositories, config.adminEmail);
+  const user = await createUser(repositories, "clear-cache@example.com");
+  const { id: listingId } = listingsService.save(
+    user,
+    listingPayload({ title: "À vider du cache" })
+  );
+
+  repositories.enrichments.saveCommune("75101", "commune", {
+    insee_code: "75101",
+    name: "Paris 1er",
+  });
+  repositories.enrichments.saveDepartment("75", "delinquance-dept", {
+    dept_code: "75",
+    score: { department_index: 100 },
+  });
+  repositories.enrichments.saveListingResult(listingId, "financing", {
+    status: "ok",
+    data: { monthly: 1200 },
+  });
+
+  const agent = await loginAgent(app, config.adminEmail);
+  const page = await agent.get("/admin").expect(200);
+  const csrf = extractCsrf(page.text);
+
+  const res = await agent
+    .post("/admin/enrichment-cache/clear-all")
+    .set("HX-Request", "true")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      cache_scope: "commune",
+      cache_provider: "",
+      cache_q: "",
+      cache_page: "1",
+    })
+    .expect(200);
+
+  assert.match(res.text, /Tous les caches enrichissement ont été vidés/);
+  assert.match(res.text, /id="admin-cache-stats"/);
+  assert.match(res.text, /hx-swap-oob="true"/);
+  assert.deepEqual(repositories.enrichments.cacheStats(), {
+    commune: 0,
+    department: 0,
+    listing: 0,
+  });
+});
+
+withApp("la recherche DPE admin filtre par date de dernière modification", async ({
+  app,
+  repositories,
+}) => {
+  await createUser(repositories, config.adminEmail);
+  repositories.dpe.upsertMany([
+    {
+      numero_dpe: "DPE-DAY-A",
+      date_derniere_modification_dpe: "2025-12-18",
+      code_postal_ban: "75001",
+    },
+    {
+      numero_dpe: "DPE-DAY-B",
+      date_derniere_modification_dpe: "2026-09-28",
+      code_postal_ban: "75001",
+    },
+  ]);
+  const agent = await loginAgent(app, config.adminEmail);
+  const res = await agent
+    .get("/admin/dpe/search?date_modif=2025-12-18")
+    .expect(200);
+  assert.match(res.text, /DPE-DAY-A/);
+  assert.doesNotMatch(res.text, /DPE-DAY-B/);
+  assert.match(res.text, /sur 1 DPE/);
 });
 
 withApp("l'admin ne peut pas supprimer son propre compte", async ({ app, repositories }) => {

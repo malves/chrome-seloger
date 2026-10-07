@@ -109,7 +109,9 @@
                   hx-post="/admin/dpe/import/cancel"
                   hx-target="#dpe-import-status"
                   hx-swap="outerHTML"
-                  hx-confirm="Interrompre l'import du <%= dayLabel(job) %> ? Les lignes déjà enregistrées pour ce jour peuvent être incomplètes."
+                  data-confirm="Interrompre l'import du <%= dayLabel(job) %> ? Les lignes déjà enregistrées pour ce jour peuvent être incomplètes."
+                  data-confirm-title="<%= stale ? 'Libérer ce jour' : 'Interrompre l\u0027import' %>"
+                  data-confirm-label="<%= stale ? 'Libérer' : 'Interrompre' %>"
                 >
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                   <input type="hidden" name="job_id" value="<%= job.id %>" />

@@ -9,6 +9,12 @@
  * Chaque page est insérée en base puis libérée : aucune donnée n'est écrite sur
  * disque, seule la base contient le résultat.
  *
+ * Certains jours ne sont pas des journées de production : le 2025-12-18,
+ * l'ADEME a estampillé d'un coup ~10,8 millions de DPE (~7 Ko de JSON chacun,
+ * soit environ 70 Go). Ces jours-là passent par un mode rapide : pages de
+ * 10 000, téléchargement de la page suivante pendant l'insertion, et index
+ * secondaires reconstruits seulement à la fin.
+ *
  * L'import s'exécute en arrière-plan dans le même process (comme
  * l'orchestration d'enrichissement) et met à jour un job suivi en base, relu
  * par l'interface via un sondage htmx. Chaque jour sélectionné est un job
@@ -26,8 +32,38 @@ const DATASET_URL =
  */
 const PAGE_SIZE = 2000;
 
+/**
+ * Au-delà de ce volume, le jour est traité en mode rapide (voir l'en-tête).
+ * Un jour courant ADEME tourne autour de 10 à 40 000 lignes : le seuil reste
+ * au-dessus pour ne pas changer le comportement des imports habituels.
+ */
+export const BULK_ROW_THRESHOLD = 50_000;
+
+/** Taille de page maximale acceptée par l'API ADEME, réservée au mode rapide. */
+export const BULK_PAGE_SIZE = 10_000;
+
+/**
+ * À partir de ce volume, on retire les index secondaires le temps de l'écriture
+ * et on les reconstruit à la fin. En dessous, le coût de reconstruire les index
+ * de toute la table dépasserait le gain (un jour ADEME dépasse rarement 50 000
+ * lignes ; le 2025-12-18 en compte ~10,8 millions).
+ */
+export const INDEX_REBUILD_THRESHOLD = 1_000_000;
+
+/** Lignes écrites d'un bloc avant de rendre la main à l'event loop (mode rapide). */
+const BULK_WRITE_CHUNK = 2_000;
+
+/** Lignes supprimées d'un bloc lors du ré-import d'un jour massif. */
+const BULK_DELETE_CHUNK = 20_000;
+
 /** Délai maximum par requête (une page reste conséquente). */
 const REQUEST_TIMEOUT_MS = 90_000;
+
+/**
+ * Une page de 10 000 DPE pèse environ 70 Mo. Le délai courant de 90 s coupe
+ * parfois le téléchargement avant la fin ; le mode rapide laisse trois minutes.
+ */
+const BULK_REQUEST_TIMEOUT_MS = 180_000;
 
 /** Nombre de tentatives supplémentaires en cas d'échec passager d'une page. */
 const REQUEST_RETRIES = 5;
@@ -82,6 +118,16 @@ export function isValidDay(value) {
   if (!DATE_RE.test(String(value || ""))) return false;
   const d = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
+/** Taille de page selon le nombre de lignes annoncées par l'API pour le jour. */
+export function pageSizeForTotal(total) {
+  return Number(total) >= BULK_ROW_THRESHOLD ? BULK_PAGE_SIZE : PAGE_SIZE;
+}
+
+/** Vrai si le volume justifie de reconstruire les index seulement à la fin. */
+export function shouldRebuildIndexes(total) {
+  return Number(total) >= INDEX_REBUILD_THRESHOLD;
 }
 
 /** Liste des jours (inclus) de `from` à `to`, ordre chronologique. */
@@ -173,12 +219,12 @@ function friendlyErrorMessage(err) {
   return String(err?.message || err);
 }
 
-async function fetchJson(url, { logger, onRetry } = {}) {
+async function fetchJson(url, { logger, onRetry, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   let lastError;
   for (let attempt = 0; attempt <= REQUEST_RETRIES; attempt += 1) {
     try {
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
         headers: { accept: "application/json" },
       });
       if (!response.ok) {
@@ -208,24 +254,21 @@ async function fetchJson(url, { logger, onRetry } = {}) {
 export default function createDpeOpendataService({ repositories, logger }) {
   const repo = repositories.dpe;
 
-  /** URL de la première page d'un jour donné. */
-  function firstPageUrl(day) {
+  /** URL d'une page d'un jour donné. `size` vaut 0 pour une sonde (total seul). */
+  function pageUrl(day, size) {
     const query = new URLSearchParams({
-      size: String(PAGE_SIZE),
+      size: String(size),
       date_derniere_modification_dpe_gte: day,
       date_derniere_modification_dpe_lte: day,
     });
     return `${DATASET_URL}?${query}`;
   }
 
-  /**
-   * Importe un jour : suit le curseur `next` jusqu'à épuisement, en insérant
-   * chaque page puis en la libérant. Renvoie le nombre de lignes insérées.
-   *
-   * `onTotal(total)` est appelé dès la première page (nombre de lignes attendu
-   * pour la journée), `onProgress(done)` après chaque page insérée : de quoi
-   * faire avancer une barre de progression même au sein d'une seule journée.
-   */
+  /** URL de la première page d'un jour donné (import courant, hors mode rapide). */
+  function firstPageUrl(day) {
+    return pageUrl(day, PAGE_SIZE);
+  }
+
   function jobIsActive(jobId) {
     const job = repo.getJob(jobId);
     return Boolean(job && job.status === "running");
@@ -247,40 +290,149 @@ export default function createDpeOpendataService({ repositories, logger }) {
     return repo.getJob(job.id);
   }
 
+  /**
+   * Écrit une page. En mode rapide, on découpe le lot et on rend la main entre
+   * chaque morceau pour que le téléchargement de la page suivante avance
+   * (better-sqlite3 bloque l'event loop le temps de l'insertion).
+   */
+  async function writePage(results, { bulk, onPageProgress }) {
+    const step = bulk ? BULK_WRITE_CHUNK : results.length;
+    let done = 0;
+    for (let i = 0; i < results.length; i += step) {
+      const chunk = step >= results.length ? results : results.slice(i, i + step);
+      done += repo.upsertMany(chunk);
+      if (onPageProgress) onPageProgress(done);
+      if (bulk && i + step < results.length) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    }
+    return done;
+  }
+
+  /**
+   * Efface les lignes déjà stockées pour ce jour. Un jour massif est purgé par
+   * paquets, index encore en place, pour ne pas figer le process sur un seul
+   * DELETE de plusieurs millions de lignes.
+   *
+   * @returns {Promise<boolean>} `false` si l'import a été annulé en cours de purge.
+   */
+  async function deleteExistingDay(day, { bulk, onRetry, shouldContinue }) {
+    if (!bulk) {
+      const removed = repo.deleteByModificationDay(day);
+      if (removed) {
+        logger.info({ day, removed }, "DPE existants du jour supprimés avant import");
+      }
+      return true;
+    }
+
+    let removed = 0;
+    for (;;) {
+      if (shouldContinue && !shouldContinue()) return false;
+      const n = repo.deleteByModificationDayBatch(day, BULK_DELETE_CHUNK);
+      if (!n) break;
+      removed += n;
+      onRetry?.();
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    if (removed) {
+      logger.info({ day, removed }, "DPE existants du jour supprimés avant import");
+    }
+    return true;
+  }
+
+  /**
+   * Importe un jour : suit le curseur `next` jusqu'à épuisement, en insérant
+   * chaque page puis en la libérant. Renvoie le nombre de lignes insérées.
+   *
+   * `onTotal(total)` est appelé dès la sonde (nombre de lignes attendu pour la
+   * journée), `onProgress(done)` au fil de l'insertion.
+   */
   async function importDay(
     day,
     { onTotal, onProgress, onRetry, shouldContinue } = {}
   ) {
     if (shouldContinue && !shouldContinue()) return null;
 
-    const removed = repo.deleteByModificationDay(day);
-    if (removed) {
-      logger.info({ day, removed }, "DPE existants du jour supprimés avant import");
+    const probe = await fetchJson(pageUrl(day, 0), { logger, onRetry });
+    const total = typeof probe?.total === "number" ? probe.total : null;
+    if (total != null && onTotal) onTotal(total);
+    if (total === 0) {
+      await deleteExistingDay(day, { bulk: false, onRetry });
+      return 0;
     }
 
-    let url = firstPageUrl(day);
-    let imported = 0;
-    let first = true;
+    const bulk = total != null && total >= BULK_ROW_THRESHOLD;
+    const rebuildIndexes = shouldRebuildIndexes(total);
+    const pageSize = pageSizeForTotal(total ?? 0);
+    let bulkStarted = false;
 
-    while (url) {
-      if (shouldContinue && !shouldContinue()) return imported;
+    try {
+      const cleared = await deleteExistingDay(day, { bulk, onRetry, shouldContinue });
+      if (!cleared) return null;
 
-      const payload = await fetchJson(url, { logger, onRetry });
-      const results = Array.isArray(payload?.results) ? payload.results : [];
-      if (first) {
-        if (typeof payload?.total === "number" && onTotal) onTotal(payload.total);
-        first = false;
+      if (rebuildIndexes) {
+        repo.beginBulkLoad();
+        bulkStarted = true;
+        logger.info(
+          { day, total, pageSize },
+          "jour DPE volumineux : import rapide (index reconstruits à la fin)"
+        );
       }
-      if (results.length) {
-        imported += repo.upsertMany(results);
-        if (onProgress) onProgress(imported);
+
+      let url = pageUrl(day, pageSize);
+      let imported = 0;
+      const fetchOpts = {
+        logger,
+        onRetry,
+        timeoutMs: bulk ? BULK_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS,
+      };
+      let pending = fetchJson(url, fetchOpts);
+
+      while (pending) {
+        if (shouldContinue && !shouldContinue()) return imported;
+
+        const payload = await pending;
+        const results = Array.isArray(payload?.results) ? payload.results : [];
+        const following = results.length && payload?.next ? payload.next : null;
+        const keepGoing = !shouldContinue || shouldContinue();
+
+        // Lance le téléchargement suivant avant l'écriture, pour recouvrir
+        // le réseau par l'insertion. Inutile sur un jour courant : la pause
+        // volontaire resterait plus courte que le gain, et ménage l'API.
+        if (following && bulk && keepGoing) {
+          pending = fetchJson(following, fetchOpts);
+        } else {
+          pending = null;
+        }
+
+        if (results.length) {
+          const before = imported;
+          imported += await writePage(results, {
+            bulk,
+            onPageProgress: (doneInPage) => {
+              if (onProgress) onProgress(before + doneInPage);
+            },
+          });
+        }
+
+        if (following && !bulk) {
+          await sleep(THROTTLE_MS);
+          if (shouldContinue && !shouldContinue()) return imported;
+          pending = fetchJson(following, fetchOpts);
+        }
       }
-      // La page est maintenant en base : on ne garde que le curseur suivant.
-      url = results.length && payload?.next ? payload.next : null;
-      if (url) await sleep(THROTTLE_MS);
+
+      return imported;
+    } finally {
+      if (bulkStarted) {
+        logger.info({ day }, "reconstruction des index DPE");
+        repo.endBulkLoad();
+        // Rafraîchit l'activité juste après la reconstruction : elle peut
+        // durer longtemps, et le sondage admin ne doit pas prendre le job
+        // pour un import bloqué au moment où l'event loop se libère.
+        onRetry?.();
+      }
     }
-
-    return imported;
   }
 
   /** Exécute le job en arrière-plan, jour par jour. */

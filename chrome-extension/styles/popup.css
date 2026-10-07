@@ -304,6 +304,25 @@ main {
   background: var(--surface-muted);
 }
 
+.btn--danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn--danger:hover {
+  background: var(--danger-soft);
+}
+
+.btn--danger-ghost {
+  color: var(--danger);
+}
+
+.btn--danger-ghost:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
 .btn:disabled {
   opacity: 0.55;
   cursor: progress;
@@ -480,6 +499,32 @@ main {
 .listing__meta {
   font-size: 12px;
   color: var(--ink-muted);
+}
+
+.remove-block {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.confirm-row {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid #f0c4c0;
+  background: var(--danger-soft);
+}
+
+.confirm-row__text {
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.confirm-row__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
 }
 
 /* ---------------------------- Temps de trajet --------------------------- */

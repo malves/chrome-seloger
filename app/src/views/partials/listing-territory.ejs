@@ -15,7 +15,7 @@
         <p class="panel__eyebrow">Territoire</p>
         <h2 class="panel__title">Commune</h2>
       </div>
-      <% if (listing && listing.id) { %>
+      <% if (listing && listing.id && typeof isAdmin !== 'undefined' && isAdmin) { %>
         <form
           class="listing-territory__refresh"
           hx-post="/listings/<%= listing.id %>/enrich/territoire"
@@ -32,7 +32,10 @@
     </div>
   <% } %>
 
-  <% communeProviders.forEach(function (provider) { %>
+  <% communeProviders.forEach(function (provider, index) { %>
+    <% if (index > 0 && communeProviders[index - 1].key === "commune" && provider.key !== "commune") { %>
+      <hr class="listing-territory__split" aria-hidden="true">
+    <% } %>
     <%- include("enrichment-block", {
       provider: provider,
       listing: listing,

@@ -14,25 +14,520 @@
   });
 
   /**
-   * Recharge le bloc « Prix au m² » (même effet qu'un clic sur « Actualiser »).
+   * Recharge le bloc d'analyse de marché (Immo Data).
    * Appelé après chaque changement d'adresse : le serveur a déjà résolu la
-   * commune (INSEE) de façon synchrone, donc ce recalcul trouve les coordonnées.
+   * commune (INSEE) de façon synchrone.
    */
+  /**
+   * Recharge les blocs enrichissement (analyse de marché + territoire).
+   * Utilisé après changement d'adresse, sans bouton manuel côté utilisateur.
+   */
+  function refreshListingEnrichmentLive() {
+    var root = document.getElementById("listing-enrichment-live");
+    if (!root || !window.htmx) return;
+    var url = root.getAttribute("data-enrichment-url");
+    if (!url) return;
+    window.htmx.ajax("GET", url, {
+      target: "#listing-enrichment-live",
+      swap: "outerHTML",
+    });
+  }
+
+  function refreshListingMarketBlocks() {
+    refreshListingEnrichmentLive();
+  }
   function refreshListingPrixM2Block() {
-    var block = document.getElementById("provider-prix-m2");
-    if (!block || !window.htmx) return;
-    var form = block.querySelector('form[hx-post*="/enrich/prix-m2"]');
-    if (form) window.htmx.trigger(form, "submit");
+    refreshListingMarketBlocks();
   }
   window.refreshListingPrixM2Block = refreshListingPrixM2Block;
 
+  // Onglets maison / appartement du graphique d'évolution (survivent au swap HTMX).
+  document.addEventListener("click", function (event) {
+    var tab = event.target.closest
+      ? event.target.closest("[data-pricem2-type]")
+      : null;
+    if (!tab) return;
+    var root = tab.closest("[data-pricem2-evolution]");
+    if (!root) return;
+    var type = tab.getAttribute("data-pricem2-type");
+    root.querySelectorAll("[data-pricem2-type]").forEach(function (btn) {
+      var active = btn.getAttribute("data-pricem2-type") === type;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    root.querySelectorAll("[data-pricem2-panel]").forEach(function (panel) {
+      var active = panel.getAttribute("data-pricem2-panel") === type;
+      panel.classList.toggle("is-active", active);
+      if (active) panel.removeAttribute("hidden");
+      else panel.setAttribute("hidden", "");
+    });
+    if (!pricem2EvolutionDetailsOpen(root)) return;
+    refreshPricem2PanelChart(root, type);
+    syncPricem2EvolutionChartHeights(root);
+  });
+
+  var CHART_JS = "/public/vendor/chart.js/chart.umd.js";
+  var pricem2ChartLoad = null;
+
+  function loadChartJs() {
+    if (window.Chart) return Promise.resolve(window.Chart);
+    if (pricem2ChartLoad) return pricem2ChartLoad;
+    pricem2ChartLoad = new Promise(function (resolve, reject) {
+      var script = document.createElement("script");
+      script.src = CHART_JS;
+      script.async = true;
+      script.onload = function () {
+        resolve(window.Chart);
+      };
+      script.onerror = function () {
+        pricem2ChartLoad = null;
+        reject(new Error("chart_load_failed"));
+      };
+      document.head.appendChild(script);
+    });
+    return pricem2ChartLoad;
+  }
+
+  function pricem2ChartColors(wrap) {
+    var styles = wrap
+      ? getComputedStyle(wrap)
+      : getComputedStyle(document.documentElement);
+    return {
+      city: (styles.getPropertyValue("--city") || "#2563eb").trim(),
+      dept: (styles.getPropertyValue("--dept") || "#e08a2c").trim(),
+      grid: (styles.getPropertyValue("--border") || "#e2ded1").trim(),
+      muted: (styles.getPropertyValue("--ink-muted") || "#6b7280").trim(),
+      surface: (styles.getPropertyValue("--surface") || "#ffffff").trim(),
+    };
+  }
+
+  function formatEuroPrice(v) {
+    if (v == null || !isFinite(v)) return "—";
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      maximumFractionDigits: 0,
+    }).format(v);
+  }
+
+  var MONTHS_FR_SHORT = [
+    "janv.",
+    "févr.",
+    "mars",
+    "avr.",
+    "mai",
+    "juin",
+    "juil.",
+    "août",
+    "sept.",
+    "oct.",
+    "nov.",
+    "déc.",
+  ];
+
+  function formatMonthLabel(period) {
+    var match = /^(\d{4})-(\d{2})$/.exec(String(period || ""));
+    if (!match) return String(period || "");
+    var month = MONTHS_FR_SHORT[Number(match[2]) - 1];
+    return month ? month + " " + match[1] : String(period);
+  }
+
+  function readPricem2ChartConfig(canvas) {
+    var wrap = canvas.parentElement;
+    var node = wrap ? wrap.querySelector(".pricem2__chart-config") : null;
+    if (!node || !node.textContent) return null;
+    try {
+      return JSON.parse(node.textContent);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function destroyPricem2Chart(canvas) {
+    if (!window.Chart) return;
+    var existing = window.Chart.getChart(canvas);
+    if (existing) existing.destroy();
+  }
+
+  function createPricem2Chart(canvas, config) {
+    return loadChartJs().then(function (Chart) {
+      destroyPricem2Chart(canvas);
+      var wrap =
+        canvas.closest(".pricem2__evolution") ||
+        canvas.closest("[data-pricem2-evolution]") ||
+        canvas.parentElement;
+      var colors = pricem2ChartColors(wrap);
+      var fontFamily = getComputedStyle(document.documentElement)
+        .getPropertyValue("--font")
+        .trim();
+      var datasets = [
+        {
+          label: config.cityLabel,
+          data: config.cityIndex,
+          medianPrices: config.cityPrices,
+          borderColor: colors.city,
+          backgroundColor: colors.city + "1a",
+          pointBackgroundColor: colors.surface,
+          pointBorderColor: colors.city,
+          pointBorderWidth: 2,
+          pointHoverBackgroundColor: colors.city,
+          pointHoverBorderColor: colors.surface,
+          borderWidth: 2.5,
+          tension: 0.35,
+          fill: true,
+        },
+      ];
+      if (
+        config.deptLabel &&
+        config.deptIndex.some(function (v) {
+          return v != null;
+        })
+      ) {
+        datasets.push({
+          label: config.deptLabel,
+          data: config.deptIndex,
+          medianPrices: config.deptPrices,
+          borderColor: colors.dept,
+          backgroundColor: "transparent",
+          pointBackgroundColor: colors.surface,
+          pointBorderColor: colors.dept,
+          pointBorderWidth: 2,
+          pointHoverBackgroundColor: colors.dept,
+          pointHoverBorderColor: colors.surface,
+          borderWidth: 2.5,
+          tension: 0.35,
+          fill: false,
+        });
+      }
+      return new Chart(canvas, {
+        type: "line",
+        data: {
+          labels: config.labels.map(String),
+          datasets: datasets,
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 650, easing: "easeOutQuart" },
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: "rgba(17, 21, 15, 0.94)",
+              titleColor: "#f6f8f3",
+              bodyColor: "#f6f8f3",
+              padding: 12,
+              cornerRadius: 10,
+              titleFont: { size: 13, weight: "600", family: fontFamily },
+              bodyFont: { size: 12, family: fontFamily },
+              displayColors: true,
+              boxPadding: 4,
+              callbacks: {
+                title: function (items) {
+                  if (!items.length) return "";
+                  var label = String(items[0].label);
+                  if (/^\d{4}-\d{2}$/.test(label)) return formatMonthLabel(label);
+                  return "Année " + label;
+                },
+                label: function (ctx) {
+                  var idx = ctx.parsed.y;
+                  if (idx == null || !isFinite(idx)) return null;
+                  var price = ctx.dataset.medianPrices[ctx.dataIndex];
+                  return (
+                    ctx.dataset.label +
+                    " · indice " +
+                    idx.toLocaleString("fr-FR") +
+                    " · " +
+                    formatEuroPrice(price) +
+                    "/m²"
+                  );
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              border: { display: false },
+              ticks: {
+                color: colors.muted,
+                font: { size: 11, family: fontFamily },
+                maxTicksLimit: config.interval === "monthly" ? 8 : 12,
+                callback: function (value) {
+                  var label = this.getLabelForValue
+                    ? this.getLabelForValue(value)
+                    : value;
+                  if (/^\d{4}-\d{2}$/.test(String(label))) {
+                    return formatMonthLabel(label);
+                  }
+                  return label;
+                },
+              },
+            },
+            y: {
+              grid: { color: colors.grid + "99" },
+              border: { display: false },
+              ticks: {
+                color: colors.muted,
+                font: { size: 11, family: fontFamily },
+                callback: function (v) {
+                  return v.toLocaleString("fr-FR");
+                },
+              },
+            },
+          },
+          elements: {
+            point: {
+              radius: config.interval === "monthly" ? 0 : 3,
+              hoverRadius: 6,
+              hitRadius: 22,
+            },
+            line: { borderCapStyle: "round" },
+          },
+          onHover: function (event, elements) {
+            canvas.style.cursor = elements.length ? "pointer" : "default";
+          },
+        },
+      });
+    });
+  }
+
+  function pricem2EvolutionDetailsOpen(root) {
+    if (!root) return true;
+    var details =
+      root.matches && root.matches("details[data-pricem2-evolution]")
+        ? root
+        : root.querySelector && root.querySelector("details[data-pricem2-evolution]");
+    if (!details) return true;
+    return details.open;
+  }
+
+  function initPricem2Charts(root) {
+    if (!root) return Promise.resolve();
+    if (!pricem2EvolutionDetailsOpen(root)) return Promise.resolve();
+    var canvases = root.querySelectorAll("canvas[data-pricem2-chart]");
+    if (!canvases.length) return Promise.resolve();
+    var jobs = [];
+    canvases.forEach(function (canvas) {
+      var evolutionDetails = canvas.closest("details[data-pricem2-evolution]");
+      if (evolutionDetails && !evolutionDetails.open) return;
+      var panel = canvas.closest("[data-pricem2-panel]");
+      if (panel && panel.hasAttribute("hidden")) return;
+      var config = readPricem2ChartConfig(canvas);
+      if (!config) return;
+      jobs.push(createPricem2Chart(canvas, config));
+    });
+    return Promise.all(jobs);
+  }
+
+  function refreshPricem2PanelChart(root, panelKey) {
+    if (!root) return;
+    if (!pricem2EvolutionDetailsOpen(root)) return;
+    var panel = root.querySelector('[data-pricem2-panel="' + panelKey + '"]');
+    if (!panel) return;
+    var canvas = panel.querySelector("canvas[data-pricem2-chart]");
+    if (!canvas) return;
+    requestAnimationFrame(function () {
+      loadChartJs()
+        .then(function () {
+          var chart = window.Chart.getChart(canvas);
+          if (chart) {
+            chart.resize();
+            return null;
+          }
+          var config = readPricem2ChartConfig(canvas);
+          if (config) return createPricem2Chart(canvas, config);
+          return null;
+        })
+        .catch(function () {});
+    });
+  }
+
+  function applyPricem2DefaultTab(root) {
+    if (!root) return;
+    var preferred = root.getAttribute("data-pricem2-default");
+    if (preferred !== "house" && preferred !== "apartment") return;
+    var tab = root.querySelector('[data-pricem2-type="' + preferred + '"]');
+    if (!tab || tab.classList.contains("is-active")) return;
+    tab.click();
+  }
+
+  function mountVisiblePricem2Charts(root) {
+    if (!root) return Promise.resolve();
+    return initPricem2Charts(root).then(function () {
+      return loadChartJs();
+    }).then(function (Chart) {
+      if (!Chart) return;
+      root.querySelectorAll("canvas[data-pricem2-chart]").forEach(function (canvas) {
+        var evolutionDetails = canvas.closest("details[data-pricem2-evolution]");
+        if (evolutionDetails && !evolutionDetails.open) return;
+        var panel = canvas.closest("[data-pricem2-panel]");
+        if (panel && panel.hasAttribute("hidden")) return;
+        var chart = Chart.getChart(canvas);
+        if (chart) {
+          chart.resize();
+          return;
+        }
+        var config = readPricem2ChartConfig(canvas);
+        if (config) return createPricem2Chart(canvas, config);
+        return null;
+      });
+    }).catch(function () {});
+  }
+
+  function pricem2EvolutionChartHeightSyncEnabled(layout) {
+    if (!layout || !layout.querySelector(".pricem2__evolution-aside")) return false;
+    return window.matchMedia("(min-width: 821px)").matches;
+  }
+
+  function syncPricem2EvolutionChartHeight(layout) {
+    if (!layout) return;
+    if (!pricem2EvolutionChartHeightSyncEnabled(layout)) {
+      layout.style.removeProperty("--pricem2-evolution-chart-h");
+      return;
+    }
+    var aside = layout.querySelector(".pricem2__evolution-aside");
+    if (!aside) {
+      layout.style.removeProperty("--pricem2-evolution-chart-h");
+      return;
+    }
+    var h = Math.round(aside.getBoundingClientRect().height);
+    if (h < 1) return;
+    layout.style.setProperty("--pricem2-evolution-chart-h", h + "px");
+  }
+
+  function resizePricem2ChartsInLayout(layout) {
+    if (!layout || !window.Chart) return;
+    layout.querySelectorAll("canvas[data-pricem2-chart]").forEach(function (canvas) {
+      var panel = canvas.closest("[data-pricem2-panel]");
+      if (panel && panel.hasAttribute("hidden")) return;
+      var chart = window.Chart.getChart(canvas);
+      if (chart) chart.resize();
+    });
+  }
+
+  function syncPricem2EvolutionLayout(layout) {
+    syncPricem2EvolutionChartHeight(layout);
+    requestAnimationFrame(function () {
+      resizePricem2ChartsInLayout(layout);
+    });
+  }
+
+  function syncPricem2EvolutionChartHeights(root) {
+    var layouts = [];
+    if (!root) {
+      layouts = Array.from(document.querySelectorAll(".pricem2__evolution-layout"));
+    } else if (root.matches && root.matches(".pricem2__evolution-layout")) {
+      layouts = [root];
+    } else if (root.querySelectorAll) {
+      layouts = Array.from(root.querySelectorAll(".pricem2__evolution-layout"));
+    }
+    layouts.forEach(syncPricem2EvolutionLayout);
+  }
+
+  var pricem2EvolutionHeightObservers =
+    typeof WeakMap !== "undefined" ? new WeakMap() : null;
+
+  function observePricem2EvolutionAside(layout) {
+    if (!layout || !pricem2EvolutionHeightObservers) return;
+    if (pricem2EvolutionHeightObservers.has(layout)) return;
+    var aside = layout.querySelector(".pricem2__evolution-aside");
+    if (!aside) return;
+    var ro = new ResizeObserver(function () {
+      syncPricem2EvolutionLayout(layout);
+    });
+    ro.observe(aside);
+    pricem2EvolutionHeightObservers.set(layout, ro);
+  }
+
+  function bindPricem2EvolutionLayoutHeights(root) {
+    var layouts = [];
+    if (!root) {
+      layouts = Array.from(document.querySelectorAll(".pricem2__evolution-layout"));
+    } else if (root.matches && root.matches(".pricem2__evolution-layout")) {
+      layouts = [root];
+    } else if (root.querySelectorAll) {
+      layouts = Array.from(root.querySelectorAll(".pricem2__evolution-layout"));
+    }
+    layouts.forEach(function (layout) {
+      observePricem2EvolutionAside(layout);
+      syncPricem2EvolutionLayout(layout);
+    });
+  }
+
+  function schedulePricem2EvolutionCharts(details) {
+    if (!details || !details.open) return;
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        applyPricem2DefaultTab(details);
+        bindPricem2EvolutionLayoutHeights(details);
+        mountVisiblePricem2Charts(details).then(function () {
+          syncPricem2EvolutionChartHeights(details);
+        });
+      });
+    });
+  }
+
+  function bindPricem2EvolutionDetails(details) {
+    if (!details || details.dataset.pricem2EvolutionBound === "1") return;
+    details.dataset.pricem2EvolutionBound = "1";
+    details.addEventListener("toggle", function () {
+      if (!details.open) return;
+      schedulePricem2EvolutionCharts(details);
+    });
+  }
+
+  function bootPricem2Charts() {
+    document.querySelectorAll("details[data-pricem2-evolution]").forEach(function (el) {
+      bindPricem2EvolutionDetails(el);
+      if (el.open) {
+        schedulePricem2EvolutionCharts(el);
+      }
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bootPricem2Charts);
+  } else {
+    bootPricem2Charts();
+  }
+
+  var pricem2EvolutionHeightMq = window.matchMedia("(min-width: 821px)");
+  if (pricem2EvolutionHeightMq.addEventListener) {
+    pricem2EvolutionHeightMq.addEventListener("change", function () {
+      syncPricem2EvolutionChartHeights(document);
+    });
+  } else if (pricem2EvolutionHeightMq.addListener) {
+    pricem2EvolutionHeightMq.addListener(function () {
+      syncPricem2EvolutionChartHeights(document);
+    });
+  }
+
   // Toute mise à jour du bloc localisation (saisie, effacement, adresse IA)
   // passe par un swap de #listing-location-block : on en profite pour relancer
-  // le widget prix au m² une fois le swap stabilisé.
+  // l'analyse de marché une fois le swap stabilisé.
   document.body.addEventListener("htmx:afterSettle", function (event) {
     var target = event.detail && event.detail.target;
-    if (!target || target.id !== "listing-location-block") return;
-    refreshListingPrixM2Block();
+    if (!target) return;
+    if (target.id === "listing-location-block") {
+      refreshListingPrixM2Block();
+      return;
+    }
+    if (target.id === "listing-enrichment-live") {
+      bootPricem2Charts();
+      return;
+    }
+    var block =
+      target.id === "provider-immo-data"
+        ? target
+        : target.closest && target.closest("#provider-immo-data");
+    if (block) {
+      var evolution = block.querySelector("details[data-pricem2-evolution]");
+      if (evolution) {
+        bindPricem2EvolutionDetails(evolution);
+        if (evolution.open) schedulePricem2EvolutionCharts(evolution);
+      }
+    }
   });
 
   // Bouton « Copier » générique : copie le code du bloc .dpe-cmd voisin.
@@ -115,6 +610,7 @@
   var modalConfirm = modal && modal.querySelector("[data-modal-confirm]");
   var pendingForm = null;
   var pendingIssue = null; // callback htmx (issueRequest) quand c'est une requête htmx
+  var pendingHtmxReplay = null; // copie de la requête si le formulaire est retiré du DOM (ex. polling)
   var lastFocused = null;
 
   function openModal(form, message) {
@@ -140,6 +636,7 @@
     document.body.classList.remove("is-modal-open");
     pendingForm = null;
     pendingIssue = null;
+    pendingHtmxReplay = null;
     if (lastFocused && typeof lastFocused.focus === "function") {
       lastFocused.focus();
     }
@@ -149,10 +646,28 @@
   function confirmPending() {
     var form = pendingForm;
     var issue = pendingIssue;
+    var replay = pendingHtmxReplay;
     closeModal();
     // Requête htmx : on relance celle que htmx:confirm avait mise en pause.
+    // Si le formulaire a été remplacé entre-temps (polling, swap htmx), on rejoue
+    // la requête avec les valeurs figées à l'ouverture de la modale.
+    if (replay && typeof htmx !== "undefined") {
+      var source = replay.form;
+      if (typeof replay.issue === "function" && source && source.isConnected) {
+        replay.issue(true);
+        return;
+      }
+      if (replay.path) {
+        htmx.ajax(replay.verb || "post", replay.path, {
+          target: replay.hxTarget,
+          swap: replay.hxSwap,
+          values: replay.values,
+        });
+        return;
+      }
+    }
     if (typeof issue === "function") {
-      issue();
+      issue(true);
       return;
     }
     if (!form) return;
@@ -202,11 +717,34 @@
   // confirme. Sans `data-confirm`, htmx poursuit normalement.
   document.body.addEventListener("htmx:confirm", function (event) {
     var elt = event.detail && event.detail.elt;
-    var message = elt && elt.getAttribute && elt.getAttribute("data-confirm");
-    if (!message || !modal) return;
+    if (!elt || !modal) return;
+    var confirmRoot =
+      (elt.getAttribute && elt.getAttribute("data-confirm") && elt) ||
+      (elt.closest && elt.closest("[data-confirm]"));
+    var message =
+      confirmRoot && confirmRoot.getAttribute && confirmRoot.getAttribute("data-confirm");
+    if (!message) return;
     event.preventDefault();
-    pendingIssue = event.detail.issueRequest;
-    openModal(elt, message);
+    var detail = event.detail;
+    var form =
+      confirmRoot.tagName === "FORM"
+        ? confirmRoot
+        : confirmRoot.closest && confirmRoot.closest("form");
+    var requestRoot = form || confirmRoot;
+    pendingIssue = detail.issueRequest;
+    pendingHtmxReplay = {
+      issue: detail.issueRequest,
+      form: requestRoot,
+      verb: detail.verb,
+      path: detail.path,
+      hxTarget: requestRoot.getAttribute("hx-target"),
+      hxSwap: requestRoot.getAttribute("hx-swap"),
+      values:
+        form && typeof htmx !== "undefined"
+          ? htmx.values(form, detail.verb || "post")
+          : null,
+    };
+    openModal(confirmRoot, message);
   });
 
   if (modal) {
@@ -639,6 +1177,266 @@
     });
   })();
 
+  // Admin HexaSmal : onglets Import / Explorer la base.
+  (function initHexasmalSectionTabs() {
+    var root = document.querySelector("[data-hexasmal-section-tabs]");
+    if (!root) return;
+    var tabs = Array.prototype.slice.call(
+      root.querySelectorAll("[data-hexasmal-section]")
+    );
+    var panels = Array.prototype.slice.call(
+      document.querySelectorAll("[data-hexasmal-section-panel]")
+    );
+
+    function activate(name) {
+      tabs.forEach(function (tab) {
+        var active = tab.getAttribute("data-hexasmal-section") === name;
+        tab.classList.toggle("is-active", active);
+        tab.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      panels.forEach(function (panel) {
+        var active = panel.getAttribute("data-hexasmal-section-panel") === name;
+        panel.classList.toggle("is-active", active);
+        panel.hidden = !active;
+      });
+    }
+
+    root.addEventListener("click", function (event) {
+      var tab = event.target.closest("[data-hexasmal-section]");
+      if (!tab) return;
+      activate(tab.getAttribute("data-hexasmal-section"));
+    });
+  })();
+
+  // Admin : inspecteur JSON du cache enrichissement.
+  (function initAdminCacheModal() {
+    var modal = document.getElementById("admin-cache-modal");
+    var content = modal && modal.querySelector("[data-admin-cache-content]");
+    if (!modal || !content) return;
+
+    var activeController = null;
+
+    function closeModal() {
+      if (activeController) {
+        activeController.abort();
+        activeController = null;
+      }
+      modal.hidden = true;
+      document.body.classList.remove("is-modal-open");
+    }
+
+    function openModal() {
+      modal.hidden = false;
+      document.body.classList.add("is-modal-open");
+    }
+
+    function showLoading() {
+      content.innerHTML =
+        '<p class="admin-cache-dialog__loading">Chargement…</p>';
+    }
+
+    function showError(message) {
+      content.innerHTML =
+        '<p class="admin-cache-dialog__loading">' +
+        (message || "Impossible de charger cette entrée.") +
+        "</p>";
+    }
+
+    function setOpenState(entry, open) {
+      if (!entry) return;
+      var toggle = entry.querySelector(":scope > .jv-line .jv-toggle[data-jv-toggle]");
+      var children = entry.querySelector(":scope > .jv-children");
+      if (toggle) {
+        toggle.classList.toggle("is-open", open);
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+      if (children) children.classList.toggle("is-open", open);
+    }
+
+    function bindJsonView(panel) {
+      if (!panel) return;
+      var tree = panel.querySelector("[data-jv-tree]");
+      var pathbar = panel.querySelector("[data-jv-pathbar]");
+      var filterInput = panel.querySelector("[data-jv-filter]");
+      var copyBtn = panel.querySelector("[data-jv-copy]");
+      var jsonField = panel.querySelector("[data-jv-json]");
+
+      function selectPath(path) {
+        if (!tree) return;
+        tree.querySelectorAll(".jv-entry.is-selected").forEach(function (el) {
+          el.classList.remove("is-selected");
+        });
+        var target = null;
+        tree.querySelectorAll(".jv-entry").forEach(function (el) {
+          if (el.getAttribute("data-jv-path") === path) target = el;
+        });
+        if (target) {
+          target.classList.add("is-selected");
+          target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
+        if (pathbar) {
+          pathbar.innerHTML =
+            '<button type="button" class="jv-path__seg' +
+            (path === "root" ? " is-active" : "") +
+            '" data-jv-focus="root">racine</button>';
+          if (path !== "root") {
+            var current = document.createElement("span");
+            current.className = "jv-path__current";
+            current.textContent = path.replace(/^root\.?/, "");
+            pathbar.appendChild(current);
+          }
+        }
+      }
+
+      if (tree) {
+        tree.addEventListener("click", function (event) {
+          var toggle = event.target.closest("[data-jv-toggle]");
+          if (toggle) {
+            event.preventDefault();
+            event.stopPropagation();
+            var branch = toggle.closest(".jv-entry--branch, .jv-root");
+            if (!branch) return;
+            var children = branch.querySelector(":scope > .jv-children");
+            var open = !(children && children.classList.contains("is-open"));
+            setOpenState(branch, open);
+            return;
+          }
+          var line = event.target.closest(".jv-line");
+          var entry = line && line.closest(".jv-entry");
+          if (entry) {
+            var path = entry.getAttribute("data-jv-path");
+            if (path) selectPath(path);
+          }
+        });
+      }
+
+      if (pathbar) {
+        pathbar.addEventListener("click", function (event) {
+          var btn = event.target.closest("[data-jv-focus]");
+          if (btn) selectPath(btn.getAttribute("data-jv-focus") || "root");
+        });
+      }
+
+      panel.querySelectorAll("[data-jv-expand-all]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          panel.querySelectorAll(".jv-entry--branch, .jv-root").forEach(function (entry) {
+            setOpenState(entry, true);
+          });
+        });
+      });
+
+      panel.querySelectorAll("[data-jv-collapse-all]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          panel.querySelectorAll(".jv-entry--branch, .jv-root").forEach(function (entry) {
+            setOpenState(entry, false);
+          });
+        });
+      });
+
+      if (filterInput && tree) {
+        filterInput.addEventListener("input", function () {
+          var q = filterInput.value.trim().toLowerCase();
+          tree.querySelectorAll(".jv-entry").forEach(function (entry) {
+            if (!q) {
+              entry.hidden = false;
+              return;
+            }
+            var text = (entry.getAttribute("data-jv-path") || "") + " " + entry.textContent;
+            entry.hidden = !text.toLowerCase().includes(q);
+          });
+        });
+      }
+
+      if (copyBtn && jsonField) {
+        copyBtn.addEventListener("click", function () {
+          var text = jsonField.value;
+          if (!text) return;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () {
+              copyBtn.textContent = "Copié !";
+              setTimeout(function () {
+                copyBtn.textContent = "Copier le JSON";
+              }, 1600);
+            });
+          } else {
+            jsonField.classList.remove("visually-hidden");
+            jsonField.select();
+            document.execCommand("copy");
+            jsonField.classList.add("visually-hidden");
+          }
+        });
+      }
+
+      selectPath("root");
+    }
+
+    function loadEntry(params) {
+      if (activeController) activeController.abort();
+      activeController = new AbortController();
+      showLoading();
+      openModal();
+
+      var url =
+        "/admin/enrichment-cache/detail?" +
+        new URLSearchParams(params).toString();
+      fetch(url, {
+        signal: activeController.signal,
+        headers: { Accept: "text/html" },
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error("not found");
+          return res.text();
+        })
+        .then(function (html) {
+          content.innerHTML = html;
+          activeController = null;
+          var panel = content.querySelector("[data-admin-cache-panel]");
+          bindJsonView(panel);
+          var closeBtn = modal.querySelector(".admin-cache-dialog__close");
+          if (closeBtn) closeBtn.focus();
+        })
+        .catch(function (err) {
+          if (err && err.name === "AbortError") return;
+          showError();
+          activeController = null;
+        });
+    }
+
+    document.addEventListener("click", function (event) {
+      if (event.target.closest("[data-admin-cache-dismiss]")) {
+        if (!modal.hidden) closeModal();
+        return;
+      }
+      var btn = event.target.closest("[data-admin-cache-view]");
+      if (!btn) return;
+      event.preventDefault();
+      var scope = btn.getAttribute("data-cache-scope");
+      var provider = btn.getAttribute("data-cache-provider");
+      if (!scope || !provider) return;
+      var params = { scope: scope, provider: provider };
+      if (scope === "commune") {
+        var insee = btn.getAttribute("data-cache-insee");
+        if (!insee) return;
+        params.insee_code = insee;
+      } else if (scope === "department") {
+        var dept = btn.getAttribute("data-cache-dept");
+        if (!dept) return;
+        params.dept_code = dept;
+      } else {
+        var listingId = btn.getAttribute("data-cache-listing-id");
+        if (!listingId) return;
+        params.listing_id = listingId;
+      }
+      loadEntry(params);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (modal.hidden || event.key !== "Escape") return;
+      event.preventDefault();
+      closeModal();
+    });
+  })();
+
   // Listes à options-liens (projet, tri). Tout fonctionne sans JS ; ici on
   // ajoute l'ouverture, la fermeture et la navigation au clavier.
   function bindLinkMenu(root, triggerName, menuName) {
@@ -900,6 +1698,53 @@
     if (trigger) trigger.setAttribute("aria-expanded", "false");
   }
 
+  function dpeDateModFields(picker) {
+    return {
+      hidden: picker.querySelector("[data-dpe-date-mod-hidden]"),
+      input: picker.querySelector("[data-dpe-date-mod-input]"),
+    };
+  }
+
+  function syncDpeDateModHidden(picker, options) {
+    if (!picker) return;
+    var fields = dpeDateModFields(picker);
+    if (!fields.hidden || !fields.input) return;
+    fields.hidden.value = String(fields.input.value || "").trim();
+    syncDpeDateModTriggerLabel(picker);
+    if (options && options.submit) {
+      var form = picker.closest(".dpe-search-form");
+      if (form && typeof htmx !== "undefined") {
+        htmx.trigger(form, "submit");
+      }
+    }
+  }
+
+  function syncDpeDateModTriggerLabel(picker) {
+    if (!picker) return;
+    var label = picker.querySelector("[data-dpe-date-mod-trigger-label]");
+    var fields = dpeDateModFields(picker);
+    var value =
+      fields.hidden && String(fields.hidden.value || "").trim()
+        ? String(fields.hidden.value || "").trim()
+        : fields.input
+          ? String(fields.input.value || "").trim()
+          : "";
+    if (!label) return;
+    label.textContent = value || "Dernière modification";
+  }
+
+  function resetDpeDateModPicker(picker) {
+    if (!picker) return;
+    var fields = dpeDateModFields(picker);
+    if (fields.input) fields.input.value = "";
+    if (fields.hidden) fields.hidden.value = "";
+    syncDpeDateModTriggerLabel(picker);
+    var popover = picker.querySelector("[data-dpe-date-mod-popover]");
+    if (popover) popover.hidden = true;
+    var trigger = picker.querySelector("[data-dpe-date-mod-trigger]");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  }
+
   // Admin DPE : code postal dans un popover (même principe que surface).
   (function initDpePostalPicker() {
     var picker = document.querySelector("[data-dpe-postal-picker]");
@@ -950,6 +1795,56 @@
         syncDpePostalTriggerLabel(picker);
       });
     }
+  })();
+
+  // Admin DPE : date de dernière modification (jour exact).
+  (function initDpeDateModPicker() {
+    var picker = document.querySelector("[data-dpe-date-mod-picker]");
+    if (!picker) return;
+
+    var trigger = picker.querySelector("[data-dpe-date-mod-trigger]");
+    var popover = picker.querySelector("[data-dpe-date-mod-popover]");
+    var fields = dpeDateModFields(picker);
+    if (!trigger || !popover || !fields.input) return;
+
+    var open = false;
+
+    function setOpen(next) {
+      open = next;
+      popover.hidden = !open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open && fields.input) fields.input.focus();
+    }
+
+    trigger.addEventListener("click", function () {
+      setOpen(!open);
+    });
+
+    picker.querySelectorAll("[data-dpe-date-mod-dismiss]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setOpen(false);
+        trigger.focus();
+      });
+    });
+
+    document.addEventListener("click", function (event) {
+      if (open && !picker.contains(event.target)) setOpen(false);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (open && event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        trigger.focus();
+      }
+    });
+
+    fields.input.addEventListener("input", function () {
+      syncDpeDateModHidden(picker, { submit: false });
+    });
+    fields.input.addEventListener("change", function () {
+      syncDpeDateModHidden(picker, { submit: true });
+    });
   })();
 
   // Admin DPE : DPE & GES dans un popover (même principe que surface).
@@ -1510,30 +2405,6 @@
     });
   })();
 
-  // Description longue : repliée par défaut ; clic sur le bloc ou sur le bouton.
-  document.addEventListener("click", function (event) {
-    var toggle = event.target.closest("[data-description-toggle]");
-    var box = toggle
-      ? toggle.closest("[data-description]")
-      : event.target.closest("[data-description]");
-    if (!box) return;
-
-    function setExpanded(expanded) {
-      box.classList.toggle("is-collapsed", !expanded);
-      var btn = box.querySelector("[data-description-toggle]");
-      if (btn) btn.setAttribute("aria-expanded", expanded ? "true" : "false");
-    }
-
-    if (toggle) {
-      setExpanded(box.classList.contains("is-collapsed"));
-      return;
-    }
-
-    if (box.classList.contains("is-collapsed")) {
-      setExpanded(true);
-    }
-  });
-
   // Les photos sont servies par les sites d'origine : une URL peut expirer.
   document.addEventListener(
     "error",
@@ -2022,6 +2893,8 @@
       if (etiquettePicker) resetDpeEtiquettePicker(etiquettePicker);
       var postalPicker = form.querySelector("[data-dpe-postal-picker]");
       if (postalPicker) resetDpePostalPicker(postalPicker);
+      var dateModPicker = form.querySelector("[data-dpe-date-mod-picker]");
+      if (dateModPicker) resetDpeDateModPicker(dateModPicker);
       form.querySelectorAll("[data-dpe-range-picker]").forEach(resetDpeRangePicker);
 
       if (typeof htmx !== "undefined") {
@@ -3376,6 +4249,274 @@
         scan(target);
       }
     });
+  })();
+
+  (function initDvfSalesPopovers() {
+    document.addEventListener("click", function (event) {
+      if (event.target.closest(".pricem2__dvf-method")) return;
+      document.querySelectorAll(".pricem2__dvf-method[open]").forEach(function (el) {
+        el.removeAttribute("open");
+      });
+    });
+
+    var lastFocused = null;
+    var openPopoverEl = null;
+    var openAnchor = null;
+
+    function setAnchorExpanded(anchor, expanded) {
+      if (!anchor) return;
+      anchor.setAttribute("aria-expanded", expanded ? "true" : "false");
+    }
+
+    function positionDvfSalesPopover(panel, anchor) {
+      var margin = 8;
+      var vw = window.innerWidth;
+      var vh = window.innerHeight;
+      var anchorRect = anchor.getBoundingClientRect();
+      var panelRect = panel.getBoundingClientRect();
+      var top = anchorRect.bottom + margin;
+      var left = anchorRect.left;
+
+      if (left + panelRect.width > vw - margin) {
+        left = Math.max(margin, vw - margin - panelRect.width);
+      }
+      if (left < margin) left = margin;
+
+      if (top + panelRect.height > vh - margin) {
+        var above = anchorRect.top - margin - panelRect.height;
+        if (above >= margin) top = above;
+      }
+
+      panel.style.top = Math.round(top) + "px";
+      panel.style.left = Math.round(left) + "px";
+    }
+
+    function openPopover(id, anchor) {
+      var popover = document.getElementById(id);
+      if (!popover || !anchor) return;
+      var panel = popover.querySelector("[data-dvf-sales-panel]");
+      if (!panel) return;
+
+      closeAnyOpen();
+      lastFocused = anchor;
+      openPopoverEl = popover;
+      openAnchor = anchor;
+
+      popover.hidden = false;
+      popover.classList.add("is-open");
+      setAnchorExpanded(anchor, true);
+
+      requestAnimationFrame(function () {
+        positionDvfSalesPopover(panel, anchor);
+        var closeBtn = panel.querySelector("[data-dvf-sales-dismiss]");
+        if (closeBtn) closeBtn.focus();
+      });
+    }
+
+    function closePopover(popover) {
+      if (!popover) return;
+      var wasVisible = !popover.hidden;
+      var panel = popover.querySelector("[data-dvf-sales-panel]");
+      popover.hidden = true;
+      popover.classList.remove("is-open");
+      if (panel) {
+        panel.style.top = "";
+        panel.style.left = "";
+      }
+      if (openAnchor) setAnchorExpanded(openAnchor, false);
+      openPopoverEl = null;
+      openAnchor = null;
+      if (wasVisible && lastFocused && typeof lastFocused.focus === "function") {
+        lastFocused.focus();
+      }
+      lastFocused = null;
+    }
+
+    function closeAnyOpen() {
+      if (openPopoverEl) {
+        closePopover(openPopoverEl);
+        return;
+      }
+      document.querySelectorAll("[data-dvf-sales-popover]:not([hidden])").forEach(function (el) {
+        closePopover(el);
+      });
+    }
+
+    function sortValueFromCell(cell) {
+      if (!cell) return null;
+      var raw = cell.getAttribute("data-sort-value");
+      if (raw === "" || raw == null) return null;
+      var n = Number(raw);
+      return Number.isFinite(n) ? n : raw;
+    }
+
+    function compareSortValues(a, b, direction) {
+      var aNull = a == null;
+      var bNull = b == null;
+      if (aNull && bNull) return 0;
+      if (aNull) return 1;
+      if (bNull) return -1;
+      var cmp;
+      if (typeof a === "number" && typeof b === "number") {
+        cmp = a - b;
+      } else {
+        cmp = String(a).localeCompare(String(b), "fr", { numeric: true });
+      }
+      return direction === "ascending" ? cmp : -cmp;
+    }
+
+    function sortDvfSalesTable(table, sortKey, direction) {
+      var headRow = table.tHead && table.tHead.rows[0];
+      var tbody = table.tBodies[0];
+      if (!headRow || !tbody) return;
+      var colIndex = -1;
+      for (var i = 0; i < headRow.cells.length; i++) {
+        if (headRow.cells[i].getAttribute("data-dvf-sort") === sortKey) {
+          colIndex = i;
+          break;
+        }
+      }
+      if (colIndex < 0) return;
+
+      var rows = Array.prototype.slice.call(tbody.rows);
+      rows.sort(function (rowA, rowB) {
+        return compareSortValues(
+          sortValueFromCell(rowA.cells[colIndex]),
+          sortValueFromCell(rowB.cells[colIndex]),
+          direction
+        );
+      });
+      rows.forEach(function (row) {
+        tbody.appendChild(row);
+      });
+
+      Array.prototype.forEach.call(headRow.cells, function (th) {
+        if (th.getAttribute("data-dvf-sort") === sortKey) {
+          th.setAttribute("aria-sort", direction);
+        } else if (th.hasAttribute("data-dvf-sort")) {
+          th.setAttribute("aria-sort", "none");
+        }
+      });
+    }
+
+    document.addEventListener("click", function (event) {
+      var sortBtn = event.target.closest(".dvf-sales-table__sort-btn");
+      if (sortBtn) {
+        var th = sortBtn.closest("[data-dvf-sort]");
+        var table = sortBtn.closest(".dvf-sales-table");
+        if (th && table) {
+          event.preventDefault();
+          var sortKey = th.getAttribute("data-dvf-sort");
+          var current = th.getAttribute("aria-sort");
+          var direction;
+          if (current === "ascending") {
+            direction = "descending";
+          } else if (current === "descending") {
+            direction = "ascending";
+          } else {
+            direction = "descending";
+          }
+          sortDvfSalesTable(table, sortKey, direction);
+        }
+        return;
+      }
+
+      var openBtn = event.target.closest("[data-dvf-sales-open]");
+      if (openBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        var popoverId = openBtn.getAttribute("data-dvf-sales-open");
+        if (openPopoverEl && openAnchor === openBtn && !openPopoverEl.hidden) {
+          closeAnyOpen();
+        } else {
+          openPopover(popoverId, openBtn);
+        }
+        return;
+      }
+      if (event.target.closest("[data-dvf-sales-dismiss]")) {
+        var popover = event.target.closest("[data-dvf-sales-popover]");
+        closePopover(popover);
+        return;
+      }
+      if (
+        openPopoverEl &&
+        !openPopoverEl.hidden &&
+        !event.target.closest("[data-dvf-sales-popover]") &&
+        !event.target.closest("[data-dvf-sales-open]")
+      ) {
+        closeAnyOpen();
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") return;
+      closeAnyOpen();
+    });
+
+    window.addEventListener(
+      "resize",
+      function () {
+        if (!openPopoverEl || openPopoverEl.hidden || !openAnchor) return;
+        var panel = openPopoverEl.querySelector("[data-dvf-sales-panel]");
+        if (panel) positionDvfSalesPopover(panel, openAnchor);
+      },
+      { passive: true }
+    );
+  })();
+
+  (function initMobileNav() {
+    var topbar = document.querySelector(".topbar");
+    var toggle = document.querySelector("[data-mobile-nav-toggle]");
+    var scrim = document.querySelector("[data-mobile-nav-dismiss]");
+    var nav = document.getElementById("main-topnav");
+    if (!topbar || !toggle || !nav) return;
+
+    var mq = window.matchMedia("(max-width: 720px)");
+
+    function setOpen(open) {
+      if (!mq.matches && open) return;
+      topbar.classList.toggle("topbar--nav-open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      var label = toggle.querySelector(".visually-hidden");
+      if (label) {
+        label.textContent = open ? "Fermer le menu" : "Ouvrir le menu";
+      }
+      if (scrim) {
+        scrim.setAttribute("aria-hidden", open ? "false" : "true");
+      }
+      document.body.classList.toggle("is-mobile-nav-open", open);
+    }
+
+    function close() {
+      setOpen(false);
+    }
+
+    toggle.addEventListener("click", function () {
+      setOpen(!topbar.classList.contains("topbar--nav-open"));
+    });
+
+    if (scrim) {
+      scrim.addEventListener("click", close);
+    }
+
+    nav.addEventListener("click", function (event) {
+      if (!mq.matches) return;
+      if (event.target.closest(".topnav__link")) close();
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") close();
+    });
+
+    if (mq.addEventListener) {
+      mq.addEventListener("change", function () {
+        if (!mq.matches) close();
+      });
+    } else if (mq.addListener) {
+      mq.addListener(function () {
+        if (!mq.matches) close();
+      });
+    }
   })();
 
 })();

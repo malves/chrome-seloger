@@ -1,0 +1,40 @@
+<%
+  const r = radius;
+  const halfMonths =
+    r.recency_half_life_days != null
+      ? Math.round(r.recency_half_life_days / 30)
+      : null;
+%>
+<details class="pricem2__dvf-method">
+  <summary class="pricem2__dvf-method-trigger" aria-label="Méthode de calcul du prix DVF local">
+    <span class="pricem2__dvf-method-mark" aria-hidden="true">?</span>
+  </summary>
+  <div class="pricem2__dvf-method-panel">
+    <p class="pricem2__dvf-method-title">Méthode de calcul</p>
+    <p class="pricem2__dvf-method-lead">
+      Prix de référence DVF pour les <strong><%= dvfTypeLabel %></strong>,
+      même type que cette annonce.
+    </p>
+    <ul class="pricem2__dvf-method-list">
+      <li>
+        <%= r.recency_weighted ? 'Médiane pondérée (ventes récentes davantage prises en compte)' : 'Médiane des ventes' %>
+        <% if (halfMonths) { %>. Demi-vie d'environ <%= halfMonths %> mois<% } %>
+      </li>
+      <li>Rayon de <strong><%= fmt.number(r.meters) %> m</strong> autour de l'adresse saisie</li>
+      <li>Ventes sur les <strong><%= r.years %> dernières années</strong> (source DVF / Etalab)</li>
+      <li><%= fmt.dvfPublicationNotice() %></li>
+      <% if (r.outliers_excluded > 0 && r.count_reference) { %>
+        <li>
+          <strong><%= fmt.number(r.count_reference) %> ventes</strong> retenues pour le €/m² affiché.
+          <strong><%= fmt.number(r.outliers_excluded) %></strong> exclue<%= r.outliers_excluded > 1 ? 's' : '' %> (valeur atypique<% if (r.outlier_floor_m2 != null) { %>, sous <%= fmt.euro(r.outlier_floor_m2) %>/m²<% } %>).
+        </li>
+      <% } %>
+      <% if (r.widened) { %>
+        <li>Rayon élargi faute de ventes suffisantes dans le périmètre initial</li>
+      <% } %>
+      <% if (!r.enough) { %>
+        <li>Échantillon limité. À interpréter avec prudence.</li>
+      <% } %>
+    </ul>
+  </div>
+</details>

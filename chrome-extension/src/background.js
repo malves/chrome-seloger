@@ -449,6 +449,7 @@ async function pageState(tabId) {
     if (state.saved) {
       state.webUrl = found.web_url;
       state.projects = found.projects || [];
+      state.listingId = found.id;
     }
     await markSaved(tabId, state.saved);
   } catch (e) {
@@ -460,6 +461,18 @@ async function pageState(tabId) {
 }
 
 /** « Sauvegarder l'annonce » : lecture de la page puis envoi au carnet. */
+/** Retire du carnet l'annonce déjà enregistrée pour cet onglet. */
+async function deleteFromTab(tabId, listingId) {
+  const id = Number(listingId);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new CarnetError("invalid_id", "Annonce introuvable.");
+  }
+
+  await deleteListing(id);
+  await markSaved(tabId, false);
+  return { removed: true };
+}
+
 async function saveFromTab(tabId, projectId) {
   const tab = await getTab(tabId);
   if (!isListingTab(tab)) {
@@ -481,6 +494,7 @@ async function saveFromTab(tabId, projectId) {
   await markSaved(tabId, true);
 
   return {
+    id: saved.id,
     created: saved.created,
     priceChanged: saved.price_changed,
     webUrl: saved.web_url,
@@ -520,6 +534,7 @@ const CARNET_HANDLERS = {
   CARNET_REMEMBER_PROJECT: (msg) => rememberProject(msg.projectId),
   CARNET_PAGE: (msg) => pageState(msg.tabId),
   CARNET_SAVE: (msg) => saveFromTab(msg.tabId, msg.projectId),
+  CARNET_DELETE: (msg) => deleteFromTab(msg.tabId, msg.listingId),
 };
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

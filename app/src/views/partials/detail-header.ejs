@@ -5,11 +5,8 @@
     </h1>
 
     <div class="detail-meta">
-      <% if (listing.city) { %>
-        <span class="badge">📍 <%= listing.city %><%= listing.postal_code ? ' (' + listing.postal_code + ')' : '' %></span>
-      <% } %>
       <span class="badge badge--<%= fmt.statusTone(listing.status) %>">
-        <%= fmt.statusLabel(listing.status) %>
+        <%= fmt.statusBadgeLabel(listing.status) %>
       </span>
       <% if (listing.transaction_type === 'rent') { %>
         <span class="badge badge--warn">Location</span>
@@ -24,7 +21,7 @@
         </span>
       <% } %>
       <span class="badge badge--muted">
-        <%= fmt.sourceLabel(listing.source) %>
+        Origine : <%= fmt.sourceLabel(listing.source) %>
       </span>
     </div>
 
@@ -34,12 +31,15 @@
 
       <form
         hx-post="/listings/<%= listing.id %>"
-        hx-target="#detail-header"
+        hx-target="#listing-lead"
         hx-swap="outerHTML"
       >
         <input type="hidden" name="view" value="header" />
         <input type="hidden" name="is_favorite" value="<%= listing.is_favorite ? '0' : '1' %>" />
-        <button class="btn <%= listing.is_favorite ? 'btn--lime' : 'btn--ghost' %> btn--sm" type="submit">
+        <button
+          class="btn btn--sm <%= listing.is_favorite ? 'btn--gold' : 'btn--ghost btn--fav-add' %>"
+          type="submit"
+        >
           <%= listing.is_favorite ? '★ Favori' : '☆ Ajouter aux favoris' %>
         </button>
       </form>

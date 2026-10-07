@@ -24,7 +24,8 @@
   const hasNext = page < pageCount;
 %>
 
-<%# La pagination est toujours affichée, même sur une seule page. %>
+<% if (total > 0) { %>
+<%# Affichée dès qu'il y a au moins une annonce dans le résultat filtré. %>
   <nav class="pagination" aria-label="Pagination des annonces">
     <p class="pagination__summary">
       <%= from %>–<%= to %> sur <%= total %> annonce<%= total > 1 ? "s" : "" %>
@@ -84,3 +85,4 @@
       </li>
     </ul>
   </nav>
+<% } %>

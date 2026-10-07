@@ -1,0 +1,11 @@
+<%
+  const r = radius;
+%>
+<button
+  type="button"
+  class="pricem2__dvf-sales-link"
+  data-dvf-sales-open="<%= modalId %>"
+  aria-haspopup="dialog"
+  aria-controls="<%= modalId %>">
+  <%= fmt.number(r.count) %> vente<%= r.count > 1 ? 's' : '' %> dans un rayon de <%= fmt.number(r.meters) %> m<% if (r.widened) { %> (élargi)<% } %>
+</button>

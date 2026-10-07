@@ -13,7 +13,7 @@
     ["Construction", listing.is_new_build ? "Neuf" : null],
     ["Commune", listing.city],
     ["Code postal", listing.postal_code],
-    ["Code INSEE", listing.insee_code],
+    ["Code INSEE", typeof postalInseeCode !== "undefined" ? postalInseeCode : null],
     ["Agence", listing.agency && listing.agency.name ? listing.agency.name : null],
     ["Téléphone", listing.agency && listing.agency.phone ? listing.agency.phone : null],
     [
@@ -27,10 +27,8 @@
 %>
 
 <div class="detail">
-  <!-- 1. En-tête (le rattachement aux projets vit dans la dropdown du header) -->
-  <section class="panel">
-    <%- include("partials/detail-header", { listing: listing, projects: projects }) %>
-  </section>
+  <!-- 1. En-tête + barre de suivi (swapés ensemble quand le statut change) -->
+  <%- include("partials/listing-lead", { listing: listing, projects: projects }) %>
 
   <!-- 2. Galerie (carrousel : flèches, compteur, miniatures, clavier) -->
   <% if (photos.length) { %>
@@ -127,78 +125,87 @@
 
   <!-- 4. Description -->
   <% if (listing.description) { %>
-    <section class="panel">
-      <div class="panel__head">
-        <div>
-          <p class="panel__eyebrow">Annonce</p>
-          <h2 class="panel__title">Description</h2>
+    <section class="panel panel--description">
+      <% const collapsible = listing.description.length > 400; %>
+      <% if (collapsible) { %>
+        <details class="description-details">
+          <summary class="description-details__summary">
+            <div class="panel__head description-details__head">
+              <div>
+                <p class="panel__eyebrow">Annonce</p>
+                <h2 class="panel__title">Description</h2>
+              </div>
+              <div class="panel__head-aside">
+                <span class="delinquance__summary-chevron" aria-hidden="true"></span>
+              </div>
+            </div>
+          </summary>
+          <p class="description"><%= listing.description %></p>
+        </details>
+      <% } else { %>
+        <div class="panel__head">
+          <div>
+            <p class="panel__eyebrow">Annonce</p>
+            <h2 class="panel__title">Description</h2>
+          </div>
         </div>
-      </div>
-      <%
-        // Au-delà de quelques lignes, la description est repliée par défaut :
-        // on clique sur le bloc pour la déplier (voir public/js/app.js).
-        const collapsible = listing.description.length > 400;
-      %>
-      <div class="description-box<%= collapsible ? ' is-collapsible is-collapsed' : '' %>"<%= collapsible ? ' data-description' : '' %>>
         <p class="description"><%= listing.description %></p>
-        <% if (collapsible) { %>
-          <button type="button" class="description-toggle" data-description-toggle aria-expanded="false">
-            <span class="description-toggle__more">Voir plus</span>
-            <span class="description-toggle__less">Voir moins</span>
-          </button>
-        <% } %>
-      </div>
+      <% } %>
     </section>
   <% } %>
 
-  <!-- 4b. Performance énergétique (étiquettes DPE / GES) -->
-  <% if (listing.dpe || listing.ges) { %>
-    <section class="panel">
-      <div class="panel__head">
-        <div>
-          <p class="panel__eyebrow">Énergie</p>
-          <h2 class="panel__title">Performance énergétique</h2>
-        </div>
-      </div>
-      <%- include("partials/energy-performance", { listing: listing }) %>
-    </section>
+  <%
+    const hasExtensionData =
+      listing.extension_data && Object.keys(listing.extension_data).length;
+    const hasEnergyData = listing.dpe || listing.ges;
+  %>
+  <% if (hasExtensionData || hasEnergyData) { %>
+    <div class="detail-columns detail-columns--widgets">
+      <% if (hasExtensionData) { %>
+        <section class="panel">
+          <div class="panel__head">
+            <div>
+              <p class="panel__eyebrow">Extension</p>
+              <h2 class="panel__title">Données du navigateur</h2>
+            </div>
+          </div>
+          <%
+            const travelProjects = listing.projects || [];
+            const travelConfigProject =
+              travelProjects[0] ||
+              (Array.isArray(projects) ? projects.find((p) => p.is_default) : null);
+            const projectConfigHref = travelConfigProject
+              ? `/projects/${travelConfigProject.id}`
+              : null;
+          %>
+          <%- include("partials/extension-data", {
+            data: listing.extension_data,
+            projectConfigHref,
+          }) %>
+        </section>
+      <% } %>
+
+      <% if (hasEnergyData) { %>
+        <section class="panel">
+          <div class="panel__head">
+            <div>
+              <p class="panel__eyebrow">Énergie</p>
+              <h2 class="panel__title">Performance énergétique</h2>
+            </div>
+          </div>
+          <%- include("partials/energy-performance", { listing: listing }) %>
+        </section>
+      <% } %>
+    </div>
   <% } %>
 
-  <!-- 5. Données de l'extension -->
-  <% if (listing.extension_data && Object.keys(listing.extension_data).length) { %>
-    <section class="panel">
-      <div class="panel__head">
-        <div>
-          <p class="panel__eyebrow">Extension</p>
-          <h2 class="panel__title">Données du navigateur</h2>
-        </div>
-      </div>
-      <%- include("partials/extension-data", { data: listing.extension_data }) %>
-    </section>
-  <% } %>
-
-  <!-- Autres providers (hors commune et financement), ex. prix au m² -->
-  <% if (otherProviders.length) { %>
-    <section class="panel">
-      <div class="panel__head">
-        <div>
-          <p class="panel__eyebrow">Enrichissement</p>
-          <h2 class="panel__title">Analyse de marché</h2>
-        </div>
-      </div>
-      <% otherProviders.forEach(function (provider) { %>
-        <%- include("partials/enrichment-block", { provider: provider, listing: listing }) %>
-      <% }); %>
-    </section>
-  <% } %>
-
-  <!-- 6. Territoire (commune, délinquance, …) -->
-  <% if (communeProviders.length) { %>
-    <%- include("partials/listing-territory", {
-      communeProviders: communeProviders,
-      listing: listing
-    }) %>
-  <% } %>
+  <!-- Analyse de marché + territoire (enrichissement auto + polling si cache vide) -->
+  <%- include("partials/listing-enrichment-live", {
+    listing: listing,
+    communeProviders: communeProviders,
+    otherProviders: otherProviders,
+    enrichmentPoll: enrichmentPoll
+  }) %>
 
   <!-- 7. Financement -->
   <% if (listing.transaction_type !== 'rent') { %>
@@ -272,23 +279,26 @@
 
   <!-- Suppression -->
   <section class="panel danger-zone">
-    <div class="panel__head">
-      <div>
-        <p class="panel__eyebrow">Zone dangereuse</p>
-        <h2 class="panel__title">Supprimer cette annonce</h2>
+    <div class="danger-zone__grid">
+      <div class="danger-zone__copy">
+        <div class="panel__head danger-zone__head">
+          <h2 class="panel__title">Supprimer cette annonce</h2>
+        </div>
+        <p class="field__hint">
+          L'annonce, ses photos, ses notes et son historique de prix sont
+          définitivement supprimés.
+        </p>
+      </div>
+      <div class="danger-zone__actions">
+        <form
+          method="post"
+          action="/listings/<%= listing.id %>/delete"
+          data-confirm="Supprimer définitivement cette annonce ?"
+        >
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <button class="btn btn--danger" type="submit">Supprimer l'annonce</button>
+        </form>
       </div>
     </div>
-    <p class="field__hint" style="margin-bottom: var(--space-4)">
-      L'annonce, ses photos, ses notes et son historique de prix sont
-      définitivement supprimés.
-    </p>
-    <form
-      method="post"
-      action="/listings/<%= listing.id %>/delete"
-      data-confirm="Supprimer définitivement cette annonce ?"
-    >
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-      <button class="btn btn--danger" type="submit">Supprimer l'annonce</button>
-    </form>
   </section>
 </div>

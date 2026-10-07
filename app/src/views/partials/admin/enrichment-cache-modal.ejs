@@ -1,0 +1,71 @@
+<%
+  var title =
+    payload.scope === "commune"
+      ? "Commune " + payload.insee_code
+      : payload.scope === "department"
+        ? "Département " + payload.dept_code
+        : "Annonce #" + payload.listing_id;
+  var scopeBadge =
+    payload.scope === "commune"
+      ? "Communal"
+      : payload.scope === "department"
+        ? "Départemental"
+        : "Annonce";
+%>
+<div class="admin-cache-modal" data-admin-cache-panel>
+  <header class="admin-cache-modal__head">
+    <div class="admin-cache-modal__head-text">
+      <p class="panel__eyebrow">Cache · <%= payload.provider %></p>
+      <h2 class="admin-cache-modal__title" id="admin-cache-modal-title"><%= title %></h2>
+      <p class="admin-cache-modal__meta">
+        <% if (payload.scope === "listing") { %>
+          Statut <span class="badge <%= payload.status === 'ok' ? 'badge--success' : payload.status === 'error' ? 'badge--down' : 'badge--muted' %>"><%= payload.status %></span>
+        <% } %>
+        <% if (payload.fetched_at) { %>
+          · Mis à jour <%= fmt.date(payload.fetched_at) %>
+        <% } %>
+      </p>
+    </div>
+    <div class="admin-cache-modal__badges">
+      <span class="badge badge--info"><%= scopeBadge %></span>
+    </div>
+  </header>
+
+  <% if (payload.scope === "listing" && payload.error && payload.data == null) { %>
+    <p class="admin-cache-modal__error" role="alert"><%= payload.error %></p>
+  <% } %>
+
+  <% if (payload.data != null) { %>
+    <div class="admin-cache-modal__toolbar">
+      <label class="admin-cache-modal__search">
+        <span class="visually-hidden">Filtrer les clés et valeurs</span>
+        <input
+          type="search"
+          class="input input--sm"
+          placeholder="Filtrer…"
+          data-jv-filter
+          autocomplete="off"
+        />
+      </label>
+      <div class="admin-cache-modal__toolbar-actions">
+        <button type="button" class="btn btn--ghost btn--sm" data-jv-expand-all>Tout déplier</button>
+        <button type="button" class="btn btn--ghost btn--sm" data-jv-collapse-all>Tout replier</button>
+        <button type="button" class="btn btn--ghost btn--sm" data-jv-copy>Copier le JSON</button>
+      </div>
+    </div>
+
+    <textarea class="visually-hidden" readonly data-jv-json><%= jsonClipboard %></textarea>
+
+    <nav class="jv-path" data-jv-pathbar aria-label="Chemin dans les données">
+      <button type="button" class="jv-path__seg is-active" data-jv-focus="root">racine</button>
+    </nav>
+
+    <div class="admin-cache-modal__body">
+      <div class="jv-panel" data-jv-tree>
+        <%- jsonViewHtml %>
+      </div>
+    </div>
+  <% } else if (!payload.error) { %>
+    <p class="jv-empty">Entrée sans payload JSON (statut seul).</p>
+  <% } %>
+</div>

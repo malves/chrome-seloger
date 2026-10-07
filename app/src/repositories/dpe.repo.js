@@ -42,9 +42,49 @@ function hydrate(row) {
   return { ...row, raw: fromJson(row.raw, null) };
 }
 
+/**
+ * Index secondaires retirés le temps d'un import massif, puis recréés.
+ * Le nom et l'expression doivent rester identiques aux migrations : une
+ * recherche `COLLATE NOCASE` n'utilise l'index commune que s'il est recréé tel quel.
+ */
+const SECONDARY_INDEXES = [
+  {
+    name: "idx_dpe_records_date",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_date ON dpe_records(date_etablissement_dpe)",
+  },
+  {
+    name: "idx_dpe_records_cp",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_cp ON dpe_records(code_postal_ban)",
+  },
+  {
+    name: "idx_dpe_records_insee",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_insee ON dpe_records(code_insee_ban)",
+  },
+  {
+    name: "idx_dpe_records_dept",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_dept ON dpe_records(code_departement_ban)",
+  },
+  {
+    name: "idx_dpe_records_commune",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_commune ON dpe_records(nom_commune_ban COLLATE NOCASE)",
+  },
+  {
+    name: "idx_dpe_records_etiquette",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_etiquette ON dpe_records(etiquette_dpe)",
+  },
+  {
+    name: "idx_dpe_records_date_mod",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_date_mod ON dpe_records(date_derniere_modification_dpe)",
+  },
+  {
+    name: "idx_dpe_records_date_mod_numero",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_date_mod_numero ON dpe_records(date_derniere_modification_dpe, numero_dpe)",
+  },
+];
+
 /** Transforme une ligne de l'API en jeu de valeurs pour l'upsert. */
-function toRecordValues(line) {
-  const values = { raw: toJson(line), imported_at: nowIso() };
+function toRecordValues(line, importedAt) {
+  const values = { raw: toJson(line), imported_at: importedAt };
   for (const column of KEY_COLUMNS) {
     const value = line[column];
     values[column] = value === undefined ? null : value;
@@ -91,6 +131,12 @@ export default function createDpeRepository(db) {
     deleteByModificationDay: db.prepare(
       "DELETE FROM dpe_records WHERE date_derniere_modification_dpe = ?"
     ),
+    deleteByModificationDayBatch: db.prepare(
+      `DELETE FROM dpe_records WHERE rowid IN (
+         SELECT rowid FROM dpe_records
+         WHERE date_derniere_modification_dpe = ? LIMIT ?
+       )`
+    ),
     /** Jours (YYYY-MM-DD) déjà importés au moins une fois (jobs terminés ou données en base). */
     importedDays: db.prepare(
       `SELECT day FROM (
@@ -106,14 +152,80 @@ export default function createDpeRepository(db) {
 
   /** Upsert d'un lot de lignes dans une seule transaction. */
   const upsertMany = db.transaction((lines) => {
+    const importedAt = nowIso();
     let n = 0;
     for (const line of lines) {
       if (!line || !line.numero_dpe) continue;
-      statements.upsert.run(toRecordValues(line));
+      statements.upsert.run(toRecordValues(line, importedAt));
       n += 1;
     }
     return n;
   });
+
+  function indexNames() {
+    return new Set(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'dpe_records'"
+        )
+        .all()
+        .map((row) => row.name)
+    );
+  }
+
+  /** Recrée les index manquants (fin d'import massif, ou redémarrage après un plantage). */
+  function ensureSecondaryIndexes() {
+    const existing = indexNames();
+    for (const index of SECONDARY_INDEXES) {
+      if (!existing.has(index.name)) db.exec(index.sql);
+    }
+  }
+
+  /**
+   * Imports massifs en cours sur cette connexion. Les index ne sont retirés
+   * qu'une fois, puis recréés quand le dernier import massif se termine.
+   */
+  let bulkDepth = 0;
+  let savedPragmas = null;
+
+  function beginBulkLoad() {
+    bulkDepth += 1;
+    if (bulkDepth > 1) return;
+    savedPragmas = {
+      synchronous: db.pragma("synchronous", { simple: true }),
+      cache_size: db.pragma("cache_size", { simple: true }),
+      temp_store: db.pragma("temp_store", { simple: true }),
+      wal_autocheckpoint: db.pragma("wal_autocheckpoint", { simple: true }),
+    };
+    // NORMAL en mode WAL évite un fsync à chaque lot, sans perdre la base
+    // en cas de crash applicatif.
+    db.pragma("synchronous = NORMAL");
+    db.pragma("cache_size = -524288");
+    db.pragma("temp_store = MEMORY");
+    db.pragma("wal_autocheckpoint = 20000");
+    for (const index of SECONDARY_INDEXES) {
+      db.exec(`DROP INDEX IF EXISTS ${index.name}`);
+    }
+  }
+
+  function endBulkLoad() {
+    if (bulkDepth === 0) return;
+    bulkDepth -= 1;
+    if (bulkDepth > 0) return;
+    try {
+      ensureSecondaryIndexes();
+    } finally {
+      const saved = savedPragmas;
+      savedPragmas = null;
+      if (!saved) return;
+      db.pragma(`synchronous = ${Number(saved.synchronous)}`);
+      db.pragma(`cache_size = ${Number(saved.cache_size)}`);
+      db.pragma(`temp_store = ${Number(saved.temp_store)}`);
+      db.pragma(`wal_autocheckpoint = ${Number(saved.wal_autocheckpoint)}`);
+    }
+  }
+
+  ensureSecondaryIndexes();
 
   return {
     upsertMany,
@@ -122,6 +234,22 @@ export default function createDpeRepository(db) {
     deleteByModificationDay(day) {
       return statements.deleteByModificationDay.run(day).changes;
     },
+
+    /**
+     * Supprime au plus `limit` lignes de ce jour. Permet de découper un
+     * ré-import de plusieurs millions de lignes sans bloquer le process
+     * d'une traite.
+     */
+    deleteByModificationDayBatch(day, limit) {
+      return statements.deleteByModificationDayBatch.run(day, limit).changes;
+    },
+
+    /**
+     * Prépare une écriture massive : index secondaires retirés, fsync relâchés.
+     * À apparier avec `endBulkLoad`, y compris en cas d'erreur.
+     */
+    beginBulkLoad,
+    endBulkLoad,
 
     count() {
       return statements.count.get().n;
@@ -140,14 +268,19 @@ export default function createDpeRepository(db) {
      * constantes ; seules les valeurs passent par des paramètres liés.
      *
      * Filtres : `codePostal`, `commune`, `typeBatiment`, `etiquette` (DPE),
-     * `etiquetteGes`, `surfaceMin`, `surfaceMax` (m²), `anneeMin`, `anneeMax`.
+     * `etiquetteGes`, `surfaceMin`, `surfaceMax` (m²), `anneeMin`, `anneeMax`,
+     * `dateModif` (YYYY-MM-DD, égalité sur `date_derniere_modification_dpe`, indexée).
      */
     search(filters = {}) {
       const { where, params } = buildSearchClause(filters);
       const whereSql = where.length ? ` WHERE ${where.join(" AND ")}` : "";
 
+      const orderBy = filters.dateModif
+        ? "numero_dpe DESC"
+        : "date_derniere_modification_dpe DESC, numero_dpe DESC";
+
       let sql = `SELECT * FROM dpe_records${whereSql}
-        ORDER BY date_derniere_modification_dpe DESC, numero_dpe DESC`;
+        ORDER BY ${orderBy}`;
 
       if (Number.isFinite(filters.limit)) {
         sql += " LIMIT @limit";
@@ -353,6 +486,10 @@ export default function createDpeRepository(db) {
     if (filters.anneeMax != null) {
       where.push("annee_construction <= @annee_max");
       params.annee_max = filters.anneeMax;
+    }
+    if (filters.dateModif) {
+      where.push("date_derniere_modification_dpe = @date_modif");
+      params.date_modif = filters.dateModif;
     }
 
     return { where, params };

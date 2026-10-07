@@ -4,6 +4,7 @@
   function searchUrl(page) {
     var params = new URLSearchParams();
     if (filters.codePostal) params.set("code_postal", filters.codePostal);
+    if (filters.dateModif) params.set("date_modif", filters.dateModif);
     if (filters.typeBatiment) params.set("type_batiment", filters.typeBatiment);
     if (filters.etiquette) params.set("etiquette", filters.etiquette);
     if (filters.etiquetteGes) params.set("etiquette_ges", filters.etiquetteGes);
@@ -95,7 +96,8 @@
       <nav class="dpe-pagination" aria-label="Pagination des DPE">
         <% if (p.page > 1) { %>
           <a class="btn btn--ghost btn--sm" href="<%= searchUrl(p.page - 1) %>"
-            hx-get="<%= searchUrl(p.page - 1) %>" hx-target="#dpe-results" hx-swap="innerHTML">Précédent</a>
+            hx-get="<%= searchUrl(p.page - 1) %>" hx-target="#dpe-results" hx-swap="innerHTML"
+            hx-indicator="#dpe-search-indicator">Précédent</a>
         <% } else { %>
           <span class="btn btn--ghost btn--sm is-disabled" aria-disabled="true">Précédent</span>
         <% } %>
@@ -104,7 +106,8 @@
 
         <% if (p.page < p.pageCount) { %>
           <a class="btn btn--ghost btn--sm" href="<%= searchUrl(p.page + 1) %>"
-            hx-get="<%= searchUrl(p.page + 1) %>" hx-target="#dpe-results" hx-swap="innerHTML">Suivant</a>
+            hx-get="<%= searchUrl(p.page + 1) %>" hx-target="#dpe-results" hx-swap="innerHTML"
+            hx-indicator="#dpe-search-indicator">Suivant</a>
         <% } else { %>
           <span class="btn btn--ghost btn--sm is-disabled" aria-disabled="true">Suivant</span>
         <% } %>

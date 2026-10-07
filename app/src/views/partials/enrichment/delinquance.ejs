@@ -111,37 +111,34 @@
       </div>
 
       <div class="delinquance__gauge-legend">
-        <span><span class="delinquance__gauge-dot delinquance__gauge-dot--commune"></span><%= communeName %> · indice <%= scoreIndex %></span>
-        <span><span class="delinquance__gauge-dot delinquance__gauge-dot--france"></span>Moyenne France · 100</span>
+        <span><span class="delinquance__gauge-dot delinquance__gauge-dot--commune"></span><%= communeName %> · indice : <span class="delinquance__gauge-val"><%= scoreIndex %></span></span>
+        <span><span class="delinquance__gauge-dot delinquance__gauge-dot--france"></span>Moyenne France : <span class="delinquance__gauge-val">100</span></span>
         <% if (deptIndex != null) { %>
-          <span><span class="delinquance__gauge-dot delinquance__gauge-dot--dept"></span>Département · <%= deptIndex %></span>
+          <span><span class="delinquance__gauge-dot delinquance__gauge-dot--dept"></span>Département : <span class="delinquance__gauge-val"><%= deptIndex %></span></span>
         <% } %>
         <% if (personsIndex != null) { %>
-          <span class="delinquance__gauge-sub">Personnes · <%= personsIndex %></span>
+          <span class="delinquance__gauge-sub">Personnes : <span class="delinquance__gauge-val"><%= personsIndex %></span></span>
         <% } %>
         <% if (propertyIndex != null) { %>
-          <span class="delinquance__gauge-sub">Biens · <%= propertyIndex %></span>
+          <span class="delinquance__gauge-sub">Biens : <span class="delinquance__gauge-val"><%= propertyIndex %></span></span>
         <% } %>
       </div>
     </div>
   <% } %>
 
-  <% if (data.indicators && data.indicators.length) {
-    const indicatorCount = data.indicators.length;
-  %>
-    <details class="delinquance__details">
+  <% if (data.indicators && data.indicators.length) { %>
+    <details class="delinquance__details pricem2__evolution-details">
       <summary class="delinquance__summary">
         <span class="delinquance__summary-text">
           <span class="delinquance__summary-label">Détail par type d'infraction</span>
           <span class="delinquance__summary-hint">
             <span class="delinquance__summary-hint--closed">
-              Afficher les <%= indicatorCount %> indicateurs · taux pour 1&nbsp;000 hab. et comparaison département
+              Afficher les indicateurs · taux pour 1&nbsp;000 hab. et comparaison département
             </span>
             <span class="delinquance__summary-hint--open">Replier le détail</span>
           </span>
         </span>
         <span class="delinquance__summary-aside" aria-hidden="true">
-          <span class="delinquance__summary-count"><%= indicatorCount %></span>
           <span class="delinquance__summary-chevron"></span>
         </span>
       </summary>

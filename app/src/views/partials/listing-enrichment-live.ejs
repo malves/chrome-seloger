@@ -1,0 +1,27 @@
+<%
+  const poll = typeof enrichmentPoll !== 'undefined' && enrichmentPoll;
+  const liveUrl = "/listings/" + listing.id + "/enrichment-live";
+%>
+<div
+  id="listing-enrichment-live"
+  data-enrichment-url="<%= liveUrl %>"
+  <% if (poll) { %>
+  hx-get="<%= liveUrl %>"
+  hx-trigger="every 3s"
+  hx-swap="outerHTML"
+  <% } %>
+>
+  <% if (otherProviders.length) { %>
+    <%- include("listing-market", {
+      otherProviders: otherProviders,
+      listing: listing
+    }) %>
+  <% } %>
+
+  <% if (communeProviders.length) { %>
+    <%- include("listing-territory", {
+      communeProviders: communeProviders,
+      listing: listing
+    }) %>
+  <% } %>
+</div>

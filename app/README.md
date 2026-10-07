@@ -110,6 +110,7 @@ cookie. Les erreurs ont toujours la forme
 | `POST /api/v1/projects` | `{ name }` → `201 { project }` |
 | `POST /api/v1/listings` | Enregistre une annonce → `201` (création) ou `200` (mise à jour) |
 | `GET /api/v1/listings/lookup?url=…` | `{ saved, id?, status?, projects?, web_url? }` |
+| `DELETE /api/v1/listings/:id` | Supprime l'annonce (`204`) |
 | `PUT /api/v1/listings/:id/projects` | `{ projects: [...] }` remplace le classement → `{ projects }` |
 | `POST /api/v1/travel-time` | `{ origin, project_id? }` → `{ origin, results: [...], project }` |
 

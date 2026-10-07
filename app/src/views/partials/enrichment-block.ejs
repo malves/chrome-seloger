@@ -23,8 +23,11 @@
         : null;
   const hideRefresh =
     typeof hideProviderRefresh !== "undefined" && hideProviderRefresh;
+  const adminCanRefresh = typeof isAdmin !== "undefined" && isAdmin;
   const showTerritoryRefresh =
-    typeof territoryRefresh !== "undefined" && territoryRefresh;
+    adminCanRefresh &&
+    typeof territoryRefresh !== "undefined" &&
+    territoryRefresh;
   const territoryRefreshLabel =
     typeof territoryHasData !== "undefined" && territoryHasData
       ? "Actualiser"
@@ -62,7 +65,7 @@
           </button>
         </form>
       <% } %>
-      <% if (!hideRefresh) { %>
+      <% if (!hideRefresh && adminCanRefresh) { %>
         <form
           hx-post="/listings/<%= listing.id %>/enrich/<%= provider.key %>"
           hx-target="#provider-<%= provider.key %>"
@@ -97,7 +100,7 @@
       provider.data.indicators &&
       provider.data.indicators.length;
   %>
-  <% if (provider.source && !sourceInDelinquancePartial) { %>
+  <% if (provider.source && !sourceInDelinquancePartial && provider.key !== 'immo-data') { %>
     <p class="provider-source">
       Source :
       <% if (provider.sourceUrl) { %>

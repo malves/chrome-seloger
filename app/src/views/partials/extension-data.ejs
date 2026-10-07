@@ -38,10 +38,30 @@
 <div class="kv">
   <% (Array.isArray(d.travel_times) ? d.travel_times : []).forEach(function (trip) { %>
     <div class="kv__row">
-      <span class="kv__key">
-        Trajet — <%= trip.label || 'destination' %>
-        <% if (trip.mode) { %>(<%= modes[trip.mode] || trip.mode %>)<% } %>
-      </span>
+      <% if (projectConfigHref) { %>
+        <a
+          class="kv__travel-config"
+          href="<%= projectConfigHref %>"
+          data-tooltip="Configurer les adresses de référence"
+          aria-label="Configurer le trajet vers <%= trip.label || 'destination' %>"
+        >
+          <span class="kv__key">
+            Trajet — <%= trip.label || 'destination' %>
+            <% if (trip.mode) { %>(<%= modes[trip.mode] || trip.mode %>)<% } %>
+          </span>
+          <span class="project-rename kv__travel-config__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </span>
+        </a>
+      <% } else { %>
+        <span class="kv__key">
+          Trajet — <%= trip.label || 'destination' %>
+          <% if (trip.mode) { %>(<%= modes[trip.mode] || trip.mode %>)<% } %>
+        </span>
+      <% } %>
       <span class="kv__value">
         <% if (trip.minutes !== undefined && trip.minutes !== null) { %>
           <%= trip.minutes %> min

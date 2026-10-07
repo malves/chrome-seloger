@@ -114,6 +114,40 @@ const config = {
     radiusMeters: num(process.env.DVF_RADIUS_METERS, 250),
     radiusMinSample: num(process.env.DVF_RADIUS_MIN_SAMPLE, 5),
     radiusYears: num(process.env.DVF_RADIUS_YEARS, 5),
+    /** Demi-vie (jours) des poids de récence pour la médiane pondérée du rayon. */
+    radiusRecencyHalfLifeDays: num(process.env.DVF_RADIUS_RECENCY_HALF_LIFE_DAYS, 540),
+    /** Ventes sous ce ratio × médiane locale ignorées pour la référence €/m². */
+    radiusOutlierLowRatio: num(process.env.DVF_RADIUS_OUTLIER_LOW_RATIO, 0.5),
+  },
+
+  /**
+   * Historique des prix au m² (Immo Data). Le jeton Bearer vit uniquement
+   * ici : il n'est jamais exposé au navigateur.
+   */
+  immoData: {
+    apiKey: String(process.env.IMMO_DATA_API_KEY || "").trim(),
+    baseUrl: (
+      process.env.IMMO_DATA_BASE_URL || "https://api.immo-data.fr"
+    ).replace(/\/+$/, ""),
+    timeoutMs: num(process.env.IMMO_DATA_TIMEOUT_MS, 12000),
+    userAgent: "CarnetDeVisites/1.0",
+
+    /**
+     * Prix au m² du « grand quartier » Immo Data (codes type `7511453`,
+     * `2A00401`), affiché à côté du rayon DVF quand une adresse est saisie.
+     *
+     * - `quartierGeoLevel` : valeur `geoLevel` de l'historique pour ce niveau.
+     * - `quartierResolveUrl` : URL (gabarit `{lat}` `{lng}` `{insee}`) renvoyant
+     *   `{ code }` du grand quartier pour un point. Vide = fonctionnalité
+     *   désactivée (le provider se met en « ignoré » sans bloquer DVF), à
+     *   renseigner selon l'endpoint de résolution de la doc Immo Data.
+     */
+    quartierGeoLevel: String(
+      process.env.IMMO_DATA_QUARTIER_GEOLEVEL || "district"
+    ).trim(),
+    quartierResolveUrl: String(
+      process.env.IMMO_DATA_QUARTIER_RESOLVE_URL || ""
+    ).trim(),
   },
 
   /**

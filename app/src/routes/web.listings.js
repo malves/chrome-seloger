@@ -10,9 +10,13 @@ import express from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import HttpError from "../lib/http-error.js";
 import config from "../config.js";
-import { requireUser } from "../middlewares/auth.session.js";
+import { requireUser, isAdmin } from "../middlewares/auth.session.js";
 import { DEFAULT_SORT, SORTS } from "../repositories/listings.repo.js";
-import { STATUS_KEYS, PROPERTY_TYPE_KEYS } from "../lib/format.js";
+import {
+  STATUS_KEYS,
+  PROPERTY_TYPE_KEYS,
+  resolveListingStatusUpdate,
+} from "../lib/format.js";
 import { accountFinancingSettings } from "../services/settings.service.js";
 import createProjectsService from "../services/projects.service.js";
 import { userAddressFromBody } from "../lib/user-address.js";
@@ -28,6 +32,7 @@ import {
   readListingFinancingForm,
 } from "../services/financing.service.js";
 import { logActivity } from "../lib/activity.js";
+import { departmentCodeFromInsee } from "../lib/immo-data-market.js";
 
 /** Nombre maximum de brouillons d'import conservés par session. */
 const MAX_DRAFTS = 20;
@@ -111,11 +116,14 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       }),
   });
 
-  /** Charge l'annonce du compte courant ou lève une 404. */
+  /** Charge l'annonce du compte courant ou lève une 404. L'admin peut ouvrir toute fiche. */
   function loadListing(req) {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw HttpError.notFound("Annonce introuvable.");
-    const listing = repositories.listings.findById(req.user.id, id);
+    let listing = repositories.listings.findById(req.user.id, id);
+    if (!listing && isAdmin(req.user)) {
+      listing = repositories.listings.findByIdOnly(id);
+    }
     if (!listing) throw HttpError.notFound("Annonce introuvable.");
     return listing;
   }
@@ -281,28 +289,77 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     }
   });
 
+  /** Découpe le viewModel enrichissement pour la fiche annonce. */
+  async function listingEnrichmentPanels(listing) {
+    const providers = await enrichment.viewModel(listing);
+    const communeProviders = providers.filter((p) => p.group === "territory");
+    const otherProviders = providers.filter(
+      (p) =>
+        p.group === "market" && p.key !== "financing" && p.key !== "prix-m2"
+    );
+    const enrichmentPoll = enrichment.isEnrichmentPending(providers);
+    return { communeProviders, otherProviders, enrichmentPoll };
+  }
+
+  function requireAdminForEnrichmentRefresh(req, _res, next) {
+    if (!isAdmin(req.user)) {
+      throw HttpError.forbidden(
+        "L'actualisation manuelle des enrichissements est réservée à l'administration."
+      );
+    }
+    return next();
+  }
+
   /* ------------------------------ Fiche ------------------------------ */
 
   router.get("/listings/:id", async (req, res, next) => {
     try {
       const listing = loadListing(req);
-      const providers = await enrichment.viewModel(listing);
+      const { communeProviders, otherProviders, enrichmentPoll } =
+        await listingEnrichmentPanels(listing);
+      if (enrichmentPoll) {
+        enrichment.schedule(listing.user_id, listing.id);
+      }
+      const postalInseeCode = await repositories.postalInsee.resolveInsee(
+        listing.postal_code,
+        listing.city,
+        { fetchJson: enrichment.fetchJson }
+      );
 
       res.render("listing", {
         title: listing.title || "Annonce",
         listing,
+        postalInseeCode,
         photos: repositories.listings.listPhotos(listing.id),
         priceHistory: repositories.listings.listPriceHistory(listing.id),
-        // Le financement a son propre bloc ; les autres providers sont groupés.
-        communeProviders: providers.filter((p) => p.scope === "commune"),
-        otherProviders: providers.filter(
-          (p) => p.scope !== "commune" && p.key !== "financing"
-        ),
+        // Le financement a son propre bloc ; les autres providers sont groupés
+        // par vocation d'affichage (territoire vs analyse de marché), pas par
+        // portée de cache (Immo Data est mis en cache en communal/départemental).
+        communeProviders,
+        otherProviders,
+        enrichmentPoll,
         financing: financingFor(listing),
         projects: projectsService.list(req.user.id),
       });
     } catch (err) {
       next(err);
+    }
+  });
+
+  router.get("/listings/:id/enrichment-live", async (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const panels = await listingEnrichmentPanels(listing);
+      if (panels.enrichmentPoll) {
+        enrichment.schedule(listing.user_id, listing.id);
+      }
+      return res.render("partials/listing-enrichment-live", {
+        layout: false,
+        listing,
+        ...panels,
+      });
+    } catch (err) {
+      return next(err);
     }
   });
 
@@ -317,10 +374,17 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         if (!STATUS_KEYS.includes(req.body.status)) {
           throw HttpError.badRequest("Statut inconnu.");
         }
-        repositories.listings.setStatus(req.user.id, listing.id, req.body.status);
+        const patch = resolveListingStatusUpdate(listing, req.body.status);
+        repositories.listings.setStatus(
+          req.user.id,
+          listing.id,
+          patch.status,
+          patch.status_progress
+        );
         logActivity(logger, req, "statut d'annonce modifié", {
           listingId: listing.id,
-          status: req.body.status,
+          status: patch.status,
+          statusProgress: patch.status_progress,
         });
       }
 
@@ -354,7 +418,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         });
       }
       if (view === "header") {
-        return res.render("partials/detail-header", {
+        return res.render("partials/listing-lead", {
           layout: false,
           listing: updated,
           projects: projectsService.list(req.user.id),
@@ -460,9 +524,13 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       }
 
       repositories.listings.setInseeCode(listing.id, null, { force: true });
-      repositories.enrichments.removeOne(listing.id, "prix-m2");
+      // L'adresse pilote les caches propres à l'annonce (grand quartier, DVF) et
+      // le verdict Immo Data : on repart de zéro pour ces entrées.
+      for (const key of ["immo-data", "immo-data-quartier", "dvf-local"]) {
+        repositories.enrichments.removeOne(listing.id, key);
+      }
 
-      // Le prix au m² a besoin de l'INSEE : on résout la commune de façon
+      // L'analyse de marché a besoin de l'INSEE : on résout la commune de façon
       // synchrone AVANT de répondre, pour que le rafraîchissement client du
       // widget (déclenché après le swap) trouve un code INSEE à jour.
       if (req.get("hx-request")) {
@@ -546,26 +614,43 @@ export default function createListingsRouter({ repositories, enrichment, logger 
 
   /* ------------- Actualisation de tout le bloc Territoire ------------- */
 
-  function resetCommuneScopeCache(listing, key) {
-    repositories.enrichments.removeOne(listing.id, key);
-    if (listing.insee_code) {
-      repositories.enrichments.removeCommune(listing.insee_code, key);
+  /** Code département de l'annonce (cache commune si dispo, sinon depuis l'INSEE). */
+  function deptCodeFor(listing) {
+    if (!listing.insee_code) return null;
+    const commune = repositories.enrichments.findCommune(listing.insee_code, "commune");
+    return commune?.data?.department?.code || departmentCodeFromInsee(listing.insee_code);
+  }
+
+  /** Vide le cache d'un provider selon sa portée, avant un rafraîchissement. */
+  function resetScopeCache(listing, provider) {
+    repositories.enrichments.removeOne(listing.id, provider.key);
+    if (provider.scope === "commune" && listing.insee_code) {
+      repositories.enrichments.removeCommune(listing.insee_code, provider.key);
+    } else if (provider.scope === "department") {
+      repositories.enrichments.removeDepartment(deptCodeFor(listing), provider.key);
     }
+  }
+
+  function marketEnrichmentProviders(providers) {
+    return providers.filter(
+      (provider) =>
+        provider.group === "market" &&
+        provider.key !== "financing" &&
+        provider.key !== "prix-m2"
+    );
   }
 
   async function refreshTerritoryProviders(userId, listing) {
     const providers = await enrichment.listProviders();
-    const communeKeys = providers
-      .filter((provider) => provider.scope === "commune")
-      .map((provider) => provider.key);
+    const territory = providers.filter((provider) => provider.group === "territory");
 
-    for (const key of communeKeys) {
-      resetCommuneScopeCache(listing, key);
+    for (const provider of territory) {
+      resetScopeCache(listing, provider);
     }
 
-    for (const key of communeKeys) {
+    for (const provider of territory) {
       await enrichment.runForListing(userId, listing.id, {
-        only: key,
+        only: provider.key,
         force: true,
       });
     }
@@ -573,12 +658,50 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     return repositories.listings.findById(userId, listing.id);
   }
 
-  router.post("/listings/:id/enrich/territoire", async (req, res, next) => {
+  async function refreshMarketProviders(userId, listing) {
+    const providers = await enrichment.listProviders();
+    const market = marketEnrichmentProviders(providers);
+
+    for (const provider of market) {
+      resetScopeCache(listing, provider);
+    }
+
+    for (const provider of market) {
+      await enrichment.runForListing(userId, listing.id, {
+        only: provider.key,
+        force: true,
+      });
+    }
+
+    return repositories.listings.findById(userId, listing.id);
+  }
+
+  router.post("/listings/:id/enrich/marche", requireAdminForEnrichmentRefresh, async (req, res, next) => {
     try {
       const listing = loadListing(req);
-      const refreshed = await refreshTerritoryProviders(req.user.id, listing);
+      const refreshed = await refreshMarketProviders(listing.user_id, listing);
       const blocks = await enrichment.viewModel(refreshed);
-      const communeProviders = blocks.filter((provider) => provider.scope === "commune");
+      const otherProviders = marketEnrichmentProviders(blocks);
+
+      if (!req.get("hx-request")) {
+        return res.redirect(`/listings/${listing.id}`);
+      }
+      return res.render("partials/listing-market", {
+        layout: false,
+        listing: refreshed,
+        otherProviders,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  router.post("/listings/:id/enrich/territoire", requireAdminForEnrichmentRefresh, async (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const refreshed = await refreshTerritoryProviders(listing.user_id, listing);
+      const blocks = await enrichment.viewModel(refreshed);
+      const communeProviders = blocks.filter((provider) => provider.group === "territory");
 
       if (!req.get("hx-request")) {
         return res.redirect(`/listings/${listing.id}`);
@@ -595,7 +718,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
 
   /* ------------------- Nouvel essai d'un provider -------------------- */
 
-  router.post("/listings/:id/enrich/:provider", async (req, res, next) => {
+  router.post("/listings/:id/enrich/:provider", requireAdminForEnrichmentRefresh, async (req, res, next) => {
     try {
       const listing = loadListing(req);
       const key = String(req.params.provider);
@@ -605,22 +728,36 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       }
 
       const providerDef = providers.find((provider) => provider.key === key);
-      if (providerDef?.scope === "commune") {
-        resetCommuneScopeCache(listing, key);
-      } else {
-        repositories.enrichments.removeOne(listing.id, key);
-      }
-      await enrichment.runForListing(req.user.id, listing.id, {
-        only: key,
-        force: providerDef?.scope === "commune",
-      });
+      const shared = providerDef?.scope === "commune" || providerDef?.scope === "department";
+      resetScopeCache(listing, providerDef || { key, scope: providerDef?.scope });
 
-      const refreshed = repositories.listings.findById(req.user.id, listing.id);
+      // Les blocs d'affichage composent plusieurs portées : rafraîchir la facade
+      // entraîne son complément départemental (prix / délinquance).
+      const siblings = { "immo-data": "immo-data-dept", delinquance: "delinquance-dept" };
+      const withListingScope = {
+        "immo-data": ["dvf-local", "immo-data-quartier"],
+      };
+      const toRunAll = [
+        key,
+        siblings[key],
+        ...(withListingScope[key] || []),
+      ].filter(Boolean);
+      for (const toRun of toRunAll) {
+        const def = providers.find((provider) => provider.key === toRun) || providerDef;
+        resetScopeCache(listing, def || { key: toRun });
+        await enrichment.runForListing(listing.user_id, listing.id, {
+          only: toRun,
+          force: shared,
+        });
+      }
+
+      const refreshed = repositories.listings.findById(listing.user_id, listing.id)
+        || repositories.listings.findByIdOnly(listing.id);
       const blocks = await enrichment.viewModel(refreshed);
       const block = blocks.find((provider) => provider.key === key);
       const inlineCommuneHead =
-        block?.scope === "commune" &&
-        blocks.filter((provider) => provider.scope === "commune").length === 1;
+        block?.group === "territory" &&
+        blocks.filter((provider) => provider.group === "territory").length === 1;
 
       if (!req.get("hx-request")) {
         return res.redirect(`/listings/${listing.id}`);
@@ -645,6 +782,11 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       repositories.listings.remove(req.user.id, listing.id);
       logActivity(logger, req, "annonce supprimée", { listingId: listing.id });
       if (req.get("hx-request")) {
+        // Dernière annonce : la carte disparaît en swap « delete » mais la
+        // pagination et l'état vide resteraient sinon affichés sans rechargement.
+        if (repositories.listings.countByUser(req.user.id) === 0) {
+          res.set("HX-Refresh", "true");
+        }
         return res.status(200).send("");
       }
       req.session.flash = { type: "success", message: "Annonce supprimée." };

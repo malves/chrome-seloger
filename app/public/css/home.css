@@ -1453,3 +1453,15 @@ body:has(.home) .site-footer {
     display: none;
   }
 }
+
+@media (max-width: 720px) {
+  body:has(.home) .topbar__inner {
+    background: transparent;
+  }
+
+  body:has(.home) .topbar--nav-open .topbar__inner {
+    background: rgba(244, 241, 232, 0.94);
+    backdrop-filter: saturate(1.4) blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+}

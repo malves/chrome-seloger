@@ -111,6 +111,30 @@
           Sauvegarder l'annonce
         </button>
 
+        <div class="remove-block hidden" id="remove-block">
+          <button
+            class="btn btn--ghost btn--block btn--danger-ghost"
+            id="remove-toggle"
+            type="button"
+          >
+            Retirer du carnet
+          </button>
+          <div class="confirm-row hidden" id="remove-confirm">
+            <p class="confirm-row__text">
+              Supprimer cette annonce ? Photos, notes et historique de prix
+              seront définitivement effacés.
+            </p>
+            <div class="confirm-row__actions">
+              <button class="btn btn--ghost btn--sm" id="remove-cancel" type="button">
+                Annuler
+              </button>
+              <button class="btn btn--danger btn--sm" id="remove" type="button">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+
         <p class="status" id="save-status" role="status" aria-live="polite"></p>
         <a class="link-out hidden" id="listing-link" target="_blank" rel="noopener">
           Ouvrir la fiche dans le carnet

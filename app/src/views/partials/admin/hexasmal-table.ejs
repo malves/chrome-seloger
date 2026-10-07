@@ -1,0 +1,105 @@
+<%
+  function browseUrl(page) {
+    var params = new URLSearchParams();
+    if (filters.q) params.set("hexasmal_q", filters.q);
+    if (page > 1) params.set("hexasmal_page", String(page));
+    var qs = params.toString();
+    return qs ? "/admin/hexasmal/browse?" + qs : "/admin/hexasmal/browse";
+  }
+  var p = pagination;
+%>
+
+<div class="admin-users-results" id="hexasmal-browse-results">
+  <div class="dpe-results__toolbar">
+    <p class="dpe-results__summary">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6h16" />
+        <path d="M4 10h16" />
+        <path d="M4 14h10" />
+        <path d="M4 18h10" />
+      </svg>
+      <% if (p.total) { %>
+        <%= fmt.number(p.from) %>–<%= fmt.number(p.to) %> sur <%= fmt.number(p.total) %> association<%= p.total > 1 ? 's' : '' %>
+      <% } else if (filters.q) { %>
+        Aucun résultat
+      <% } else { %>
+        Base vide — importez le fichier HexaSmal
+      <% } %>
+    </p>
+  </div>
+
+  <% if (records.length) { %>
+    <div class="dpe-table-wrap">
+      <table class="dpe-table">
+        <thead>
+          <tr>
+            <th>Code postal</th>
+            <th>Code INSEE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% records.forEach(function (row) { %>
+            <tr>
+              <td class="dpe-table__mono"><%= row.postal_code %></td>
+              <td class="dpe-table__mono"><%= row.insee_code %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (p.pageCount > 1) { %>
+      <nav class="dpe-pagination" aria-label="Pagination des correspondances">
+        <% if (p.page > 1) { %>
+          <a
+            class="pagination__nav pagination__nav--icon"
+            href="<%= browseUrl(p.page - 1) %>"
+            hx-get="<%= browseUrl(p.page - 1) %>"
+            hx-target="#hexasmal-browse-results"
+            hx-swap="outerHTML"
+            rel="prev"
+            aria-label="Page précédente"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </a>
+        <% } else { %>
+          <span class="pagination__nav pagination__nav--icon is-disabled" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </span>
+        <% } %>
+
+        <span class="dpe-pagination__page">Page <%= p.page %> / <%= p.pageCount %></span>
+
+        <% if (p.page < p.pageCount) { %>
+          <a
+            class="pagination__nav pagination__nav--icon"
+            href="<%= browseUrl(p.page + 1) %>"
+            hx-get="<%= browseUrl(p.page + 1) %>"
+            hx-target="#hexasmal-browse-results"
+            hx-swap="outerHTML"
+            rel="next"
+            aria-label="Page suivante"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </a>
+        <% } else { %>
+          <span class="pagination__nav pagination__nav--icon is-disabled" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </span>
+        <% } %>
+      </nav>
+    <% } %>
+  <% } else if (filters.q) { %>
+    <p class="admin-users-empty">Aucune ligne ne correspond à « <%= filters.q %> ».</p>
+  <% } else { %>
+    <p class="admin-users-empty">Importez le fichier <code>019HexaSmal.csv</code> pour alimenter cette table.</p>
+  <% } %>
+</div>

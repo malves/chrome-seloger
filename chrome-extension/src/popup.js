@@ -37,6 +37,11 @@ for (const id of [
   "project-name",
   "project-add",
   "save",
+  "remove-block",
+  "remove-toggle",
+  "remove-confirm",
+  "remove-cancel",
+  "remove",
   "save-status",
   "result-section",
   "empty-section",
@@ -123,6 +128,11 @@ function setStatus(element, text, kind = "") {
   if (kind) element.classList.add(kind);
 }
 
+function setRemoveConfirmVisible(visible) {
+  show(els["remove-confirm"], visible);
+  show(els["remove-toggle"], !visible);
+}
+
 /* ------------------------------- Formats -------------------------------- */
 
 function formatNumber(value) {
@@ -200,6 +210,7 @@ els.disconnect.addEventListener("click", async () => {
 async function refreshPage() {
   setStatus(els["save-status"], "");
   show(els["listing-link"], false);
+  setRemoveConfirmVisible(false);
 
   try {
     page = await send("CARNET_PAGE", { tabId: activeTab ? activeTab.id : null });
@@ -276,6 +287,8 @@ function renderPage() {
   show(els["project-field"], readable);
   show(els.save, readable);
   show(els["saved-badge"], readable && page.saved);
+  show(els["remove-block"], readable && page.saved);
+  if (!page.saved) setRemoveConfirmVisible(false);
   show(els["listing-link"], Boolean(page.webUrl));
   if (page.webUrl) els["listing-link"].href = page.webUrl;
 
@@ -382,6 +395,48 @@ els["project-name"].addEventListener("keydown", (event) => {
 
 /* ------------------------------ Sauvegarde ------------------------------ */
 
+els["remove-toggle"].addEventListener("click", () => {
+  setRemoveConfirmVisible(true);
+  els["remove-cancel"].focus();
+});
+
+els["remove-cancel"].addEventListener("click", () => {
+  setRemoveConfirmVisible(false);
+});
+
+els.remove.addEventListener("click", async () => {
+  const listingId = page.listingId;
+  if (!listingId) {
+    setStatus(els["save-status"], "Annonce introuvable.", "is-error");
+    return;
+  }
+
+  els.remove.disabled = true;
+  els["remove-cancel"].disabled = true;
+  setButtonLoading(els.remove, "Suppression…");
+  setStatus(els["save-status"], "");
+
+  try {
+    await send("CARNET_DELETE", {
+      tabId: activeTab.id,
+      listingId,
+    });
+
+    page.saved = false;
+    page.webUrl = null;
+    page.listingId = null;
+    setStatus(els["save-status"], "Annonce retirée du carnet.", "is-ok");
+  } catch (err) {
+    setStatus(els["save-status"], err.message, "is-error");
+    if (err.code === "not_connected") await refreshAccount();
+  } finally {
+    els.remove.disabled = false;
+    els["remove-cancel"].disabled = false;
+    els.remove.textContent = "Supprimer";
+    renderPage();
+  }
+});
+
 els.save.addEventListener("click", async () => {
   els.save.disabled = true;
   setButtonLoading(els.save, "Enregistrement…");
@@ -395,6 +450,7 @@ els.save.addEventListener("click", async () => {
 
     page.saved = true;
     page.webUrl = result.webUrl;
+    if (result.id) page.listingId = result.id;
 
     const project = (result.projects || [])[0];
     const destination = project ? ` dans « ${project.name} »` : "";

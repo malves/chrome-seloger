@@ -6,13 +6,116 @@
   const pct = function (v) {
     if (v == null || !isFinite(v)) return '—';
     const s = (Math.round(v * 10) / 10).toLocaleString('fr-FR');
-    return (v > 0 ? '+' : '') + s + ' %';
+    return (v > 0 ? '+' : '') + s + '\u00a0%';
   };
 
   const verdict = data.verdict;
   const radius = data.radius;
   const commune = data.commune || {};
-  const evo = data.evolution;
+  let evo = null;
+  if (data.evolution && data.evolution.by_type) {
+    evo = data.evolution;
+  } else if (data.evolution && data.evolution.points && data.evolution.points.length >= 2) {
+    // Ancien cache (une seule série en €/m²) : index base 100 pour afficher le graphe
+    // en attendant un recalcul serveur (`viewModel` force le refresh).
+    const legacyType =
+      (listing.property_type === 'house' || listing.property_type === 'apartment'
+        ? listing.property_type
+        : null) ||
+      data.evolution.property_type ||
+      data.property_type ||
+      'apartment';
+    const basePrice = data.evolution.points[0].median_price_m2;
+    const indexed = data.evolution.points.map(function (p) {
+      if (p.index != null && isFinite(p.index)) return p;
+      return {
+        year: p.year,
+        count: p.count,
+        median_price_m2: p.median_price_m2,
+        index: Math.round((p.median_price_m2 / basePrice) * 1000) / 10,
+      };
+    });
+    const legacyCommune = {
+      points: indexed,
+      trend_pct: data.evolution.trend_pct,
+      trend_from_year: data.evolution.trend_from_year,
+      trend_to_year: data.evolution.trend_to_year,
+      tone: data.evolution.tone,
+      label: data.evolution.label,
+      property_type: legacyType,
+      variations: data.evolution.variations || {
+        1: data.evolution.y1 != null ? data.evolution.y1 : null,
+        2: data.evolution.y2 != null ? data.evolution.y2 : null,
+        3: data.evolution.y3 != null ? data.evolution.y3 : null,
+        4: data.evolution.y4 != null ? data.evolution.y4 : null,
+        5: data.evolution.y5 != null ? data.evolution.y5 : null,
+      },
+      y1: data.evolution.y1 != null ? data.evolution.y1 : null,
+      y2: data.evolution.y2 != null ? data.evolution.y2 : null,
+      y3: data.evolution.y3 != null ? data.evolution.y3 : null,
+      y4: data.evolution.y4 != null ? data.evolution.y4 : null,
+      y5: data.evolution.y5 != null ? data.evolution.y5 : null,
+    };
+    const empty = { commune: null, department: null };
+    evo = {
+      default_type: legacyType,
+      commune_name: data.commune_name,
+      department: null,
+      by_type: {
+        apartment: legacyType === 'apartment'
+          ? { commune: legacyCommune, department: null }
+          : empty,
+        house: legacyType === 'house'
+          ? { commune: legacyCommune, department: null }
+          : empty,
+      },
+    };
+  }
+
+  if (
+    evo &&
+    evo.by_type &&
+    provider &&
+    provider.key === 'immo-data' &&
+    typeof patchImmoDataMarketHorizons === 'function'
+  ) {
+    patchImmoDataMarketHorizons({ evolution: evo });
+  } else if (evo && evo.by_type && typeof patchPrixM2EvolutionHorizons === 'function') {
+    patchPrixM2EvolutionHorizons({ evolution: evo });
+  }
+
+  const variationHorizons =
+    provider && provider.key === 'immo-data'
+      ? (
+          (typeof marketVariationHorizons !== 'undefined' && marketVariationHorizons.length)
+            ? marketVariationHorizons
+            : (data.market_variation_horizons && data.market_variation_horizons.length
+                ? data.market_variation_horizons
+                : [])
+        )
+      : (
+          (data.market_variation_horizons && data.market_variation_horizons.length)
+            ? data.market_variation_horizons
+            : [
+                { key: 1, label: '1 an' },
+                { key: 2, label: '2 ans' },
+                { key: 3, label: '3 ans' },
+                { key: 4, label: '4 ans' },
+                { key: 5, label: '5 ans' },
+              ]
+        );
+  const variationValue = function (communeEvo, horizonKey) {
+    if (!communeEvo) return null;
+    if (communeEvo.variations && communeEvo.variations[horizonKey] != null) {
+      return communeEvo.variations[horizonKey];
+    }
+    if (horizonKey === '6m' && communeEvo.m6 != null) return communeEvo.m6;
+    if (horizonKey === 10 && communeEvo.y10 != null) return communeEvo.y10;
+    if (typeof horizonKey === 'number' && communeEvo['y' + horizonKey] != null) {
+      return communeEvo['y' + horizonKey];
+    }
+    return null;
+  };
 
   // Position sur l'échelle de la jauge (100 = prix du marché, au centre).
   const gaugePos = function (index) {
@@ -22,38 +125,104 @@
   const markerPos = verdict ? gaugePos(verdict.index) : null;
   const gaugeTone = verdict ? verdict.tone : 'neutral';
 
-  // Construction du graphe d'évolution (SVG), un point + sa valeur par année.
-  let chart = null;
-  if (evo && evo.points && evo.points.length >= 2) {
-    const r1 = function (v) { return Math.round(v * 10) / 10; };
-    const W = 640, H = 190;
-    const padL = 44, padR = 44, padT = 38, padB = 30;
-    const innerW = W - padL - padR;
-    const innerH = H - padT - padB;
-    const vals = evo.points.map(function (p) { return p.median_price_m2; });
-    let min = Math.min.apply(null, vals);
-    let max = Math.max.apply(null, vals);
-    if (min === max) { min = min * 0.96; max = max * 1.04; }
-    const span = max - min || 1;
-    const n = evo.points.length;
-    const xAt = function (i) {
-      return padL + (n === 1 ? innerW / 2 : (i * innerW) / (n - 1));
+  const deptLabel = evo && evo.department && (evo.department.name || evo.department.code);
+  const cityLabel = (evo && evo.commune_name) || commune.name || listing.city || 'la commune';
+  const idPrefix = typeof chartId === 'string' && chartId ? chartId : 'pricem2';
+  const dvfModalId = idPrefix + '-dvf-sales-modal';
+
+  const buildChartSeries = function (typeBlock, cityName, deptName) {
+    const communePts = (typeBlock && typeBlock.commune && typeBlock.commune.points) || [];
+    const deptPts = (typeBlock && typeBlock.department && typeBlock.department.points) || [];
+    if (communePts.length < 2 && deptPts.length < 2) return null;
+
+    const labelOf = function (p) {
+      return p.period != null && p.period !== '' ? String(p.period) : String(p.year);
     };
-    const yAt = function (v) {
-      return padT + innerH - ((v - min) / span) * innerH;
-    };
-    const pts = evo.points.map(function (p, i) {
-      return { x: r1(xAt(i)), y: r1(yAt(p.median_price_m2)), p: p };
+    const labelSet = {};
+    communePts.forEach(function (p) { labelSet[labelOf(p)] = true; });
+    deptPts.forEach(function (p) { labelSet[labelOf(p)] = true; });
+    const labels = Object.keys(labelSet).sort(function (a, b) {
+      return a.localeCompare(b, 'fr', { numeric: true });
     });
-    const line = pts.map(function (q) { return q.x + ',' + q.y; }).join(' ');
-    const baseY = padT + innerH;
-    const area = pts[0].x + ',' + baseY + ' ' + line + ' ' + pts[n - 1].x + ',' + baseY;
-    const grid = [0, 0.25, 0.5, 0.75, 1].map(function (t) { return r1(padT + innerH * t); });
-    chart = {
-      W: W, H: H, padL: padL, padR: padR,
-      line: line, area: area, pts: pts, grid: grid, baseY: baseY,
+    if (labels.length < 2) return null;
+
+    const pick = function (pts, label, field) {
+      const p = pts.find(function (row) { return labelOf(row) === label; });
+      if (!p) return null;
+      const v = p[field];
+      return v != null && isFinite(v) ? v : null;
     };
+
+    const monthly = /^\d{4}-\d{2}$/.test(labels[0]);
+    return {
+      labels: labels,
+      interval: monthly ? 'monthly' : 'yearly',
+      cityLabel: cityName,
+      deptLabel: deptPts.length ? deptName : null,
+      cityIndex: labels.map(function (y) { return pick(communePts, y, 'index'); }),
+      cityPrices: labels.map(function (y) { return pick(communePts, y, 'median_price_m2'); }),
+      deptIndex: labels.map(function (y) { return pick(deptPts, y, 'index'); }),
+      deptPrices: labels.map(function (y) { return pick(deptPts, y, 'median_price_m2'); }),
+    };
+  };
+
+
+  const typeBlocks = [
+    { key: 'apartment', label: 'Appartement', block: evo && evo.by_type.apartment },
+    { key: 'house', label: 'Maison', block: evo && evo.by_type.house },
+  ].map(function (item) {
+    return {
+      key: item.key,
+      label: item.label,
+      block: item.block,
+      series: buildChartSeries(item.block, cityLabel, deptLabel),
+      commune: item.block && item.block.commune,
+    };
+  }).filter(function (item) { return item.series; });
+
+  let preferredType = null;
+  if (listing.property_type === 'house' || listing.property_type === 'apartment') {
+    preferredType = listing.property_type;
+  } else if (data.property_type === 'house' || data.property_type === 'apartment') {
+    preferredType = data.property_type;
+  } else if (evo && evo.default_type) {
+    preferredType = evo.default_type;
+  } else {
+    preferredType = 'apartment';
   }
+  const hasPreferred = typeBlocks.some(function (item) { return item.key === preferredType; });
+  const activeType = hasPreferred ? preferredType : (typeBlocks[0] && typeBlocks[0].key);
+
+  const cmp = typeof addressComparison !== 'undefined' ? addressComparison : null;
+  const dvfCmp = cmp && cmp.dvf ? cmp.dvf : null;
+  const listingM2ForCmp =
+    listing && listing.price > 0 && listing.surface > 0
+      ? listing.price / listing.surface
+      : null;
+  const indexOfListing = function (ref) {
+    if (!ref || !listingM2ForCmp || ref <= 0) return null;
+    return Math.round((listingM2ForCmp / ref) * 100);
+  };
+  const toneOfIndex = function (index) {
+    if (index == null) return 'neutral';
+    if (index <= 97) return 'ok';
+    if (index <= 103) return 'mid';
+    return 'high';
+  };
+  const dvfIndex = dvfCmp && dvfCmp.radius
+    ? (dvfCmp.verdict ? dvfCmp.verdict.index : indexOfListing(dvfCmp.radius.median_price_m2))
+    : null;
+  const dvfTypeLabel =
+    dvfCmp && dvfCmp.property_type === 'house' ? 'maisons' : 'appartements';
+  const dvfTypeNoun =
+    dvfCmp && dvfCmp.property_type === 'house' ? 'Maison' : 'Appartement';
+
+  const hasSidebarCards =
+    commune.house ||
+    commune.apartment ||
+    (dvfCmp && dvfCmp.radius) ||
+    radius ||
+    (!data.hide_radius && data.property_type && !data.has_coordinates);
 %>
 <div class="pricem2">
   <% if (verdict) { %>
@@ -61,7 +230,7 @@
       <div class="pricem2__verdict-head">
         <div class="pricem2__verdict-intro">
           <p class="pricem2__verdict-label">
-            Positionnement du prix<% if (data.reference_year) { %><span class="pricem2__year"> · Sur la base des ventes réelles : référence <%= data.reference_year %></span><% } %>
+            Positionnement du prix<% if (data.reference_caption) { %><span class="pricem2__year"> · <%= data.reference_caption %></span><% } else if (data.reference_year) { %><span class="pricem2__year"> · Sur la base des ventes réelles : référence <%= data.reference_year %></span><% } %>
           </p>
           <span class="pricem2__verdict-title"><%= verdict.label %></span>
         </div>
@@ -86,11 +255,11 @@
       </div>
 
       <div class="pricem2__gauge-legend">
-        <span><span class="pricem2__dot pricem2__dot--bien"></span>Ce bien se positionne à <%= eur(verdict.listing_price_m2) %>/m²</span>
+        <span><span class="pricem2__dot pricem2__dot--bien"></span>Ce bien se positionne à <strong><%= eur(verdict.listing_price_m2) %>/m²</strong></span>
         <span>
           <span class="pricem2__dot pricem2__dot--ref"></span>
           Référence du prix sur les ventes effectuées dans les <%= verdict.reference_scope === 'radius' ? (radius ? radius.meters + ' m' : 'locale') : 'commune' %>
-          : <%= eur(verdict.reference_price_m2) %>/m²
+          : <strong><%= eur(verdict.reference_price_m2) %>/m²</strong>
         </span>
       </div>
 
@@ -98,8 +267,8 @@
         <p class="pricem2__advice pricem2__advice--negotiate">
           <strong>Négociation conseillée.</strong>
           Au prix médian local, ce bien se situerait autour de
-          <strong><%= eur(verdict.reference_price_m2 * listing.surface) %></strong>,
-          soit environ <strong><%= eur(verdict.negotiation_amount) %></strong> au-dessus du marché.
+          <strong class="pricem2__advice-amount"><%= eur(verdict.reference_price_m2 * listing.surface) %></strong>,
+          soit environ <strong class="pricem2__advice-amount"><%= eur(verdict.negotiation_amount) %></strong> au-dessus du marché.
         </p>
       <% } else if (verdict.index <= 97) { %>
         <p class="pricem2__advice pricem2__advice--good">
@@ -115,84 +284,244 @@
     </div>
   <% } %>
 
-  <div class="pricem2__cards">
-    <% if (radius) { %>
-      <div class="pricem2__card pricem2__card--highlight">
-        <span class="pricem2__card-eyebrow">Prix moyen dans un rayon <%= radius.meters %> m</span>
-        <span class="pricem2__card-value"><%= eur(radius.median_price_m2) %><small>/m²</small></span>
-        <span class="pricem2__card-meta">
-          <%= fmt.number(radius.count) %> vente<%= radius.count > 1 ? 's' : '' %>
-          · <%= radius.property_type === 'house' ? 'maisons' : 'appartements' %>
-          <% if (radius.widened) { %>· <em>rayon élargi</em><% } %>
-          <% if (!radius.enough) { %>· <em>échantillon faible</em><% } %>
-        </span>
-      </div>
-    <% } else if (data.property_type && !data.has_coordinates) { %>
-      <div class="pricem2__card pricem2__card--empty">
-        <span class="pricem2__card-eyebrow">Rayon autour de l'adresse</span>
-        <span class="pricem2__card-hint">
-          Renseignez l'adresse exacte du bien pour obtenir le prix autour de l'adresse.
-        </span>
-      </div>
-    <% } %>
+  <% if (!typeBlocks.length && hasSidebarCards) { %>
+    <div class="pricem2__cards">
+      <% if (radius) { %>
+        <div class="pricem2__card pricem2__card--highlight">
+          <span class="pricem2__card-eyebrow">Prix moyen dans un rayon <%= radius.meters %> m</span>
+          <span class="pricem2__card-value"><%= eur(radius.median_price_m2) %><small>/m²</small></span>
+          <span class="pricem2__card-meta">
+            <%= fmt.number(radius.count) %> vente<%= radius.count > 1 ? 's' : '' %>
+            · <%= radius.property_type === 'house' ? 'maisons' : 'appartements' %>
+            <% if (radius.widened) { %>· <em>rayon élargi</em><% } %>
+            <% if (!radius.enough) { %>· <em>échantillon faible</em><% } %>
+          </span>
+        </div>
+      <% } else if (!data.hide_radius && data.property_type && !data.has_coordinates) { %>
+        <div class="pricem2__card pricem2__card--empty">
+          <span class="pricem2__card-eyebrow">Rayon autour de l'adresse</span>
+          <span class="pricem2__card-hint">
+            Renseignez l'adresse exacte du bien pour obtenir le prix autour de l'adresse.
+          </span>
+        </div>
+      <% } %>
 
-    <% if (commune.house) { %>
-      <div class="pricem2__card">
-        <span class="pricem2__card-eyebrow">Prix moyen des misons · <%= commune.name || 'commune' %></span>
-        <span class="pricem2__card-value"><%= eur(commune.house.median_price_m2) %><small>/m²</small></span>
-        <span class="pricem2__card-meta"><%= fmt.number(commune.house.count) %> vente<%= commune.house.count > 1 ? 's' : '' %> · <%= commune.house.year %></span>
-      </div>
-    <% } %>
+      <% if (commune.house) { %>
+        <div class="pricem2__card">
+          <span class="pricem2__card-eyebrow">Prix moyen des maisons</span>
+          <span class="pricem2__card-value"><%= eur(commune.house.median_price_m2) %><small>/m²</small></span>
+          <span class="pricem2__card-meta"><% if (commune.house.count != null) { %><%= fmt.number(commune.house.count) %> vente<%= commune.house.count > 1 ? 's' : '' %> · <% } %><%= commune.house.year %></span>
+        </div>
+      <% } %>
 
-    <% if (commune.apartment) { %>
-      <div class="pricem2__card">
-        <span class="pricem2__card-eyebrow">Prix moyen des appartements · <%= commune.name || 'commune' %></span>
-        <span class="pricem2__card-value"><%= eur(commune.apartment.median_price_m2) %><small>/m²</small></span>
-        <span class="pricem2__card-meta"><%= fmt.number(commune.apartment.count) %> vente<%= commune.apartment.count > 1 ? 's' : '' %> · <%= commune.apartment.year %></span>
-      </div>
-    <% } %>
-  </div>
+      <% if (commune.apartment) { %>
+        <div class="pricem2__card">
+          <span class="pricem2__card-eyebrow">Prix moyen des appartements</span>
+          <span class="pricem2__card-value"><%= eur(commune.apartment.median_price_m2) %><small>/m²</small></span>
+          <span class="pricem2__card-meta"><% if (commune.apartment.count != null) { %><%= fmt.number(commune.apartment.count) %> vente<%= commune.apartment.count > 1 ? 's' : '' %> · <% } %><%= commune.apartment.year %></span>
+        </div>
+      <% } %>
 
-  <% if (chart) { %>
-    <div class="pricem2__evolution pricem2__evolution--<%= evo.tone %>">
-      <details class="pricem2__evolution-details">
-        <summary class="pricem2__evolution-head">
-          <div class="pricem2__evolution-heading">
-            <span class="pricem2__card-eyebrow">Évolution du prix médian au m²</span>
-            <span class="pricem2__evolution-sub">
-              <%= evo.property_type === 'house' ? 'Maisons' : 'Appartements' %>
-              · <%= chart.pts[0].p.year %>–<%= chart.pts[chart.pts.length - 1].p.year %>
+      <% if (dvfCmp && dvfCmp.radius) { %>
+        <div class="pricem2__card pricem2__card--dvf pricem2__card--<%= toneOfIndex(dvfIndex) %>">
+          <div class="pricem2__card-head">
+            <span class="pricem2__card-eyebrow" title="Ventes DVF du même type que cette annonce (<%= dvfTypeNoun.toLowerCase() %>)">
+              DVF · <%= dvfTypeLabel %>
             </span>
+            <% if (dvfIndex != null) { %>
+              <span class="pricem2__card-index pricem2__card-index--<%= toneOfIndex(dvfIndex) %>"><%= dvfIndex %> / 100</span>
+            <% } %>
           </div>
-          <div class="pricem2__evolution-aside">
-            <div class="pricem2__evolution-trend">
-              <span class="pricem2__evolution-label"><%= evo.label %></span>
-              <% if (evo.trend_pct != null) { %>
-                <span class="badge <%= evo.trend_pct > 0 ? 'badge--up' : evo.trend_pct < 0 ? 'badge--down' : 'badge--muted' %>">
-                  <%= evo.trend_pct > 0 ? '▲' : evo.trend_pct < 0 ? '▼' : '■' %> <%= pct(evo.trend_pct) %>
-                </span>
-              <% } %>
-            </div>
-            <span class="pricem2__evolution-chevron" aria-hidden="true"></span>
+          <div class="pricem2__card-value-row">
+            <span class="pricem2__card-value"><%= eur(dvfCmp.radius.median_price_m2) %><small>/m²</small></span>
+            <%- include('./dvf-method-help', {
+              radius: dvfCmp.radius,
+              dvfTypeLabel: dvfTypeLabel
+            }) %>
           </div>
-        </summary>
-
-      <div class="pricem2__chart">
-        <svg viewBox="0 0 <%= chart.W %> <%= chart.H %>"
-          role="img" aria-label="Évolution du prix médian au m² par année">
-          <% chart.grid.forEach(function (gy) { %>
-            <line class="pricem2__chart-grid" x1="<%= chart.padL %>" y1="<%= gy %>" x2="<%= chart.W - chart.padR %>" y2="<%= gy %>"></line>
-          <% }); %>
-          <polygon class="pricem2__chart-area" points="<%= chart.area %>"></polygon>
-          <polyline class="pricem2__chart-line" points="<%= chart.line %>"></polyline>
-          <% chart.pts.forEach(function (q) { %>
-            <circle class="pricem2__chart-dot" cx="<%= q.x %>" cy="<%= q.y %>" r="2.5"></circle>
-            <text class="pricem2__chart-value" x="<%= q.x %>" y="<%= q.y - 7 %>" text-anchor="middle" font-size="9"><%= eur(q.p.median_price_m2) %></text>
-            <text class="pricem2__chart-year" x="<%= q.x %>" y="<%= chart.H - 8 %>" text-anchor="middle" font-size="9"><%= q.p.year %></text>
-          <% }); %>
-        </svg>
-      </div>
-      </details>
+          <% if (dvfCmp.radius.sales && dvfCmp.radius.sales.length) { %>
+            <span class="pricem2__card-meta pricem2__card-meta--dvf">
+              <%- include('./dvf-radius-meta', {
+                radius: dvfCmp.radius,
+                dvfTypeLabel: dvfTypeLabel,
+                modalId: dvfModalId
+              }) %>
+            </span>
+          <% } %>
+        </div>
+      <% } %>
     </div>
+  <% } %>
+
+  <% if (typeBlocks.length) {
+    let evolutionLead = evo.lead || '';
+    if (!evolutionLead) {
+      evolutionLead =
+        'Tendances à ' + cityLabel +
+        (deptLabel ? ' et dans le département (' + deptLabel + ')' : '') +
+        ', sur les 5 dernières années.';
+    }
+  %>
+    <details class="delinquance__details pricem2__evolution-details" data-pricem2-evolution data-pricem2-default="<%= activeType %>">
+      <summary class="delinquance__summary">
+        <span class="delinquance__summary-text">
+          <span class="delinquance__summary-label">Évolution des prix</span>
+          <span class="delinquance__summary-hint">
+            <span class="delinquance__summary-hint--closed"><%= evolutionLead %></span>
+            <span class="delinquance__summary-hint--open">Replier le graphique</span>
+          </span>
+        </span>
+        <span class="delinquance__summary-aside" aria-hidden="true">
+          <span class="delinquance__summary-chevron"></span>
+        </span>
+      </summary>
+
+      <div class="delinquance__details-body pricem2__evolution">
+      <div class="pricem2__type-tabs" role="tablist" aria-label="Type de bien">
+        <% typeBlocks.forEach(function (item) { %>
+          <button type="button" class="pricem2__type-tab<%= item.key === activeType ? ' is-active' : '' %>"
+            role="tab"
+            id="<%= idPrefix %>-tab-<%= item.key %>"
+            data-pricem2-type="<%= item.key %>"
+            aria-selected="<%= item.key === activeType ? 'true' : 'false' %>"
+            aria-controls="<%= idPrefix %>-panel-<%= item.key %>">
+            <%= item.label %>
+          </button>
+        <% }); %>
+      </div>
+
+      <div class="pricem2__evolution-layout">
+        <% if (hasSidebarCards) { %>
+          <aside class="pricem2__evolution-aside" aria-label="Prix de référence">
+            <% if (commune.house) { %>
+              <div class="pricem2__card">
+                <span class="pricem2__card-eyebrow">Prix moyen des maisons</span>
+                <span class="pricem2__card-value"><%= eur(commune.house.median_price_m2) %><small>/m²</small></span>
+                <span class="pricem2__card-meta"><% if (commune.house.count != null) { %><%= fmt.number(commune.house.count) %> vente<%= commune.house.count > 1 ? 's' : '' %> · <% } %><%= commune.house.year %></span>
+              </div>
+            <% } %>
+
+            <% if (commune.apartment) { %>
+              <div class="pricem2__card">
+                <span class="pricem2__card-eyebrow">Prix moyen des appartements</span>
+                <span class="pricem2__card-value"><%= eur(commune.apartment.median_price_m2) %><small>/m²</small></span>
+                <span class="pricem2__card-meta"><% if (commune.apartment.count != null) { %><%= fmt.number(commune.apartment.count) %> vente<%= commune.apartment.count > 1 ? 's' : '' %> · <% } %><%= commune.apartment.year %></span>
+              </div>
+            <% } %>
+
+            <% if (dvfCmp && dvfCmp.radius) { %>
+              <div class="pricem2__card pricem2__card--dvf pricem2__card--<%= toneOfIndex(dvfIndex) %>">
+                <div class="pricem2__card-head">
+                  <span class="pricem2__card-eyebrow" title="Ventes DVF du même type que cette annonce (<%= dvfTypeNoun.toLowerCase() %>)">
+                    DVF · <%= dvfTypeLabel %>
+                  </span>
+                  <% if (dvfIndex != null) { %>
+                    <span class="pricem2__card-index pricem2__card-index--<%= toneOfIndex(dvfIndex) %>"><%= dvfIndex %> / 100</span>
+                  <% } %>
+                </div>
+                <div class="pricem2__card-value-row">
+                  <span class="pricem2__card-value"><%= eur(dvfCmp.radius.median_price_m2) %><small>/m²</small></span>
+                  <%- include('./dvf-method-help', {
+                    radius: dvfCmp.radius,
+                    dvfTypeLabel: dvfTypeLabel
+                  }) %>
+                </div>
+                <% if (dvfCmp.radius.sales && dvfCmp.radius.sales.length) { %>
+                  <span class="pricem2__card-meta pricem2__card-meta--dvf">
+                    <%- include('./dvf-radius-meta', {
+                      radius: dvfCmp.radius,
+                      dvfTypeLabel: dvfTypeLabel,
+                      modalId: dvfModalId
+                    }) %>
+                  </span>
+                <% } %>
+              </div>
+            <% } %>
+
+            <% if (radius && !(dvfCmp && dvfCmp.radius)) { %>
+              <div class="pricem2__card pricem2__card--highlight">
+                <span class="pricem2__card-eyebrow">Prix moyen dans un rayon <%= radius.meters %> m</span>
+                <span class="pricem2__card-value"><%= eur(radius.median_price_m2) %><small>/m²</small></span>
+                <span class="pricem2__card-meta">
+                  <%= fmt.number(radius.count) %> vente<%= radius.count > 1 ? 's' : '' %>
+                  · <%= radius.property_type === 'house' ? 'maisons' : 'appartements' %>
+                  <% if (radius.widened) { %>· <em>rayon élargi</em><% } %>
+                  <% if (!radius.enough) { %>· <em>échantillon faible</em><% } %>
+                </span>
+              </div>
+            <% } else if (!(dvfCmp && dvfCmp.radius) && !data.hide_radius && data.property_type && !data.has_coordinates) { %>
+              <div class="pricem2__card pricem2__card--empty">
+                <span class="pricem2__card-eyebrow">Rayon autour de l'adresse</span>
+                <span class="pricem2__card-hint">
+                  Renseignez l'adresse exacte du bien pour obtenir le prix autour de l'adresse.
+                </span>
+              </div>
+            <% } %>
+          </aside>
+        <% } %>
+
+        <div class="pricem2__evolution-main">
+      <% typeBlocks.forEach(function (item) { %>
+        <% var series = item.series; var communeEvo = item.commune; var seriesJson = JSON.stringify(series).replace(/</g, '\\u003c'); %>
+        <div class="pricem2__type-panel<%= item.key === activeType ? ' is-active' : '' %>"
+          id="<%= idPrefix %>-panel-<%= item.key %>"
+          role="tabpanel"
+          data-pricem2-panel="<%= item.key %>"
+          aria-labelledby="<%= idPrefix %>-tab-<%= item.key %>"
+          <%= item.key === activeType ? '' : 'hidden' %>>
+
+          <% if (communeEvo) { %>
+            <div
+              class="pricem2__periods pricem2__periods--<%= variationHorizons.length %>"
+              role="list"
+              aria-label="Variations du prix médian en commune">
+              <% variationHorizons.forEach(function (horizon) {
+                var periodVal = variationValue(communeEvo, horizon.key);
+                var tone =
+                  periodVal != null
+                    ? (periodVal > 0 ? 'is-up' : periodVal < 0 ? 'is-down' : 'is-flat')
+                    : 'is-flat';
+              %>
+              <div class="pricem2__period" role="listitem">
+                <span class="pricem2__period-label"><%= horizon.label %></span>
+                <% if (periodVal != null) { %>
+                  <span class="pricem2__period-value <%= tone %>"><%= pct(periodVal) %></span>
+                <% } else { %>
+                  <span class="pricem2__period-value is-flat" aria-hidden="true">—</span>
+                  <span class="visually-hidden">Variation <%= horizon.label %> : indisponible</span>
+                <% } %>
+              </div>
+              <% }); %>
+            </div>
+          <% } %>
+
+          <div class="pricem2__chart">
+            <canvas
+              data-pricem2-chart
+              role="img"
+              aria-label="Évolution indexée du prix médian au m² à <%= cityLabel %><% if (deptLabel) { %> et dans le <%= deptLabel %><% } %>, <%= item.label.toLowerCase() %>"></canvas>
+            <script type="application/json" class="pricem2__chart-config"><%- seriesJson %></script>
+          </div>
+
+          <ul class="pricem2__legend">
+            <li><span class="pricem2__legend-swatch pricem2__legend-swatch--city"></span><%= cityLabel %></li>
+            <% if (deptLabel && series.deptIndex.some(function (v) { return v != null; })) { %>
+              <li><span class="pricem2__legend-swatch pricem2__legend-swatch--dept"></span><%= deptLabel %></li>
+            <% } %>
+          </ul>
+        </div>
+      <% }); %>
+        </div>
+      </div>
+      </div>
+    </details>
+  <% } %>
+
+  <% if (dvfCmp && dvfCmp.radius && dvfCmp.radius.sales && dvfCmp.radius.sales.length) { %>
+    <%- include('./dvf-sales-modal', {
+      radius: dvfCmp.radius,
+      dvfTypeLabel: dvfTypeLabel,
+      modalId: dvfModalId
+    }) %>
   <% } %>
 </div>

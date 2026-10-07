@@ -115,9 +115,11 @@ export function parseDvfRow(cols, h) {
   if (!id) return null;
   const date = String(cols[h.date_mutation] ?? "").trim();
   const year = /^(\d{4})/.test(date) ? Number.parseInt(date.slice(0, 4), 10) : null;
+  const mutationDate = /^\d{4}-\d{2}-\d{2}/.test(date) ? date.slice(0, 10) : null;
   return {
     id_mutation: id,
     year,
+    date: mutationDate,
     nature: String(cols[h.nature_mutation] ?? "").trim(),
     valeur_fonciere: parseNumber(cols[h.valeur_fonciere]),
     insee_code: normalizeInsee(cols[h.code_commune]),
@@ -170,10 +172,15 @@ export function buildMutation(rows, options = {}) {
     ? dwelling
     : rows.find((r) => r.lat != null && r.lng != null) || dwelling;
 
+  const mutationDate =
+    rows[0].date ||
+    (dwelling.year ? `${dwelling.year}-07-01` : null);
+
   return {
     insee_code: dwelling.insee_code,
     dept_code: dwelling.dept_code,
     year: dwelling.year,
+    mutation_date: mutationDate,
     type_local: DVF_TYPE_KEYS[dwelling.type_local],
     price: Math.round(price),
     surface,

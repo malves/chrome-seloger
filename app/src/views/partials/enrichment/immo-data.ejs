@@ -1,0 +1,62 @@
+<%- include("./prix-m2", {
+  data: data,
+  listing: listing,
+  provider: provider,
+  chartId: "immodata",
+  addressComparison: data.address_comparison
+}) %>
+<%
+  // Comparatif « à l'adresse » : rayon DVF et grand quartier Immo Data côte à
+  // côte, pour voir quelle source colle le mieux au terrain (assemblé par
+  // l'orchestrateur quand une adresse précise est saisie).
+  const cmp = data.address_comparison;
+  const eur = function (v) { return (v == null || !isFinite(v)) ? '—' : fmt.euro(v); };
+  const listingM2 =
+    listing && listing.price > 0 && listing.surface > 0
+      ? listing.price / listing.surface
+      : null;
+  const qType =
+    listing && (listing.property_type === 'house' || listing.property_type === 'apartment')
+      ? listing.property_type
+      : 'apartment';
+  const quartierCard = cmp && cmp.quartier ? (cmp.quartier[qType] || cmp.quartier.apartment || cmp.quartier.house) : null;
+  const quartierPrice = quartierCard ? quartierCard.median_price_m2 : null;
+  const indexOf = function (ref) {
+    if (!ref || !listingM2 || ref <= 0) return null;
+    return Math.round((listingM2 / ref) * 100);
+  };
+  const toneOf = function (index) {
+    if (index == null) return 'neutral';
+    if (index <= 97) return 'ok';
+    if (index <= 103) return 'mid';
+    return 'high';
+  };
+%>
+<% if (cmp && quartierPrice != null) { %>
+  <div class="address-compare">
+    <div class="address-compare__head">
+      <h3 class="address-compare__title">À l'adresse saisie</h3>
+      <% if (listingM2 != null) { %>
+        <span class="address-compare__listing">Ce bien : <strong><%= eur(listingM2) %>/m²</strong></span>
+      <% } %>
+    </div>
+    <div class="address-compare__cards">
+      <% if (quartierPrice != null) { var qIdx = indexOf(quartierPrice); %>
+        <div class="address-compare__card address-compare__card--<%= toneOf(qIdx) %>">
+          <span class="address-compare__eyebrow">Grand quartier</span>
+          <span class="address-compare__value"><%= eur(quartierPrice) %><small>/m²</small></span>
+          <span class="address-compare__meta">
+            <%= qType === 'house' ? 'maisons' : 'appartements' %>
+            <% if (quartierCard && quartierCard.year) { %> · <%= quartierCard.year %><% } %>
+          </span>
+          <% if (qIdx != null) { %>
+            <span class="address-compare__index address-compare__index--<%= toneOf(qIdx) %>"><%= qIdx %> / 100</span>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+    <p class="address-compare__hint">
+      Prix de marché au niveau du grand quartier (le comparatif DVF est affiché à côté du graphique d'évolution).
+    </p>
+  </div>
+<% } %>

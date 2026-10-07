@@ -1,5 +1,9 @@
 /**
- * Délinquance enregistrée (SSMSI) à l'échelle communale, lieu de commission.
+ * Délinquance enregistrée (SSMSI) à l'échelle COMMUNALE, lieu de commission.
+ *
+ * Le benchmark départemental (séries et indices du département) est produit par
+ * le provider `delinquance-dept` (portée départementale) et fusionné à
+ * l'affichage par l'orchestrateur : ce provider ne calcule que la commune.
  */
 
 import { listingTerritory } from "../../lib/listing-territory.js";
@@ -145,59 +149,7 @@ export default {
     const verdict = indexVerdict(overallIndex);
     const indexBasis = indicators.filter((ind) => ind.national_index != null).length;
 
-    let departmentBenchmark = [];
-    const departmentIndicatorRows = [];
     const communeCache = repositories.enrichments.findCommune(inseeCode, "commune");
-    const deptCode = communeCache?.data?.department?.code;
-    if (deptCode) {
-      const depSeries = ssmsi.findDepartmentSeries(deptCode, {
-        yearLimit: referenceYear,
-        yearsPerIndicator: 1,
-      });
-      departmentBenchmark = indicators.map((ind) => {
-        const dep = depSeries[ind.key];
-        if (!dep) return null;
-        const deptIndex = nationalIndex(dep.rate_per_1000, ind.national_rate);
-        if (deptIndex != null) {
-          departmentIndicatorRows.push({
-            key: ind.key,
-            national_index: deptIndex,
-          });
-        }
-        return {
-          key: ind.key,
-          label: ind.label,
-          rate_per_1000: dep.rate_per_1000,
-          year: dep.year,
-        };
-      }).filter(Boolean);
-    }
-
-    const departmentIndex = departmentIndicatorRows.length
-      ? Math.round(
-          departmentIndicatorRows.reduce((sum, row) => sum + row.national_index, 0) /
-            departmentIndicatorRows.length
-        )
-      : null;
-    const departmentPersonsIndex = departmentIndicatorRows.length
-      ? averageIndexForGroup(
-          departmentIndicatorRows.map((row) => ({
-            key: row.key,
-            national_index: row.national_index,
-          })),
-          "personnes"
-        )
-      : null;
-    const departmentPropertyIndex = departmentIndicatorRows.length
-      ? averageIndexForGroup(
-          departmentIndicatorRows.map((row) => ({
-            key: row.key,
-            national_index: row.national_index,
-          })),
-          "biens"
-        )
-      : null;
-
     const importMeta = ssmsi.importMeta();
 
     return {
@@ -212,12 +164,13 @@ export default {
         tone: verdict.tone,
         label: verdict.label,
         basis: indexBasis,
-        department_index: departmentIndex,
-        department_persons_index: departmentPersonsIndex,
-        department_property_index: departmentPropertyIndex,
+        // Volet départemental fusionné à l'affichage (provider delinquance-dept).
+        department_index: null,
+        department_persons_index: null,
+        department_property_index: null,
       },
       indicators,
-      department_benchmark: departmentBenchmark,
+      department_benchmark: [],
       import_meta: importMeta,
       ssmsi_needs_reimport: ssmsi.needsFullReimport(),
       disclaimer:

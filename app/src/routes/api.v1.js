@@ -200,6 +200,18 @@ export default function createApiRouter({ repositories, enrichment, logger }) {
     return undefined;
   });
 
+  router.delete("/listings/:id", requireSession, (req, res, next) => {
+    const id = Number(req.params.id);
+    const listing = Number.isInteger(id)
+      ? repositories.listings.findById(req.user.id, id)
+      : null;
+    if (!listing) return next(HttpError.notFound("Annonce introuvable."));
+
+    repositories.listings.remove(req.user.id, listing.id);
+    logActivity(logger, req, "annonce supprimée", { listingId: listing.id });
+    return res.status(204).end();
+  });
+
   router.get("/listings/lookup", requireSession, (req, res, next) => {
     const url = String(req.query.url || "").trim();
     if (!url) {

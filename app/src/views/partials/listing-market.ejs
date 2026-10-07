@@ -1,0 +1,39 @@
+<%
+  const marketHasData = otherProviders.some(function (p) {
+    return p.status === "ok" && p.data;
+  });
+%>
+<section class="panel listing-market" id="listing-market">
+  <div class="address-book__overlay listing-market__overlay" aria-hidden="true">
+    <span class="spinner" role="status" aria-label="Chargement…"></span>
+  </div>
+
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Enrichissement</p>
+      <h2 class="panel__title">Analyse de marché</h2>
+    </div>
+    <% if (listing && listing.id && typeof isAdmin !== "undefined" && isAdmin) { %>
+      <form
+        class="listing-market__refresh"
+        hx-post="/listings/<%= listing.id %>/enrich/marche"
+        hx-target="#listing-market"
+        hx-swap="outerHTML"
+        hx-indicator="#listing-market .listing-market__overlay"
+        hx-disabled-elt="find button"
+      >
+        <button class="btn btn--ghost btn--sm" type="submit">
+          <%= marketHasData ? "Actualiser" : "Réessayer" %>
+        </button>
+      </form>
+    <% } %>
+  </div>
+
+  <% otherProviders.forEach(function (provider) { %>
+    <%- include("enrichment-block", {
+      provider: provider,
+      listing: listing,
+      hideProviderRefresh: true
+    }) %>
+  <% }); %>
+</section>

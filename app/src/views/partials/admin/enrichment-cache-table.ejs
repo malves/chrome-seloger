@@ -1,0 +1,220 @@
+<%
+  function browseUrl(page) {
+    var params = new URLSearchParams();
+    params.set("cache_scope", filters.scope);
+    if (filters.provider) params.set("cache_provider", filters.provider);
+    if (filters.q) params.set("cache_q", filters.q);
+    if (page > 1) params.set("cache_page", String(page));
+    return "/admin/enrichment-cache/browse?" + params.toString();
+  }
+  var p = pagination;
+  var isCommune = filters.scope === "commune";
+  var isDepartment = filters.scope === "department";
+  var isListing = filters.scope === "listing";
+  var isGeo = isCommune || isDepartment;
+  // Code géographique de la ligne selon la portée (INSEE ou département).
+  var geoCode = function (row) { return isCommune ? row.insee_code : row.dept_code; };
+  var scopeLabel = isCommune
+    ? "cache communal"
+    : isDepartment
+      ? "cache départemental"
+      : "cache annonce";
+  var scopeTable = isCommune
+    ? "commune_data"
+    : isDepartment
+      ? "department_data"
+      : "listing_enrichments";
+%>
+
+<%
+  if (typeof cacheStatsOob !== 'undefined' && cacheStatsOob) {
+    var s = cacheStatsOob;
+%>
+<p class="admin-cache-stats" id="admin-cache-stats" hx-swap-oob="true">
+  <span><strong><%= fmt.number(s.commune) %></strong> communal<%= s.commune > 1 ? 'es' : '' %></span>
+  ·
+  <span><strong><%= fmt.number(s.department) %></strong> départemental<%= s.department > 1 ? 'es' : '' %></span>
+  ·
+  <span><strong><%= fmt.number(s.listing) %></strong> par annonce</span>
+</p>
+<% } %>
+<div class="admin-users-results" id="enrichment-cache-results">
+  <% if (typeof cacheRevokeNotice !== 'undefined' && cacheRevokeNotice) { %>
+    <p class="admin-users-notice admin-users-notice--success" role="status"><%= cacheRevokeNotice %></p>
+  <% } %>
+  <div class="dpe-results__toolbar">
+    <p class="dpe-results__summary">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 7h16" />
+        <path d="M4 12h10" />
+        <path d="M4 17h6" />
+        <path d="M14 17h6" />
+        <path d="M17 14v6" />
+      </svg>
+      <% if (p.total) { %>
+        <%= fmt.number(p.from) %>–<%= fmt.number(p.to) %> sur <%= fmt.number(p.total) %> entrée<%= p.total > 1 ? 's' : '' %>
+        · <%= scopeLabel %>
+      <% } else if (filters.q || filters.provider) { %>
+        Aucun résultat
+      <% } else { %>
+        Cache vide pour cette vue
+      <% } %>
+    </p>
+  </div>
+
+  <% if (records.length) { %>
+    <div class="dpe-table-wrap admin-cache-table-wrap">
+      <table class="dpe-table admin-cache-table<%= isListing ? ' admin-cache-table--listing' : '' %>">
+        <thead>
+          <tr>
+            <% if (isCommune) { %>
+              <th>INSEE</th>
+            <% } else if (isDepartment) { %>
+              <th>Dép.</th>
+            <% } else { %>
+              <th class="admin-cache-table__col-annonce">Annonce</th>
+            <% } %>
+            <th class="admin-cache-table__col-provider">Provider</th>
+            <% if (isListing) { %><th class="admin-cache-table__col-status">Statut</th><% } %>
+            <th class="admin-cache-table__col-date">Mis à jour</th>
+            <th class="admin-cache-table__col-size">Taille</th>
+            <th class="admin-cache-table__actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% records.forEach(function (row) { %>
+            <tr id="admin-cache-row-<%= isGeo ? geoCode(row) + '-' + row.provider : row.listing_id + '-' + row.provider %>">
+              <% if (isGeo) { %>
+                <td class="dpe-table__mono"><%= geoCode(row) %></td>
+              <% } else { %>
+                <td class="admin-cache-table__annonce">
+                  <span class="admin-cache-table__listing">#<%= row.listing_id %></span>
+                  <% if (row.title) { %>
+                    <span class="admin-cache-table__title"><%= row.title %></span>
+                  <% } %>
+                  <span class="admin-cache-table__email"><%= row.user_email %></span>
+                  <% if (row.insee_code) { %>
+                    <span class="admin-cache-table__meta dpe-table__mono">INSEE <%= row.insee_code %></span>
+                  <% } %>
+                </td>
+              <% } %>
+              <td><code><%= row.provider %></code></td>
+              <% if (isListing) { %>
+                <td>
+                  <span class="badge <%= row.status === 'ok' ? 'badge--success' : row.status === 'error' ? 'badge--down' : 'badge--muted' %>"><%= row.status %></span>
+                </td>
+              <% } %>
+              <td><%= row.fetched_at ? fmt.date(row.fetched_at) : '—' %></td>
+              <td class="dpe-table__mono">
+                <% if (row.data_bytes != null && row.data_bytes > 0) { %>
+                  <%= fmt.number(row.data_bytes) %> o
+                <% } else { %>
+                  <span class="admin-cache-table__empty-data">vide</span>
+                <% } %>
+              </td>
+              <td class="admin-cache-table__actions">
+                <div class="admin-cache-table__btn-row">
+                  <button
+                    type="button"
+                    class="btn btn--ghost btn--sm btn--icon-only admin-cache-table__view"
+                    data-admin-cache-view
+                    data-cache-scope="<%= filters.scope %>"
+                    data-cache-provider="<%= row.provider %>"
+                    <% if (isCommune) { %>data-cache-insee="<%= row.insee_code %>"<% } else if (isDepartment) { %>data-cache-dept="<%= row.dept_code %>"<% } else { %>data-cache-listing-id="<%= row.listing_id %>"<% } %>
+                    aria-label="Voir le contenu du cache<%= isCommune ? ' · INSEE ' + row.insee_code : isDepartment ? ' · département ' + row.dept_code : ' · annonce #' + row.listing_id %>"
+                  >
+                    <svg class="admin-cache-table__view-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="10.5" cy="10.5" r="5.75" />
+                      <path d="m15.5 15.5 5 5" />
+                    </svg>
+                  </button>
+                  <form
+                    class="admin-cache-table__revoke-form"
+                    method="post"
+                    action="/admin/enrichment-cache/revoke"
+                    hx-post="/admin/enrichment-cache/revoke"
+                    hx-target="#enrichment-cache-results"
+                    hx-swap="outerHTML"
+                    hx-confirm="Révoquer cette entrée de cache ? Les fiches concernées devront être ré-enrichies."
+                  >
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                    <input type="hidden" name="scope" value="<%= filters.scope %>" />
+                    <input type="hidden" name="provider" value="<%= row.provider %>" />
+                    <% if (isCommune) { %>
+                      <input type="hidden" name="insee_code" value="<%= row.insee_code %>" />
+                    <% } else if (isDepartment) { %>
+                      <input type="hidden" name="dept_code" value="<%= row.dept_code %>" />
+                    <% } else { %>
+                      <input type="hidden" name="listing_id" value="<%= row.listing_id %>" />
+                    <% } %>
+                    <input type="hidden" name="cache_scope" value="<%= filters.scope %>" />
+                    <input type="hidden" name="cache_provider" value="<%= filters.provider || '' %>" />
+                    <input type="hidden" name="cache_q" value="<%= filters.q || '' %>" />
+                    <input type="hidden" name="cache_page" value="<%= p.page %>" />
+                    <button class="btn btn--ghost btn--sm admin-cache-table__revoke" type="submit">Révoquer</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (p.pageCount > 1) { %>
+      <nav class="dpe-pagination" aria-label="Pagination du cache">
+        <% if (p.page > 1) { %>
+          <a
+            class="pagination__nav pagination__nav--icon"
+            href="<%= browseUrl(p.page - 1) %>"
+            hx-get="<%= browseUrl(p.page - 1) %>"
+            hx-target="#enrichment-cache-results"
+            hx-swap="outerHTML"
+            rel="prev"
+            aria-label="Page précédente"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </a>
+        <% } else { %>
+          <span class="pagination__nav pagination__nav--icon is-disabled" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </span>
+        <% } %>
+
+        <span class="dpe-pagination__page">Page <%= p.page %> / <%= p.pageCount %></span>
+
+        <% if (p.page < p.pageCount) { %>
+          <a
+            class="pagination__nav pagination__nav--icon"
+            href="<%= browseUrl(p.page + 1) %>"
+            hx-get="<%= browseUrl(p.page + 1) %>"
+            hx-target="#enrichment-cache-results"
+            hx-swap="outerHTML"
+            rel="next"
+            aria-label="Page suivante"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </a>
+        <% } else { %>
+          <span class="pagination__nav pagination__nav--icon is-disabled" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </span>
+        <% } %>
+      </nav>
+    <% } %>
+  <% } else if (filters.q || filters.provider) { %>
+    <p class="admin-users-empty">Aucune entrée ne correspond aux filtres.</p>
+  <% } else { %>
+    <p class="admin-users-empty">
+      Aucune entrée dans <code><%= scopeTable %></code>.
+    </p>
+  <% } %>
+</div>

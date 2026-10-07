@@ -6,18 +6,54 @@
 import { nowIso } from "../lib/time.js";
 import { median } from "../lib/dvf-stats.js";
 
-/** Taille des lots d'insertion des statistiques communales. */
+/** Taille des lots d'insertion des statistiques communales / départementales. */
 const STATS_BATCH = 500;
+
+/**
+ * Médiane en flux : parcourt un itérateur déjà trié par les clés de groupe,
+ * accumule les prix, puis renvoie une ligne agrégée par groupe. Aucune
+ * écriture SQLite ici — better-sqlite3 interdit d'écrire tant qu'un
+ * itérateur de lecture est ouvert sur la même connexion.
+ */
+function aggregateMedianGroups(iterator, sameGroup, toRow) {
+  const aggregated = [];
+  let current = null;
+
+  const flush = () => {
+    if (!current) return;
+    aggregated.push(toRow(current));
+  };
+
+  for (const row of iterator) {
+    if (!current || !sameGroup(current, row)) {
+      flush();
+      current = { ...row, values: [] };
+    }
+    current.values.push(row.price_per_m2);
+  }
+  flush();
+  return aggregated;
+}
+
+function insertInBatches(insertMany, rows, onProgress) {
+  let total = 0;
+  for (let i = 0; i < rows.length; i += STATS_BATCH) {
+    total += insertMany(rows.slice(i, STATS_BATCH + i));
+    if (onProgress) onProgress(total, rows.length);
+  }
+  return total;
+}
 
 export default function createDvfRepository(db) {
   const statements = {
     clearMutations: db.prepare("DELETE FROM dvf_mutation"),
     clearStats: db.prepare("DELETE FROM dvf_commune_stats"),
+    clearDeptStats: db.prepare("DELETE FROM dvf_department_stats"),
     insertMutation: db.prepare(
       `INSERT INTO dvf_mutation
-         (insee_code, dept_code, year, type_local, price, surface, price_per_m2, lat, lng)
+         (insee_code, dept_code, year, mutation_date, type_local, price, surface, price_per_m2, lat, lng)
        VALUES
-         (@insee_code, @dept_code, @year, @type_local, @price, @surface, @price_per_m2, @lat, @lng)`
+         (@insee_code, @dept_code, @year, @mutation_date, @type_local, @price, @surface, @price_per_m2, @lat, @lng)`
     ),
     insertStat: db.prepare(
       `INSERT INTO dvf_commune_stats (insee_code, type_local, year, count, median_price_m2)
@@ -26,13 +62,27 @@ export default function createDvfRepository(db) {
          count = excluded.count,
          median_price_m2 = excluded.median_price_m2`
     ),
+    insertDeptStat: db.prepare(
+      `INSERT INTO dvf_department_stats (dept_code, type_local, year, count, median_price_m2)
+       VALUES (@dept_code, @type_local, @year, @count, @median_price_m2)
+       ON CONFLICT(dept_code, type_local, year) DO UPDATE SET
+         count = excluded.count,
+         median_price_m2 = excluded.median_price_m2`
+    ),
     countMutations: db.prepare("SELECT COUNT(*) AS n FROM dvf_mutation"),
     countStats: db.prepare("SELECT COUNT(*) AS n FROM dvf_commune_stats"),
+    countDeptStats: db.prepare("SELECT COUNT(*) AS n FROM dvf_department_stats"),
     // Parcours ordonné (insee, type, année, prix) pour médiane en flux.
     mutationsForStats: db.prepare(
       `SELECT insee_code, type_local, year, price_per_m2
        FROM dvf_mutation
        ORDER BY insee_code, type_local, year, price_per_m2`
+    ),
+    mutationsForDeptStats: db.prepare(
+      `SELECT dept_code, type_local, year, price_per_m2
+       FROM dvf_mutation
+       WHERE dept_code IS NOT NULL AND dept_code != ''
+       ORDER BY dept_code, type_local, year, price_per_m2`
     ),
     communeStats: db.prepare(
       `SELECT year, count, median_price_m2
@@ -40,9 +90,15 @@ export default function createDvfRepository(db) {
        WHERE insee_code = ? AND type_local = ?
        ORDER BY year`
     ),
+    departmentStats: db.prepare(
+      `SELECT year, count, median_price_m2
+       FROM dvf_department_stats
+       WHERE dept_code = ? AND type_local = ?
+       ORDER BY year`
+    ),
     // Pré-filtre bbox : la distance exacte est affinée en JS côté provider.
     radiusBbox: db.prepare(
-      `SELECT lat, lng, price_per_m2
+      `SELECT lat, lng, price, surface, price_per_m2, year, mutation_date, insee_code
        FROM dvf_mutation
        WHERE type_local = ?
          AND year >= ?
@@ -86,6 +142,32 @@ export default function createDvfRepository(db) {
     return rows.length;
   });
 
+  const insertDeptStatMany = db.transaction((rows) => {
+    for (const row of rows) statements.insertDeptStat.run(row);
+    return rows.length;
+  });
+
+  function rebuildDepartmentStats({ onProgress } = {}) {
+    statements.clearDeptStats.run();
+
+    const aggregated = aggregateMedianGroups(
+      statements.mutationsForDeptStats.iterate(),
+      (current, row) =>
+        current.dept_code === row.dept_code &&
+        current.type_local === row.type_local &&
+        current.year === row.year,
+      (current) => ({
+        dept_code: current.dept_code,
+        type_local: current.type_local,
+        year: current.year,
+        count: current.values.length,
+        median_price_m2: Math.round((median(current.values) || 0) * 100) / 100,
+      })
+    );
+
+    return insertInBatches(insertDeptStatMany, aggregated, onProgress);
+  }
+
   return {
     hasData() {
       return statements.countMutations.get().n > 0;
@@ -99,12 +181,17 @@ export default function createDvfRepository(db) {
       return statements.countStats.get().n;
     },
 
+    countDepartmentStats() {
+      return statements.countDeptStats.get().n;
+    },
+
     clearMutations() {
       statements.clearMutations.run();
     },
 
     clearStats() {
       statements.clearStats.run();
+      statements.clearDeptStats.run();
     },
 
     insertMutationBatch(rows) {
@@ -113,64 +200,57 @@ export default function createDvfRepository(db) {
     },
 
     /**
-     * Recalcule `dvf_commune_stats` à partir des mutations.
-     *
-     * On parcourt la table ordonnée (insee, type, année, prix) et on calcule la
-     * médiane groupe par groupe. IMPORTANT : better-sqlite3 interdit toute
-     * écriture tant qu'un itérateur de lecture est ouvert sur la même connexion
-     * — on accumule donc les lignes agrégées (une par groupe, volume borné) et
-     * on ne les insère qu'après épuisement complet de l'itérateur.
+     * Recalcule `dvf_commune_stats` et `dvf_department_stats` à partir des
+     * mutations. Deux parcours ordonnés (commune puis département) : médiane
+     * groupe par groupe, écritures uniquement après épuisement de chaque
+     * itérateur (contrainte better-sqlite3).
      */
     rebuildCommuneStats({ onProgress } = {}) {
       statements.clearStats.run();
 
-      const aggregated = [];
-      let current = null; // { insee_code, type_local, year, values: [] }
-
-      const flush = () => {
-        if (!current) return;
-        aggregated.push({
+      const aggregated = aggregateMedianGroups(
+        statements.mutationsForStats.iterate(),
+        (current, row) =>
+          current.insee_code === row.insee_code &&
+          current.type_local === row.type_local &&
+          current.year === row.year,
+        (current) => ({
           insee_code: current.insee_code,
           type_local: current.type_local,
           year: current.year,
           count: current.values.length,
           median_price_m2:
             Math.round((median(current.values) || 0) * 100) / 100,
-        });
-      };
+        })
+      );
 
-      for (const row of statements.mutationsForStats.iterate()) {
-        if (
-          !current ||
-          current.insee_code !== row.insee_code ||
-          current.type_local !== row.type_local ||
-          current.year !== row.year
-        ) {
-          flush();
-          current = {
-            insee_code: row.insee_code,
-            type_local: row.type_local,
-            year: row.year,
-            values: [],
-          };
-        }
-        current.values.push(row.price_per_m2);
-      }
-      flush();
-
-      // L'itérateur est épuisé : les écritures sont désormais autorisées.
-      let total = 0;
-      for (let i = 0; i < aggregated.length; i += STATS_BATCH) {
-        total += insertStatMany(aggregated.slice(i, i + STATS_BATCH));
-        if (onProgress) onProgress(total, aggregated.length);
-      }
+      const total = insertInBatches(insertStatMany, aggregated, onProgress);
+      rebuildDepartmentStats({ onProgress });
       return total;
+    },
+
+    rebuildDepartmentStats,
+
+    /**
+     * Base déjà importée avant la table départementale : on reconstruit les
+     * stats départementales une fois, sans relancer l'import CSV.
+     */
+    ensureDepartmentStats() {
+      if (statements.countDeptStats.get().n > 0) return 0;
+      if (statements.countMutations.get().n === 0) return 0;
+      return rebuildDepartmentStats();
     },
 
     /** Statistiques annuelles d'une commune pour un type de bien. */
     communeSeries(inseeCode, typeLocal) {
       if (!inseeCode || !typeLocal) return [];
       return statements.communeStats.all(inseeCode, typeLocal);
+    },
+
+    /** Statistiques annuelles d'un département pour un type de bien. */
+    departmentSeries(deptCode, typeLocal) {
+      if (!deptCode || !typeLocal) return [];
+      return statements.departmentStats.all(deptCode, typeLocal);
     },
 
     /** Mutations d'un type dans une boîte englobante (pré-filtre du rayon). */

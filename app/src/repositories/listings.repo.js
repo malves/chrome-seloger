@@ -150,6 +150,7 @@ export default function createListingsRepository(db, { projects }) {
     insert: db.prepare(insertSql),
     update: db.prepare(updateSql),
     byId: db.prepare(`${SELECT_CARD} WHERE l.id = ? AND l.user_id = ?`),
+    byIdOnly: db.prepare(`${SELECT_CARD} WHERE l.id = ?`),
     byDedupKey: db.prepare(
       "SELECT * FROM listings WHERE user_id = ? AND dedup_key = ?"
     ),
@@ -160,7 +161,8 @@ export default function createListingsRepository(db, { projects }) {
     ),
     setInsee: db.prepare("UPDATE listings SET insee_code = ? WHERE id = ?"),
     setStatus: db.prepare(
-      "UPDATE listings SET status = ? WHERE id = ? AND user_id = ?"
+      `UPDATE listings SET status = @status, status_progress = @status_progress
+       WHERE id = @id AND user_id = @user_id`
     ),
     setFavorite: db.prepare(
       "UPDATE listings SET is_favorite = ? WHERE id = ? AND user_id = ?"
@@ -247,6 +249,13 @@ export default function createListingsRepository(db, { projects }) {
       return listing;
     },
 
+    /** Charge une annonce par identifiant (tous comptes), pour l'administration. */
+    findByIdOnly(id) {
+      const listing = hydrateListing(statements.byIdOnly.get(id));
+      if (listing) withProjects([listing]);
+      return listing;
+    },
+
     /** Vrai si l'annonce existe, quel qu'en soit le propriétaire. */
     exists(id) {
       return Boolean(statements.anyById.get(id));
@@ -283,8 +292,15 @@ export default function createListingsRepository(db, { projects }) {
       }
     },
 
-    setStatus(userId, id, status) {
-      return statements.setStatus.run(status, id, userId).changes > 0;
+    setStatus(userId, id, status, statusProgress = null) {
+      return (
+        statements.setStatus.run({
+          status,
+          status_progress: statusProgress,
+          id,
+          user_id: userId,
+        }).changes > 0
+      );
     },
 
     setFavorite(userId, id, isFavorite) {

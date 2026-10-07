@@ -4,14 +4,21 @@
 
 import { parseUserAddress } from "./user-address.js";
 import { listingDpeSearchCriteria } from "./listing-dpe-criteria.js";
+import { dvfPublicationNotice } from "./dvf-publication.js";
 
 const STATUSES = {
-  new: { label: "À étudier", tone: "neutral" },
-  contacted: { label: "Contactée", tone: "info" },
-  visit_planned: { label: "Visite prévue", tone: "accent" },
-  visited: { label: "Visitée", tone: "accent" },
-  offer: { label: "Offre faite", tone: "success" },
-  rejected: { label: "Écartée", tone: "muted" },
+  new: { label: "À étudier", shortLabel: "Étudier", tone: "neutral", pipeline: true },
+  contacted: { label: "Contactée", shortLabel: "Contact", tone: "info", pipeline: true },
+  visit_planned: { label: "Visite prévue", shortLabel: "Visite", tone: "accent", pipeline: true },
+  visited: { label: "Visitée", shortLabel: "Visitée", tone: "accent", pipeline: true },
+  offer: { label: "Offre faite", shortLabel: "Offre", tone: "success", pipeline: true },
+  rejected: {
+    label: "Écartée",
+    shortLabel: "Écartée",
+    badgeLabel: "Cette annonce est écartée",
+    tone: "error",
+    pipeline: false,
+  },
 };
 
 const PROPERTY_TYPES = {
@@ -33,12 +40,61 @@ export function statusLabel(status) {
   return STATUSES[status]?.label || status || "—";
 }
 
+/** Libellé du badge sur la fiche (plus explicite pour certains statuts). */
+export function statusBadgeLabel(status) {
+  const meta = STATUSES[status];
+  return meta?.badgeLabel || meta?.label || status || "—";
+}
+
 export function statusTone(status) {
   return STATUSES[status]?.tone || "neutral";
 }
 
 export function statusOptions() {
   return STATUS_KEYS.map((key) => ({ value: key, label: STATUSES[key].label }));
+}
+
+export function statusShortLabel(status) {
+  return STATUSES[status]?.shortLabel || statusLabel(status);
+}
+
+/** Étapes linéaires du suivi (hors « Écartée », qui est une sortie). */
+export function statusPipeline() {
+  return STATUS_KEYS.filter((key) => STATUSES[key].pipeline).map((key) => ({
+    value: key,
+    label: STATUSES[key].label,
+    shortLabel: STATUSES[key].shortLabel,
+    tone: STATUSES[key].tone,
+  }));
+}
+
+export function isPipelineStatus(status) {
+  return Boolean(STATUSES[status]?.pipeline);
+}
+
+/** Étape du parcours à afficher (y compris quand l'annonce est écartée). */
+export function listingPipelineStatus(listing) {
+  if (listing.status === "rejected") {
+    if (isPipelineStatus(listing.status_progress)) return listing.status_progress;
+    return "new";
+  }
+  if (isPipelineStatus(listing.status)) return listing.status;
+  return "new";
+}
+
+/** Statut + progression à enregistrer lors d'un changement depuis l'interface. */
+export function resolveListingStatusUpdate(listing, newStatus) {
+  if (newStatus === "rejected") {
+    if (listing.status === "rejected") {
+      const restored = isPipelineStatus(listing.status_progress)
+        ? listing.status_progress
+        : "new";
+      return { status: restored, status_progress: null };
+    }
+    const progress = isPipelineStatus(listing.status) ? listing.status : "new";
+    return { status: "rejected", status_progress: progress };
+  }
+  return { status: newStatus, status_progress: null };
 }
 
 export function propertyTypeLabel(type) {
@@ -179,8 +235,14 @@ export default {
   datetime,
   relative,
   statusLabel,
+  statusBadgeLabel,
+  statusShortLabel,
   statusTone,
   statusOptions,
+  statusPipeline,
+  isPipelineStatus,
+  listingPipelineStatus,
+  resolveListingStatusUpdate,
   propertyTypeLabel,
   propertyTypeOptions,
   transactionLabel,
@@ -189,4 +251,5 @@ export default {
   listingsUrl,
   parseUserAddress,
   listingDpeSearchCriteria,
+  dvfPublicationNotice,
 };

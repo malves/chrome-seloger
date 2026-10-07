@@ -1,0 +1,99 @@
+<%
+  const r = radius;
+  const modalTitle =
+    'Ventes DVF, ' + dvfTypeLabel + ', ' + fmt.number(r.meters) + ' m';
+%>
+<div class="modal modal--dvf-sales" id="<%= modalId %>" hidden>
+  <div class="modal__overlay" data-dvf-sales-dismiss></div>
+  <div
+    class="modal__dialog modal__dialog--wide dvf-sales-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="<%= modalId %>-title">
+    <button type="button" class="modal__close" data-dvf-sales-dismiss aria-label="Fermer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+    <header class="dvf-sales-dialog__head">
+      <h2 class="modal__title dvf-sales-dialog__title" id="<%= modalId %>-title"><%= modalTitle %></h2>
+      <p class="dvf-sales-dialog__lead">
+        <%= fmt.number(r.count) %> vente<%= r.count > 1 ? 's' : '' %> dans un rayon de <%= fmt.number(r.meters) %> m<% if (r.widened) { %> (élargi)<% } %>.
+        <% if (r.outliers_excluded > 0) { %>
+          <strong><%= fmt.number(r.count_reference) %></strong> retenue<%= r.count_reference > 1 ? 's' : '' %> pour le prix de référence,
+          <strong><%= fmt.number(r.outliers_excluded) %></strong> exclue<%= r.outliers_excluded > 1 ? 's' : '' %> (valeur atypique).
+        <% } %>
+        Fenêtre <%= r.years %> ans.
+      </p>
+      <p class="dvf-sales-dialog__source">
+        <%= fmt.dvfPublicationNotice() %>
+      </p>
+      <p class="dvf-sales-dialog__ref">
+        Référence affichée :
+        <strong><%= fmt.euro(r.median_price_m2) %>/m²</strong>
+        <% if (r.recency_weighted) { %><span class="dvf-sales-dialog__tag">médiane pondérée</span><% } %>
+      </p>
+    </header>
+    <div class="dvf-sales-dialog__table-wrap" tabindex="0">
+      <table class="dvf-sales-table">
+        <thead>
+          <tr>
+            <th scope="col" class="dvf-sales-table__th-sort" data-dvf-sort="date" aria-sort="descending">
+              <button type="button" class="dvf-sales-table__sort-btn">Date</button>
+            </th>
+            <th scope="col" class="dvf-sales-table__th-sort" data-dvf-sort="price" aria-sort="none">
+              <button type="button" class="dvf-sales-table__sort-btn">Prix</button>
+            </th>
+            <th scope="col" class="dvf-sales-table__th-sort" data-dvf-sort="surface" aria-sort="none">
+              <button type="button" class="dvf-sales-table__sort-btn">Surface</button>
+            </th>
+            <th scope="col" class="dvf-sales-table__th-sort" data-dvf-sort="price_per_m2" aria-sort="none">
+              <button type="button" class="dvf-sales-table__sort-btn">€/m²</button>
+            </th>
+            <th scope="col" class="dvf-sales-table__th-sort dvf-sales-table__col--narrow-hide" data-dvf-sort="distance" aria-sort="none">
+              <button type="button" class="dvf-sales-table__sort-btn">Distance</button>
+            </th>
+            <th scope="col" class="dvf-sales-table__th-sort dvf-sales-table__col--narrow-hide" data-dvf-sort="calc" aria-sort="none">
+              <button type="button" class="dvf-sales-table__sort-btn">Calcul</button>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (r.sales || []).forEach(function (row) {
+            const dateLabel =
+              row.mutation_date
+                ? row.mutation_date.slice(0, 10)
+                : (row.year ? String(row.year) : '—');
+            const dateSort =
+              row.mutation_date
+                ? row.mutation_date.slice(0, 10)
+                : (row.year ? String(row.year) + '-01-01' : '');
+          %>
+            <tr class="dvf-sales-table__row">
+              <td data-sort-value="<%= dateSort %>"><%= dateLabel %></td>
+              <td data-sort-value="<%= row.price != null ? row.price : '' %>"><%= row.price != null ? fmt.euro(row.price) : '—' %></td>
+              <td data-sort-value="<%= row.surface != null ? row.surface : '' %>"><%= row.surface != null ? fmt.number(row.surface) + ' m²' : '—' %></td>
+              <td data-sort-value="<%= row.price_per_m2 != null ? row.price_per_m2 : '' %>"><%= row.price_per_m2 != null ? fmt.euro(row.price_per_m2) : '—' %></td>
+              <td class="dvf-sales-table__col--narrow-hide" data-sort-value="<%= row.distance_m != null ? row.distance_m : '' %>"><%= row.distance_m != null ? fmt.number(row.distance_m) + ' m' : '—' %></td>
+              <td class="dvf-sales-table__col--narrow-hide" data-sort-value="<%= row.used_in_reference ? '1' : '0' %>">
+                <% if (row.used_in_reference) { %>
+                  <span class="dvf-sales-table__pill dvf-sales-table__pill--ok">Retenue</span>
+                <% } else { %>
+                  <span class="dvf-sales-table__pill dvf-sales-table__pill--skip">Exclue</span>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+    <% if (r.outlier_floor_m2 != null && r.outliers_excluded > 0) { %>
+      <p class="dvf-sales-dialog__footnote">
+        Les ventes exclues ont un prix au m² strictement inférieur à
+        <strong><%= fmt.euro(r.outlier_floor_m2) %></strong>
+        (50&nbsp;% de la médiane brute du rayon).
+      </p>
+    <% } %>
+  </div>
+</div>

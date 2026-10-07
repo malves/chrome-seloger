@@ -182,7 +182,9 @@
     <% }); %>
   </div>
 
-  <%- include("partials/pagination", { pagination: pagination, query: query }) %>
+  <% if (pagination.total > 0) { %>
+    <%- include("partials/pagination", { pagination: pagination, query: query }) %>
+  <% } %>
 <% } %>
 
 <%

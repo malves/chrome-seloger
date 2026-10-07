@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createTestApp, createUser, listingPayload, loginAgent } from "./helpers.js";
 import { rootDir } from "../src/config.js";
+import config from "../src/config.js";
 import createListingsService from "../src/services/listings.service.js";
 import { pickCommune } from "../src/services/enrichment/commune.provider.js";
 
@@ -75,11 +76,16 @@ function withFixtureApp(name, fn) {
 withFixtureApp("un nouveau provider est découvert sans inscription", async (ctx) => {
   const keys = (await ctx.enrichment.listProviders()).map((p) => p.key);
   // Trié par `order` : la résolution de commune reste le prérequis initial.
+  // Les providers cache-only départementaux / portée annonce sont inclus.
   assert.deepEqual(keys, [
     "commune",
     "financing",
     "delinquance",
-    "prix-m2",
+    "delinquance-dept",
+    "immo-data",
+    "immo-data-dept",
+    "dvf-local",
+    "immo-data-quartier",
     FIXTURE_KEY,
   ]);
 });
@@ -119,14 +125,15 @@ withFixtureApp("un provider en erreur n'empêche pas l'affichage", async (ctx) =
   const agent = await loginAgent(app, "a@example.com");
   const page = await agent.get(`/listings/${id}`).expect(200);
   assert.match(page.text, /Donnée indisponible/);
-  assert.match(page.text, /Réessayer/);
+  assert.doesNotMatch(page.text, /Réessayer/);
 });
 
-withFixtureApp("le bouton Réessayer relance le provider ciblé", async (ctx) => {
+withFixtureApp("le bouton Réessayer relance le provider ciblé (admin)", async (ctx) => {
   const { app, repositories, listingsService } = ctx;
+  await createUser(repositories, config.adminEmail);
   const user = await createUser(repositories, "a@example.com");
   const { id } = listingsService.save(user, listingPayload());
-  const agent = await loginAgent(app, "a@example.com");
+  const agent = await loginAgent(app, config.adminEmail);
 
   const page = await agent.get(`/listings/${id}`).expect(200);
   const csrf = /name="_csrf" value="([^"]+)"/.exec(page.text)[1];
@@ -142,8 +149,9 @@ withFixtureApp("le bouton Réessayer relance le provider ciblé", async (ctx) =>
   assert.match(res.text, /Marqueur : valeur-de-test/);
 });
 
-withFixtureApp("Actualiser le territoire recharge tous les providers communaux", async (ctx) => {
+withFixtureApp("Actualiser le territoire recharge tous les providers communaux (admin)", async (ctx) => {
   const { app, repositories, listingsService, enrichment } = ctx;
+  await createUser(repositories, config.adminEmail);
   const user = await createUser(repositories, "a@example.com");
   const { id } = listingsService.save(user, listingPayload({ city: "Versailles", postal_code: "78000" }));
   await enrichment.runForListing(user.id, id, { only: "commune" });
@@ -155,7 +163,7 @@ withFixtureApp("Actualiser le territoire recharge tous les providers communaux",
     department: { code: "78", name: "Yvelines" },
   });
 
-  const agent = await loginAgent(app, "a@example.com");
+  const agent = await loginAgent(app, config.adminEmail);
   const page = await agent.get(`/listings/${id}`).expect(200);
   const csrf = /name="_csrf" value="([^"]+)"/.exec(page.text)[1];
 
@@ -173,6 +181,33 @@ withFixtureApp("Actualiser le territoire recharge tous les providers communaux",
   assert.match(res.text, /id="listing-territory"/);
   assert.match(res.text, /Code INSEE/);
   assert.match(res.text, /Population/);
+});
+
+withFixtureApp("Actualiser l'analyse de marché recharge tous les providers marché (admin)", async (ctx) => {
+  const { app, repositories, listingsService, enrichment } = ctx;
+  await createUser(repositories, config.adminEmail);
+  const user = await createUser(repositories, "a@example.com");
+  const { id } = listingsService.save(user, listingPayload({ city: "Versailles", postal_code: "78000" }));
+  await enrichment.runForListing(user.id, id, { only: "immo-data" });
+
+  const agent = await loginAgent(app, config.adminEmail);
+  const page = await agent.get(`/listings/${id}`).expect(200);
+  const csrf = /name="_csrf" value="([^"]+)"/.exec(page.text)[1];
+
+  const marketButtons = page.text.match(/enrich\/marche/g) || [];
+  assert.equal(marketButtons.length, 1);
+  assert.doesNotMatch(page.text, /enrich\/immo-data/);
+
+  const res = await agent
+    .post(`/listings/${id}/enrich/marche`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ _csrf: csrf })
+    .expect(200);
+
+  assert.doesNotMatch(res.text, /<!DOCTYPE html>/);
+  assert.match(res.text, /id="listing-market"/);
+  assert.match(res.text, /Analyse de marché/);
 });
 
 test("le financement est ignoré pour une location", async (t) => {
@@ -244,6 +279,25 @@ test("le cache communal sert les annonces suivantes", async (t) => {
   );
   assert.equal(commune.status, "ok");
   assert.equal(commune.data.name, "Rambouillet");
+});
+
+test("isEnrichmentPending détecte les blocs en attente", async (t) => {
+  const ctx = createTestApp();
+  t.after(() => ctx.close());
+  assert.equal(
+    ctx.enrichment.isEnrichmentPending([
+      { key: "commune", status: "pending" },
+      { key: "financing", status: "pending" },
+    ]),
+    true
+  );
+  assert.equal(
+    ctx.enrichment.isEnrichmentPending([
+      { key: "commune", status: "ok" },
+      { key: "immo-data", status: "error" },
+    ]),
+    false
+  );
 });
 
 test("pickCommune privilégie le nom exact puis la population", () => {

@@ -15,6 +15,7 @@ import createDpeRepository from "./dpe.repo.js";
 import createAppSettingsRepository from "./app-settings.repo.js";
 import createSsmsiRepository from "./ssmsi.repo.js";
 import createDvfRepository from "./dvf.repo.js";
+import createPostalInseeRepository from "./postal-insee.repo.js";
 
 export default function createRepositories(db) {
   const projects = createProjectsRepository(db);
@@ -30,6 +31,7 @@ export default function createRepositories(db) {
     appSettings: createAppSettingsRepository(db),
     ssmsi: createSsmsiRepository(db),
     dvf: createDvfRepository(db),
+    postalInsee: createPostalInseeRepository(db),
 
     /** Exécute plusieurs écritures de façon atomique. */
     transaction(fn) {

@@ -461,6 +461,55 @@ withApp("deux comptes ne partagent pas leurs annonces", async ({ app, repositori
   assert.equal(repositories.listings.findById(a.user.id, res.body.id), null);
 });
 
+withApp("DELETE /listings/:id supprime l'annonce du compte", async ({
+  app,
+  repositories,
+}) => {
+  const { user, key } = await createConnectedUser(repositories, "a@example.com");
+
+  const created = await request(app)
+    .post("/api/v1/listings")
+    .set(bearer(key))
+    .send(listingPayload())
+    .expect(201);
+
+  await request(app)
+    .delete(`/api/v1/listings/${created.body.id}`)
+    .set(bearer(key))
+    .expect(204);
+
+  assert.equal(
+    repositories.listings.findById(user.id, created.body.id),
+    null
+  );
+
+  await request(app)
+    .delete(`/api/v1/listings/${created.body.id}`)
+    .set(bearer(key))
+    .expect(404);
+});
+
+withApp("DELETE /listings/:id est cloisonné par compte", async ({
+  app,
+  repositories,
+}) => {
+  const a = await createConnectedUser(repositories, "a@example.com");
+  const b = await createConnectedUser(repositories, "b@example.com");
+
+  const created = await request(app)
+    .post("/api/v1/listings")
+    .set(bearer(a.key))
+    .send(listingPayload())
+    .expect(201);
+
+  await request(app)
+    .delete(`/api/v1/listings/${created.body.id}`)
+    .set(bearer(b.key))
+    .expect(404);
+
+  assert.ok(repositories.listings.findById(a.user.id, created.body.id));
+});
+
 /* ----------------------------- Lookup --------------------------------- */
 
 withApp("GET /listings/lookup indique si l'annonce est connue", async ({ app, repositories }) => {

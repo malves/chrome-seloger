@@ -40,6 +40,7 @@ test("buildMutation retient une maison vendue seule", () => {
   assert.equal(m.price, 300000);
   assert.equal(m.surface, 100);
   assert.equal(m.price_per_m2, 3000);
+  assert.match(m.mutation_date, /^\d{4}-\d{2}-\d{2}$/);
 });
 
 test("buildMutation ignore une mutation multi-biens (maison + appartement)", () => {

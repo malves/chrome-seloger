@@ -10,6 +10,7 @@ import fs from "node:fs";
 import express from "express";
 import session from "express-session";
 import helmet from "helmet";
+import multer from "multer";
 
 import config, { basemapClientConfig, rootDir } from "./config.js";
 import { openDatabase } from "./db.js";
@@ -18,6 +19,11 @@ import SqliteSessionStore from "./session-store.js";
 import createLogger from "./lib/logger.js";
 import { logActivity } from "./lib/activity.js";
 import fmt from "./lib/format.js";
+import { patchPrixM2EvolutionHorizons } from "./lib/dvf-stats.js";
+import {
+  MARKET_VARIATION_HORIZONS,
+  patchImmoDataMarketHorizons,
+} from "./lib/immo-data-market.js";
 
 import csrf from "./middlewares/csrf.js";
 import { loadUser } from "./middlewares/auth.session.js";
@@ -35,6 +41,12 @@ import createEnrichmentService from "./services/enrichment/index.js";
 import { loadFinancingRates } from "./services/financing-config.service.js";
 
 const BODY_LIMIT = "1mb";
+
+/** Parse le CSV HexaSmal avant le CSRF pour que `_csrf` soit lu dans le corps multipart. */
+const hexasmalUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 /**
  * Version des assets statiques (CSS/JS) pour le cache-busting : date de
@@ -57,6 +69,15 @@ export default function createApp(options = {}) {
   const db = options.db || openDatabase();
   const repositories = options.repositories || createRepositories(db);
   loadFinancingRates(repositories);
+  if (repositories.dvf?.ensureDepartmentStats) {
+    setImmediate(() => {
+      try {
+        repositories.dvf.ensureDepartmentStats();
+      } catch (err) {
+        logger.warn({ err }, "reconstruction stats DVF départementales");
+      }
+    });
+  }
   const enrichment =
     options.enrichment || createEnrichmentService({ repositories, logger });
 
@@ -150,6 +171,11 @@ export default function createApp(options = {}) {
   );
 
   app.use(loadUser(repositories));
+  app.post(
+    "/admin/hexasmal/import",
+    hexasmalUpload.single("file"),
+    (req, res, next) => next()
+  );
   app.use(csrf());
 
   // Messages one-shot stockés en session.
@@ -157,6 +183,9 @@ export default function createApp(options = {}) {
     res.locals.flash = req.session?.flash || null;
     if (req.session?.flash) delete req.session.flash;
     res.locals.fmt = fmt;
+    res.locals.patchPrixM2EvolutionHorizons = patchPrixM2EvolutionHorizons;
+    res.locals.patchImmoDataMarketHorizons = patchImmoDataMarketHorizons;
+    res.locals.marketVariationHorizons = MARKET_VARIATION_HORIZONS;
     // En dev, on relit la date à chaque requête pour refléter les éditions sans
     // redémarrage ; en prod, valeur figée au démarrage (fichiers immuables).
     res.locals.assetVersion = config.isProduction
@@ -196,7 +225,7 @@ export default function createApp(options = {}) {
   app.use(createExtensionRouter({ repositories, logger }));
   app.use(createProjectsRouter({ repositories, logger }));
   app.use(createSettingsRouter({ repositories, logger }));
-  app.use(createAdminRouter({ repositories, logger }));
+  app.use(createAdminRouter({ repositories, enrichment, logger }));
   app.use(createListingsRouter({ repositories, enrichment, logger }));
 
   app.use(notFoundHandler);

@@ -15,7 +15,13 @@ import { hashPassword } from "../services/password.service.js";
 import createDpeOpendataService from "../services/dpe-opendata.service.js";
 import createSsmsiImportService from "../services/ssmsi-import.service.js";
 import createDvfImportService from "../services/dvf-import.service.js";
-import { buildImportDashboard, buildJobView } from "../lib/dpe-import-job.js";
+import createHexasmalImportService from "../services/hexasmal-import.service.js";
+import { cleanPostalInseeQuery } from "../repositories/postal-insee.repo.js";
+import {
+  buildImportDashboard,
+  buildJobView,
+} from "../lib/dpe-import-job.js";
+import { buildJsonViewHtml, jsonForClipboard } from "../lib/json-view.js";
 import { logActivity } from "../lib/activity.js";
 import { buildDetailView } from "../lib/dpe-detail.js";
 import {
@@ -27,6 +33,8 @@ import {
 /** Nombre de lignes DPE affichées par page du tableau. */
 const PER_PAGE = 25;
 const USERS_PER_PAGE = 20;
+const HEXASMAL_PER_PAGE = 25;
+const ENRICHMENT_CACHE_PER_PAGE = 25;
 
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -85,6 +93,7 @@ function readSearchFilters(query) {
   const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
   return {
     codePostal: cleanText(query.code_postal),
+    dateModif: cleanDay(query.date_modif),
     typeBatiment,
     etiquette,
     etiquetteGes,
@@ -108,11 +117,56 @@ function readUserFilters(query) {
   return { q: q || null, page };
 }
 
-export default function createAdminRouter({ repositories, logger }) {
+function readHexasmalBrowseFilters(query) {
+  const q = cleanPostalInseeQuery(query.hexasmal_q);
+  const page = Math.max(1, Number.parseInt(query.hexasmal_page, 10) || 1);
+  return { q, page };
+}
+
+function cleanCacheProvider(value) {
+  const text = String(value || "").trim();
+  if (!text || !/^[a-z0-9-]{1,40}$/i.test(text)) return null;
+  return text.toLowerCase();
+}
+
+function cleanCacheScope(value) {
+  if (value === "listing") return "listing";
+  if (value === "department") return "department";
+  return "commune";
+}
+
+/** Code département : 2 chiffres, 2A/2B, ou 3 chiffres (DOM). */
+function cleanDeptCode(value) {
+  const text = String(value || "").trim().toUpperCase();
+  if (!text || text.length > 3 || !/^(2[AB]|[0-9]{2,3})$/.test(text)) return null;
+  return text;
+}
+
+function cleanCacheQuery(value) {
+  const text = String(value || "").trim().slice(0, 80);
+  return text || null;
+}
+
+function cleanInseeCode(value) {
+  const text = String(value || "").trim().toUpperCase();
+  if (!text || text.length > 5 || !/^[0-9AB]+$/.test(text)) return null;
+  return text;
+}
+
+function readCacheBrowseFilters(query) {
+  const scope = cleanCacheScope(query.cache_scope);
+  const provider = cleanCacheProvider(query.cache_provider);
+  const q = cleanCacheQuery(query.cache_q);
+  const page = Math.max(1, Number.parseInt(query.cache_page, 10) || 1);
+  return { scope, provider, q, page };
+}
+
+export default function createAdminRouter({ repositories, enrichment, logger }) {
   const router = express.Router();
   const dpe = createDpeOpendataService({ repositories, logger });
   const ssmsiImport = createSsmsiImportService({ repositories, logger });
   const dvfImport = createDvfImportService({ repositories, logger });
+  const hexasmalImport = createHexasmalImportService({ repositories });
   router.use("/admin", requireAdmin);
 
   /** Résultats de recherche paginés pour les filtres donnés. */
@@ -134,6 +188,96 @@ export default function createAdminRouter({ repositories, logger }) {
         total,
         from: total ? offset + 1 : 0,
         to: Math.min(offset + PER_PAGE, total),
+      },
+    };
+  }
+
+  function hexasmalBrowseResults(filters) {
+    const total = repositories.postalInsee.countBrowse({ q: filters.q });
+    const pageCount = Math.max(1, Math.ceil(total / HEXASMAL_PER_PAGE));
+    const page = Math.min(Math.max(1, filters.page), pageCount);
+    const offset = (page - 1) * HEXASMAL_PER_PAGE;
+    const records = repositories.postalInsee.listBrowse({
+      q: filters.q,
+      limit: HEXASMAL_PER_PAGE,
+      offset,
+    });
+    return {
+      records,
+      filters: { ...filters, page },
+      pagination: {
+        page,
+        pageCount,
+        total,
+        from: total ? offset + 1 : 0,
+        to: Math.min(offset + HEXASMAL_PER_PAGE, total),
+      },
+    };
+  }
+
+  /** Clés des providers réellement de portée annonce (pour filtrer la 3e vue). */
+  async function listingScopeKeys() {
+    const providers = await enrichment.listProviders();
+    return providers
+      .filter((provider) => provider.scope === "listing")
+      .map((provider) => provider.key);
+  }
+
+  async function enrichmentCacheBrowseResults(filters) {
+    const repo = repositories.enrichments;
+    const { scope, provider, q } = filters;
+
+    let total;
+    if (scope === "commune") {
+      total = repo.countCommuneBrowse({ provider, q });
+    } else if (scope === "department") {
+      total = repo.countDepartmentBrowse({ provider, q });
+    } else {
+      total = repo.countListingBrowse({
+        provider,
+        q,
+        providers: provider ? null : await listingScopeKeys(),
+      });
+    }
+
+    const pageCount = Math.max(1, Math.ceil(total / ENRICHMENT_CACHE_PER_PAGE));
+    const page = Math.min(Math.max(1, filters.page), pageCount);
+    const offset = (page - 1) * ENRICHMENT_CACHE_PER_PAGE;
+
+    let records;
+    if (scope === "commune") {
+      records = repo.listCommuneCache({
+        provider,
+        q,
+        limit: ENRICHMENT_CACHE_PER_PAGE,
+        offset,
+      });
+    } else if (scope === "department") {
+      records = repo.listDepartmentCache({
+        provider,
+        q,
+        limit: ENRICHMENT_CACHE_PER_PAGE,
+        offset,
+      });
+    } else {
+      records = repo.listListingCache({
+        provider,
+        q,
+        providers: provider ? null : await listingScopeKeys(),
+        limit: ENRICHMENT_CACHE_PER_PAGE,
+        offset,
+      });
+    }
+
+    return {
+      records,
+      filters: { ...filters, page },
+      pagination: {
+        page,
+        pageCount,
+        total,
+        from: total ? offset + 1 : 0,
+        to: Math.min(offset + ENRICHMENT_CACHE_PER_PAGE, total),
       },
     };
   }
@@ -211,12 +355,30 @@ export default function createAdminRouter({ repositories, logger }) {
     };
   }
 
-  router.get("/admin", (req, res) => {
+  function hexasmalStatusView({
+    hexasmalImportError = null,
+    hexasmalImportNotice = null,
+  } = {}) {
+    return {
+      hexasmalMeta: hexasmalImport.meta(),
+      hexasmalImportError,
+      hexasmalImportNotice,
+    };
+  }
+
+  router.get("/admin", async (req, res) => {
     const filters = readSearchFilters(req.query);
     const userFilters = readUserFilters(req.query);
     const status = importStatusView();
     const ssmsiStatus = ssmsiStatusView();
     const dvfStatus = dvfStatusView();
+    const hexasmalStatus = hexasmalStatusView();
+    const hexasmalBrowse = hexasmalBrowseResults(readHexasmalBrowseFilters(req.query));
+    const enrichmentCacheStats = repositories.enrichments.cacheStats();
+    const enrichmentCacheProviders = repositories.enrichments.listCacheProviders();
+    const enrichmentCacheBrowse = await enrichmentCacheBrowseResults(
+      readCacheBrowseFilters(req.query)
+    );
     res.render("admin", {
       title: "Administration",
       activeJobs: status.activeJobs,
@@ -225,6 +387,11 @@ export default function createAdminRouter({ repositories, logger }) {
       recentJobs: status.recentJobs,
       ...ssmsiStatus,
       ...dvfStatus,
+      ...hexasmalStatus,
+      hexasmalBrowse,
+      enrichmentCacheStats,
+      enrichmentCacheProviders,
+      enrichmentCacheBrowse,
       ssmsiDefaultCommuneUrl: config.ssmsi.communeUrl,
       ssmsiDefaultDepUrl: config.ssmsi.depUrl,
       recordCount: repositories.dpe.count(),
@@ -372,6 +539,204 @@ export default function createAdminRouter({ repositories, logger }) {
       layout: false,
       ...dvfStatusView(),
     });
+  });
+
+  router.get("/admin/hexasmal/browse", (req, res) => {
+    const filters = readHexasmalBrowseFilters(req.query);
+    res.render("partials/admin/hexasmal-table", {
+      layout: false,
+      ...hexasmalBrowseResults(filters),
+    });
+  });
+
+  router.get("/admin/enrichment-cache/browse", async (req, res) => {
+    const filters = readCacheBrowseFilters(req.query);
+    res.render("partials/admin/enrichment-cache-table", {
+      layout: false,
+      ...(await enrichmentCacheBrowseResults(filters)),
+    });
+  });
+
+  router.get("/admin/enrichment-cache/detail", (req, res) => {
+    const scope = cleanCacheScope(req.query.scope);
+    const provider = cleanCacheProvider(req.query.provider);
+    if (!provider) {
+      return res.status(400).type("text").send("Provider invalide.");
+    }
+
+    let payload = null;
+    if (scope === "commune") {
+      const inseeCode = cleanInseeCode(req.query.insee_code);
+      if (!inseeCode) {
+        return res.status(400).type("text").send("Code INSEE invalide.");
+      }
+      payload = repositories.enrichments.adminCommunePayload(inseeCode, provider);
+    } else if (scope === "department") {
+      const deptCode = cleanDeptCode(req.query.dept_code);
+      if (!deptCode) {
+        return res.status(400).type("text").send("Code département invalide.");
+      }
+      payload = repositories.enrichments.adminDepartmentPayload(deptCode, provider);
+    } else {
+      const listingId = Number.parseInt(req.query.listing_id, 10);
+      if (!Number.isFinite(listingId) || listingId < 1) {
+        return res.status(400).type("text").send("Annonce invalide.");
+      }
+      payload = repositories.enrichments.adminListingPayload(listingId, provider);
+    }
+
+    if (!payload) {
+      return res.status(404).type("text").send("Entrée introuvable.");
+    }
+
+    const jsonViewHtml =
+      payload.data != null ? buildJsonViewHtml(payload.data) : "";
+    const jsonClipboard =
+      payload.data != null
+        ? jsonForClipboard(payload.data).replace(/<\//g, "<\\/")
+        : "";
+
+    return res.render("partials/admin/enrichment-cache-modal", {
+      layout: false,
+      payload,
+      jsonViewHtml,
+      jsonClipboard,
+    });
+  });
+
+  router.post("/admin/enrichment-cache/clear-all", async (req, res) => {
+    const result = repositories.enrichments.clearAllCaches();
+    logActivity(logger, req, "cache enrichissement entièrement vidé", result);
+
+    const filters = readCacheBrowseFilters({
+      cache_scope: req.body.cache_scope,
+      cache_provider: req.body.cache_provider,
+      cache_q: req.body.cache_q,
+      cache_page: req.body.cache_page,
+    });
+
+    if (req.get("hx-request")) {
+      return res.render("partials/admin/enrichment-cache-table", {
+        layout: false,
+        ...(await enrichmentCacheBrowseResults(filters)),
+        cacheRevokeNotice: "Tous les caches enrichissement ont été vidés.",
+        cacheStatsOob: repositories.enrichments.cacheStats(),
+      });
+    }
+
+    req.session.flash = {
+      type: "success",
+      message: "Cache enrichissement vidé.",
+    };
+    return res.redirect("/admin");
+  });
+
+  router.post("/admin/enrichment-cache/revoke", async (req, res) => {
+    const scope = cleanCacheScope(req.body.scope);
+    const provider = cleanCacheProvider(req.body.provider);
+    if (!provider) {
+      if (req.get("hx-request")) {
+        return res.status(400).type("text").send("Provider invalide.");
+      }
+      req.session.flash = { type: "error", message: "Provider invalide." };
+      return res.redirect("/admin");
+    }
+
+    if (scope === "commune") {
+      const inseeCode = cleanInseeCode(req.body.insee_code);
+      if (!inseeCode) {
+        if (req.get("hx-request")) {
+          return res.status(400).type("text").send("Code INSEE invalide.");
+        }
+        req.session.flash = { type: "error", message: "Code INSEE invalide." };
+        return res.redirect("/admin");
+      }
+      const result = repositories.enrichments.revokeCommune(inseeCode, provider);
+      logActivity(logger, req, "cache enrichissement révoqué (commune)", {
+        inseeCode,
+        provider,
+        ...result,
+      });
+    } else if (scope === "department") {
+      const deptCode = cleanDeptCode(req.body.dept_code);
+      if (!deptCode) {
+        if (req.get("hx-request")) {
+          return res.status(400).type("text").send("Code département invalide.");
+        }
+        req.session.flash = { type: "error", message: "Code département invalide." };
+        return res.redirect("/admin");
+      }
+      const result = repositories.enrichments.revokeDepartment(deptCode, provider);
+      logActivity(logger, req, "cache enrichissement révoqué (département)", {
+        deptCode,
+        provider,
+        ...result,
+      });
+    } else {
+      const listingId = Number.parseInt(req.body.listing_id, 10);
+      if (!Number.isFinite(listingId) || listingId < 1) {
+        if (req.get("hx-request")) {
+          return res.status(400).type("text").send("Annonce invalide.");
+        }
+        req.session.flash = { type: "error", message: "Annonce invalide." };
+        return res.redirect("/admin");
+      }
+      repositories.enrichments.revokeListing(listingId, provider);
+      logActivity(logger, req, "cache enrichissement révoqué (annonce)", {
+        listingId,
+        provider,
+      });
+    }
+
+    const filters = readCacheBrowseFilters({
+      cache_scope: req.body.cache_scope,
+      cache_provider: req.body.cache_provider,
+      cache_q: req.body.cache_q,
+      cache_page: req.body.cache_page,
+    });
+
+    if (req.get("hx-request")) {
+      return res.render("partials/admin/enrichment-cache-table", {
+        layout: false,
+        ...(await enrichmentCacheBrowseResults(filters)),
+        cacheRevokeNotice: "Entrée révoquée.",
+      });
+    }
+
+    req.session.flash = {
+      type: "success",
+      message: "Entrée de cache révoquée.",
+    };
+    return res.redirect("/admin");
+  });
+
+  router.post("/admin/hexasmal/import", (req, res) => {
+    const file = req.file;
+    const result = hexasmalImport.importBuffer(file?.buffer);
+    if (result.ok) {
+      logActivity(logger, req, "import HexaSmal terminé", {
+        rowCount: result.rowCount,
+      });
+    }
+    const view = hexasmalStatusView({
+      hexasmalImportError: result.error || null,
+      hexasmalImportNotice: result.ok
+        ? `${result.rowCount.toLocaleString("fr-FR")} associations code postal / INSEE enregistrées.`
+        : null,
+    });
+    if (req.get("hx-request")) {
+      return res.render("partials/admin/hexasmal-import-status", {
+        layout: false,
+        ...view,
+      });
+    }
+    req.session.flash = result.error
+      ? { type: "error", message: result.error }
+      : {
+          type: "success",
+          message: view.hexasmalImportNotice,
+        };
+    return res.redirect("/admin");
   });
 
   router.post("/admin/dpe/import/cancel", (req, res) => {

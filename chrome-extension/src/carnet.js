@@ -256,6 +256,10 @@ async function lookupListing(url) {
   return apiFetch(`/api/v1/listings/lookup?url=${encodeURIComponent(url)}`);
 }
 
+async function deleteListing(id) {
+  await apiFetch(`/api/v1/listings/${id}`, { method: "DELETE" });
+}
+
 /** Identifiant du dernier projet utilisé, ou null (le serveur prendra alors le projet par défaut). */
 async function getLastProjectId() {
   const stored = await chrome.storage.local.get(LAST_PROJECT_STORAGE_KEY);

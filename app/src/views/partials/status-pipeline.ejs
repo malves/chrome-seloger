@@ -1,0 +1,92 @@
+<%
+  // Étapes du parcours visibles d'un coup d'œil ; « Écartée » est une sortie à part (bouton dédié).
+  const steps = fmt.statusPipeline();
+  const pipelineStatus = fmt.listingPipelineStatus(listing);
+  const currentIndex = steps.findIndex(function (step) { return step.value === pipelineStatus; });
+  const isRejected = listing.status === "rejected";
+  const icons = {
+    new: '<path d="M8 6h8M8 10h8M8 14h5"/><rect x="5" y="3" width="14" height="18" rx="2"/>',
+    contacted: '<path d="M7.5 4.5h3l1.2 3-2 1.2a12 12 0 0 0 5.6 5.6l1.2-2 3 1.2v3A2 2 0 0 1 17.5 18 13.5 13.5 0 0 1 6 6.5a2 2 0 0 1 1.5-2Z"/>',
+    visit_planned: '<rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 4v4M16 4v4"/>',
+    visited: '<path d="M4 11.5 12 5l8 6.5"/><path d="M7 10.5V19h10v-8.5"/>',
+    offer: '<path d="M7 11h10v8H7z"/><path d="M9 11V8a3 3 0 0 1 6 0v3"/>',
+    rejected: '<circle cx="12" cy="12" r="8"/><path d="m9 9 6 6M15 9l-6 6"/>',
+  };
+%>
+<section
+  class="panel panel--pipeline"
+  id="status-pipeline"
+  aria-label="Indiquez où vous en êtes dans la recherche"
+>
+  <form
+    class="status-pipe<%= isRejected ? ' is-rejected' : '' %>"
+    method="post"
+    action="/listings/<%= listing.id %>"
+    hx-post="/listings/<%= listing.id %>"
+    hx-target="#listing-lead"
+    hx-swap="outerHTML"
+  >
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+    <input type="hidden" name="view" value="header" />
+
+    <header class="status-pipe__head">
+      <h2 class="status-pipe__title">Indiquez où vous en êtes</h2>
+      <button
+        class="btn btn--sm status-pipe__reject<%= isRejected ? ' is-active' : ' btn--danger' %>"
+        type="submit"
+        name="status"
+        value="rejected"
+        aria-pressed="<%= isRejected ? 'true' : 'false' %>"
+        title="<%= isRejected ? 'Cliquer pour réactiver le parcours' : 'Cliquer pour écarter cette annonce' %>"
+        aria-label="<%= isRejected ? 'Réactiver le parcours à l\'étape précédente' : 'Écarter cette annonce' %>"
+      >
+        <span class="status-pipe__reject-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <%- icons.rejected %>
+          </svg>
+        </span>
+        <% if (isRejected) { %>
+          <span class="status-pipe__reject-label-full">Réactiver cette annonce</span>
+          <span class="status-pipe__reject-label-short">Réactiver</span>
+        <% } else { %>
+          <span class="status-pipe__reject-label-full">Écarter cette annonce</span>
+          <span class="status-pipe__reject-label-short">Écarter</span>
+        <% } %>
+      </button>
+    </header>
+
+    <ol class="status-pipe__track">
+      <% steps.forEach(function (step, index) { %>
+        <%
+          const isCurrent = !isRejected && index === currentIndex;
+          const isReached = currentIndex >= 0 && index <= currentIndex;
+          const stateClass = isReached ? "is-done" : "is-todo";
+        %>
+        <li class="status-pipe__step <%= stateClass %>">
+          <button
+            class="status-pipe__btn"
+            type="submit"
+            name="status"
+            value="<%= step.value %>"
+            aria-label="<%= step.label %>"
+            <% if (isCurrent) { %>aria-current="step"<% } %>
+          >
+            <span class="status-pipe__marker" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <% if (isReached) { %>
+                  <path d="M6.5 12.5 10 16l7.5-8" />
+                <% } else { %>
+                  <%- icons[step.value] || icons.new %>
+                <% } %>
+              </svg>
+            </span>
+            <span class="status-pipe__label">
+              <span class="status-pipe__label-full"><%= step.label %></span>
+              <span class="status-pipe__label-short"><%= step.shortLabel %></span>
+            </span>
+          </button>
+        </li>
+      <% }); %>
+    </ol>
+  </form>
+</section>

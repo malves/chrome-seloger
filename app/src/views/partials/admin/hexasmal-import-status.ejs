@@ -1,0 +1,34 @@
+<%
+  var meta = hexasmalMeta || {};
+  var count = meta.row_count != null ? meta.row_count : 0;
+%>
+<div
+  id="hexasmal-import-status"
+  class="dpe-import-status"
+  style="margin-top: var(--space-4)"
+>
+  <% if (typeof hexasmalImportError !== 'undefined' && hexasmalImportError) { %>
+    <p class="dpe-import-status__error" role="alert"><%= hexasmalImportError %></p>
+  <% } %>
+  <% if (typeof hexasmalImportNotice !== 'undefined' && hexasmalImportNotice) { %>
+    <p class="dpe-import-status__notice dpe-import-status__notice--success" role="status">
+      <%= hexasmalImportNotice %>
+    </p>
+  <% } %>
+
+  <% if (count > 0) { %>
+    <div class="dpe-import-status__notice dpe-import-status__notice--success" role="status">
+      <p class="dpe-import-status__notice-text">
+        <strong>Base chargée</strong>
+        — <%= fmt.number(count) %> association<%= count > 1 ? 's' : '' %>
+        <% if (meta.imported_at) { %>
+          · dernier import <%= fmt.relative(meta.imported_at) %>
+        <% } %>
+      </p>
+    </div>
+  <% } else { %>
+    <p class="field__hint">
+      Aucune correspondance en base. Importez le fichier <code>019HexaSmal.csv</code> pour résoudre les codes INSEE à partir des codes postaux sur les fiches annonces.
+    </p>
+  <% } %>
+</div>
