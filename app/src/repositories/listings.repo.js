@@ -176,7 +176,8 @@ export default function createListingsRepository(db, { projects }) {
          user_lat = @lat,
          user_lng = @lng,
          user_address_source = @source,
-         user_address_updated_at = @updated_at
+         user_address_updated_at = @updated_at,
+         linked_dpe_numero = @linked_dpe_numero
        WHERE id = @id AND user_id = @user_id`
     ),
     countByUser: db.prepare(
@@ -317,8 +318,16 @@ export default function createListingsRepository(db, { projects }) {
      * Adresse réelle du bien saisie par l'utilisateur. Une adresse vide efface
      * aussi les coordonnées et la source : le champ revient à son état initial.
      */
-    setUserAddress(userId, id, { address, lat, lng, source } = {}) {
+    setUserAddress(
+      userId,
+      id,
+      { address, lat, lng, source, linkedDpeNumero } = {}
+    ) {
       const cleaned = address ? String(address) : null;
+      const dpeNumero =
+        cleaned && linkedDpeNumero
+          ? String(linkedDpeNumero).trim() || null
+          : null;
       return (
         statements.setUserAddress.run({
           id,
@@ -328,6 +337,7 @@ export default function createListingsRepository(db, { projects }) {
           lng: cleaned && lng != null ? lng : null,
           source: cleaned ? source || "manual" : null,
           updated_at: cleaned ? nowIso() : null,
+          linked_dpe_numero: cleaned ? dpeNumero : null,
         }).changes > 0
       );
     },

@@ -604,6 +604,66 @@ withApp("la recherche DPE renvoie des adresses candidates notées", async (ctx) 
   assert.equal(candidate.matched.floor, true);
 });
 
+withApp("appliquer une adresse IA enregistre le DPE lié et affiche la synthèse", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+
+  repositories.dpe.upsertMany([
+    {
+      numero_dpe: "DPE-LINK-1",
+      date_derniere_modification_dpe: "2024-02-01",
+      etiquette_dpe: "D",
+      etiquette_ges: "C",
+      type_batiment: "appartement",
+      annee_construction: 1975,
+      surface_habitable_logement: 48,
+      adresse_ban: "5 Rue de Test 75011 Paris",
+      nom_commune_ban: "Paris",
+      code_postal_ban: "75011",
+      numero_etage_appartement: 2,
+      qualite_isolation_murs: "insuffisante",
+      date_etablissement_dpe: "2023-01-15",
+      date_fin_validite_dpe: "2033-01-15",
+    },
+  ]);
+
+  const payload = listingPayload({
+    location: { city: "Paris", postal_code: "75011" },
+    property_type: "apartment",
+    dpe: "D",
+    ges: "C",
+    surface: 48,
+    floor: 2,
+    year_built: 1975,
+  });
+  const { id } = listingsService.save(user, payload);
+  const agent = await loginAgent(app, "a@example.com");
+  const csrf = extractCsrf((await agent.get("/listings")).text);
+
+  const html = await agent
+    .post(`/listings/${id}/address`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      street: "5 Rue de Test",
+      postal_code: "75011",
+      city: "Paris",
+      address_source: "detected",
+      linked_dpe_numero: "DPE-LINK-1",
+    })
+    .expect(200);
+
+  assert.match(html.text, /data-dpe-house-stage/);
+  assert.match(html.text, /dpe-house__zone--poor" data-dpe-zone="walls"/);
+  assert.match(html.text, /Murs mal isolés/);
+  assert.match(html.text, /data-dpe-zone-toggle="roof"/);
+  assert.equal(
+    repositories.listings.findById(user.id, id).linked_dpe_numero,
+    "DPE-LINK-1"
+  );
+});
+
 withApp("l'adresse réelle d'une annonce d'autrui est inaccessible", async (ctx) => {
   const { app, repositories, listingsService } = ctx;
   const owner = await createUser(repositories, "a@example.com");

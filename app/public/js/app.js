@@ -3510,6 +3510,174 @@
     });
   })();
 
+  // Fiche annonce : maison DPE. Cliquer une pastille affiche l'explication de la
+  // partie correspondante dans le panneau de droite (plus de popup flottante).
+  // Délégation sur document : le widget est re-rendu à chaque swap du bloc localisation.
+  (function initDpeHouse() {
+    var selected = null; // { section, id }
+
+    function zoneIdOf(el) {
+      if (!el || !el.closest) return null;
+      var node = el.closest("[data-dpe-zone-toggle], [data-dpe-zone]");
+      return node
+        ? node.getAttribute("data-dpe-zone-toggle") ||
+            node.getAttribute("data-dpe-zone")
+        : null;
+    }
+
+    function sectionOf(el) {
+      return el && el.closest ? el.closest("[data-dpe-house]") : null;
+    }
+
+    function stageOf(section) {
+      return section
+        ? section.querySelector("[data-dpe-house-stage]")
+        : null;
+    }
+
+    function stageVisualHeight(stage) {
+      var svg = stage.querySelector(".dpe-house__svg");
+      if (svg) {
+        var rect = svg.getBoundingClientRect();
+        if (rect.height > 0) return Math.round(rect.height);
+      }
+      return stage.offsetHeight;
+    }
+
+    function syncStageHeight(section) {
+      var stage = stageOf(section);
+      if (!stage) return;
+      section.style.setProperty(
+        "--dpe-house-stage-h",
+        stageVisualHeight(stage) + "px"
+      );
+    }
+
+    function bindStageHeight(section) {
+      var stage = stageOf(section);
+      if (!stage || stage.dataset.dpeHeightBound === "1") return;
+      stage.dataset.dpeHeightBound = "1";
+      syncStageHeight(section);
+      if (typeof ResizeObserver !== "undefined") {
+        var observer = new ResizeObserver(function () {
+          syncStageHeight(section);
+        });
+        observer.observe(stage);
+        var svg = stage.querySelector(".dpe-house__svg");
+        if (svg) observer.observe(svg);
+      }
+    }
+
+    function initStageHeights(root) {
+      var scope = root && root.querySelectorAll ? root : document;
+      var sections = scope.querySelectorAll
+        ? scope.querySelectorAll("[data-dpe-house]")
+        : [];
+      if (scope.matches && scope.matches("[data-dpe-house]")) {
+        bindStageHeight(scope);
+      }
+      sections.forEach(bindStageHeight);
+    }
+
+    function clear(section) {
+      var stage = stageOf(section);
+      if (stage) {
+        stage.removeAttribute("data-active-zone");
+        stage.querySelectorAll("[data-dpe-zone]").forEach(function (zone) {
+          zone.classList.remove("is-active");
+        });
+      }
+      section.querySelectorAll("[data-dpe-zone-toggle]").forEach(function (pin) {
+        pin.setAttribute("aria-expanded", "false");
+      });
+      section.querySelectorAll("[data-dpe-zone-detail]").forEach(function (card) {
+        card.hidden = true;
+      });
+      var placeholder = section.querySelector("[data-dpe-detail-placeholder]");
+      if (placeholder) placeholder.hidden = false;
+      syncStageHeight(section);
+    }
+
+    function show(section, id) {
+      clear(section);
+      var placeholder = section.querySelector("[data-dpe-detail-placeholder]");
+      if (placeholder) placeholder.hidden = true;
+
+      var card = section.querySelector('[data-dpe-zone-detail="' + id + '"]');
+      if (card) card.hidden = false;
+      var pin = section.querySelector('[data-dpe-zone-toggle="' + id + '"]');
+      if (pin) pin.setAttribute("aria-expanded", "true");
+
+      var stage = stageOf(section);
+      if (stage) {
+        stage.setAttribute("data-active-zone", id);
+        stage.querySelectorAll("[data-dpe-zone]").forEach(function (zone) {
+          zone.classList.toggle(
+            "is-active",
+            zone.getAttribute("data-dpe-zone") === id
+          );
+        });
+      }
+      syncStageHeight(section);
+    }
+
+    function current() {
+      if (selected && !document.contains(selected.section)) selected = null;
+      return selected;
+    }
+
+    function unselect() {
+      var cur = current();
+      if (!cur) return null;
+      clear(cur.section);
+      selected = null;
+      return cur;
+    }
+
+    document.addEventListener("click", function (event) {
+      var section = sectionOf(event.target);
+      if (!section) return;
+      var id = zoneIdOf(event.target);
+      if (!id) return;
+
+      var cur = current();
+      if (cur && cur.section === section && cur.id === id) {
+        unselect();
+        return;
+      }
+      show(section, id);
+      selected = { section: section, id: id };
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") return;
+      var cur = unselect();
+      if (!cur) return;
+      var pin = cur.section.querySelector(
+        '[data-dpe-zone-toggle="' + cur.id + '"]'
+      );
+      if (pin) pin.focus();
+    });
+
+    initStageHeights();
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      var target = event.detail && event.detail.target;
+      if (!target) return;
+      if (target.id === "listing-location-block") {
+        initStageHeights(target);
+        return;
+      }
+      if (target.closest && target.closest("[data-dpe-house]")) {
+        initStageHeights(target.closest("[data-dpe-house]"));
+      }
+    });
+
+    window.addEventListener("resize", function () {
+      document.querySelectorAll("[data-dpe-house]").forEach(syncStageHeight);
+    });
+  })();
+
   // Fiche annonce : modale « Déterminer l'adresse » (lancement + état analyse).
   (function initListingAddressAiModal() {
     var lastFocused = null;
@@ -3568,6 +3736,9 @@
       li.setAttribute("data-result-postal-code", candidate.postalCode || "");
       li.setAttribute("data-result-city", candidate.city || "");
       li.setAttribute("data-result-confidence", String(candidate.confidence || 0));
+      if (candidate.numeroDpe) {
+        li.setAttribute("data-result-numero-dpe", candidate.numeroDpe);
+      }
       li.setAttribute("role", "option");
       li.setAttribute("aria-selected", "false");
       li.tabIndex = -1;
@@ -3778,12 +3949,16 @@
         }
       }
       if (!postalCode || !city) return null;
-      return {
+      var payload = {
         street: sel.street,
         postal_code: postalCode,
         city: city,
         complement: "",
       };
+      if (sel.numeroDpe) {
+        payload.linked_dpe_numero = sel.numeroDpe;
+      }
+      return payload;
     }
 
     function applySelectedAddress(m) {
@@ -3820,6 +3995,7 @@
             city: fields.city,
             complement: fields.complement,
             address_source: "detected",
+            linked_dpe_numero: fields.linked_dpe_numero || "",
           },
         })
         .then(function () {
@@ -3902,6 +4078,7 @@
         postalCode: row.getAttribute("data-result-postal-code") || "",
         city: row.getAttribute("data-result-city") || "",
         confidence: Number(row.getAttribute("data-result-confidence")),
+        numeroDpe: row.getAttribute("data-result-numero-dpe") || "",
       };
       var applyBtn = m.querySelector("[data-listing-address-ai-apply]");
       if (applyBtn) applyBtn.disabled = false;
@@ -4253,10 +4430,17 @@
 
   (function initDvfSalesPopovers() {
     document.addEventListener("click", function (event) {
-      if (event.target.closest(".pricem2__dvf-method")) return;
-      document.querySelectorAll(".pricem2__dvf-method[open]").forEach(function (el) {
-        el.removeAttribute("open");
-      });
+      if (
+        event.target.closest(".pricem2__dvf-method") ||
+        event.target.closest(".dpe-house__budget-help")
+      ) {
+        return;
+      }
+      document
+        .querySelectorAll(".pricem2__dvf-method[open], .dpe-house__budget-help[open]")
+        .forEach(function (el) {
+          el.removeAttribute("open");
+        });
     });
 
     var lastFocused = null;

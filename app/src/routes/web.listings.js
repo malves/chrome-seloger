@@ -33,6 +33,7 @@ import {
 } from "../services/financing.service.js";
 import { logActivity } from "../lib/activity.js";
 import { departmentCodeFromInsee } from "../lib/immo-data-market.js";
+import { buildDpeInsights } from "../lib/dpe-insights.js";
 
 /** Nombre maximum de brouillons d'import conservés par session. */
 const MAX_DRAFTS = 20;
@@ -92,6 +93,22 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   const listingFetch = createListingFetchService({ logger });
   const travel = createTravelService({ logger });
   const addressAi = createAddressAiService({ repositories, logger });
+
+  function linkedDpeInsightsForListing(listing, fmt) {
+    const numero = listing.linked_dpe_numero;
+    if (!numero) return null;
+    const record = repositories.dpe.findByNumero(numero);
+    if (!record) return null;
+    return buildDpeInsights(record, fmt);
+  }
+
+  function linkedDpeNumeroFromBody(body, source) {
+    if (source !== "detected") return null;
+    const raw = body.linked_dpe_numero;
+    if (typeof raw !== "string" || !raw.trim()) return null;
+    const numero = raw.trim();
+    return repositories.dpe.findByNumero(numero) ? numero : null;
+  }
 
   // Ces deux routes reçoivent du JSON (fetch côté client) ; le reste du site
   // utilise le parseur `urlencoded` global monté dans app.js.
@@ -329,6 +346,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       res.render("listing", {
         title: listing.title || "Annonce",
         listing,
+        linkedDpeInsights: linkedDpeInsightsForListing(listing, res.locals.fmt),
         postalInseeCode,
         photos: repositories.listings.listPhotos(listing.id),
         priceHistory: repositories.listings.listPriceHistory(listing.id),
@@ -509,6 +527,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
           lat: geo?.lat ?? null,
           lng: geo?.lon ?? null,
           source,
+          linkedDpeNumero: linkedDpeNumeroFromBody(req.body, source),
         });
         logActivity(logger, req, "adresse réelle saisie", {
           listingId: listing.id,
@@ -548,6 +567,10 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       return res.render("partials/listing-location-block", {
         layout: false,
         listing: updated,
+        linkedDpeInsights: linkedDpeInsightsForListing(
+          updated,
+          res.locals.fmt
+        ),
       });
     } catch (err) {
       return next(err);

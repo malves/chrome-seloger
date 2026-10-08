@@ -1,0 +1,239 @@
+<%
+  // Position des pastilles en % du viewBox (400 × 300) de la maison.
+  var PINS = {
+    roof: { x: 30, y: 33 },
+    ventilation: { x: 67.5, y: 11 },
+    walls: { x: 17, y: 82 },
+    windows: { x: 50, y: 62 },
+    hotWater: { x: 28.5, y: 63 },
+    heating: { x: 69, y: 71 },
+    floor: { x: 50, y: 90 },
+  };
+  var GLYPHS = { good: "✓", average: "!", poor: "!", unknown: "?" };
+  var STATE_LABELS = {
+    good: "bon",
+    average: "moyen",
+    poor: "à améliorer",
+    unknown: "non renseigné",
+  };
+  var LEGEND = [
+    { state: "good", singular: "point fort", plural: "points forts" },
+    { state: "average", singular: "point moyen", plural: "points moyens" },
+    { state: "poor", singular: "point faible", plural: "points faibles" },
+    { state: "unknown", singular: "non renseigné", plural: "non renseignés" },
+  ];
+  var ADVICE_LABELS = {
+    good: "Bon à savoir",
+    average: "Piste d'amélioration",
+    poor: "Travaux à envisager",
+    unknown: "À vérifier",
+  };
+%>
+<% if (linkedDpeInsights) { %>
+  <% var ins = linkedDpeInsights; var hero = ins.hero; %>
+  <% var zoneById = {}; ins.zones.forEach(function (z) { zoneById[z.id] = z; }); %>
+  <% function zoneClass(id) { return 'dpe-house__zone dpe-house__zone--' + zoneById[id].state; } %>
+  <section
+    class="panel dpe-house"
+    id="listing-linked-dpe"
+    aria-labelledby="listing-linked-dpe-title"
+    data-dpe-house
+  >
+    <div class="panel__head">
+      <div>
+        <p class="panel__eyebrow">Énergie</p>
+        <h2 class="panel__title" id="listing-linked-dpe-title">Le logement en un coup d'œil</h2>
+      </div>
+    </div>
+
+    <div class="dpe-house__hero dpe-house__hero--<%= hero.tone %>">
+      <div class="dpe-house__summary">
+        <p class="dpe-house__summary-eyebrow">Ce que dit le diagnostic</p>
+        <p class="dpe-house__verdict"><%= hero.verdict %></p>
+        <% if (ins.dateEtablissement || ins.validUntil) { %>
+          <p class="dpe-house__summary-dates">
+            <% if (ins.dateEtablissement) { %>
+              <span>Établi le <%= ins.dateEtablissement %></span>
+            <% } %>
+            <% if (ins.validUntil) { %>
+              <span class="<%= ins.isExpired ? 'dpe-house__summary-dates-warn' : '' %>">
+                <%= ins.isExpired ? 'Expiré depuis le' : "Valable jusqu'au" %> <%= ins.validUntil %>
+              </span>
+            <% } %>
+          </p>
+        <% } %>
+      </div>
+
+      <% if (hero.budget) { %>
+        <div class="dpe-house__budget dpe-house__budget--<%= hero.budget.tone %>">
+          <div class="dpe-house__budget-caption-row">
+            <span class="dpe-house__budget-caption">Budget énergie estimé</span>
+            <details class="dpe-house__budget-help">
+              <summary
+                class="dpe-house__budget-help-trigger"
+                aria-label="Comprendre le budget énergie estimé"
+              >
+                <span class="dpe-house__budget-help-mark" aria-hidden="true">?</span>
+              </summary>
+              <div class="dpe-house__budget-help-panel" role="note">
+                <p class="dpe-house__budget-help-title">D’où vient ce montant ?</p>
+                <p class="dpe-house__budget-help-lead">
+                  Estimation annuelle issue du <strong>diagnostic DPE</strong> lié à l’adresse
+                  (chauffage, eau chaude, éclairage, auxiliaires), selon les barèmes ADEME.
+                </p>
+                <ul class="dpe-house__budget-help-list">
+                  <li>
+                    Ce n’est <strong>pas</strong> le montant des charges de copropriété affichées
+                    dans l’annonce.
+                  </li>
+                  <li>
+                    Ce n’est <strong>pas</strong> un coût à ajouter aux charges : une partie de
+                    l’énergie (souvent le chauffage collectif) peut déjà être incluse dans les
+                    charges « chauffage compris ».
+                  </li>
+                  <li>
+                    L’électricité du logement et l’eau chaude individuelle restent en général
+                    facturées à part.
+                  </li>
+                </ul>
+              </div>
+            </details>
+          </div>
+          <span class="dpe-house__budget-value">
+            ~<%= hero.budget.annualLabel %><span class="dpe-house__budget-unit"> / an</span>
+          </span>
+          <span class="dpe-house__budget-sub">soit ~<%= hero.budget.monthlyLabel %> / mois</span>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="dpe-house__body">
+      <div class="dpe-house__stage" data-dpe-house-stage>
+        <svg class="dpe-house__svg" viewBox="0 0 400 300" role="img"
+             aria-label="Illustration du logement colorée selon l'état de chaque partie">
+          <defs>
+            <pattern id="dpe-house-hatch" width="8" height="8" patternUnits="userSpaceOnUse"
+                     patternTransform="rotate(45)">
+              <rect width="8" height="8" class="dpe-house__hatch-bg" />
+              <line x1="0" y1="0" x2="0" y2="8" class="dpe-house__hatch-line" />
+            </pattern>
+          </defs>
+
+          <!-- Sol extérieur -->
+          <rect x="0" y="278" width="400" height="22" class="dpe-house__ground" />
+
+          <!-- Intérieur et combles -->
+          <rect x="78" y="140" width="244" height="122" class="dpe-house__interior" />
+          <polygon points="78,140 200,66 322,140" class="dpe-house__attic" />
+
+          <!-- Ventilation : conduit et flux d'air -->
+          <g class="<%= zoneClass('ventilation') %>" data-dpe-zone="ventilation">
+            <rect x="258" y="56" width="24" height="44" rx="2" class="dpe-house__fill" />
+            <rect x="254" y="48" width="32" height="9" rx="2" class="dpe-house__fill" />
+            <path d="M262 40 q-6 -7 0 -14 q6 -7 0 -14" class="dpe-house__air" />
+            <path d="M278 40 q-6 -7 0 -14 q6 -7 0 -14" class="dpe-house__air" />
+          </g>
+
+          <!-- Toit et isolation des combles -->
+          <g class="<%= zoneClass('roof') %>" data-dpe-zone="roof">
+            <polygon points="34,148 200,40 366,148 342,148 200,64 58,148" class="dpe-house__fill" />
+            <rect x="78" y="140" width="244" height="8" class="dpe-house__fill dpe-house__fill--soft" />
+          </g>
+
+          <!-- Murs porteurs -->
+          <g class="<%= zoneClass('walls') %>" data-dpe-zone="walls">
+            <rect x="58" y="148" width="20" height="114" class="dpe-house__fill" />
+            <rect x="322" y="148" width="20" height="114" class="dpe-house__fill" />
+          </g>
+
+          <!-- Fenêtres -->
+          <g class="<%= zoneClass('windows') %>" data-dpe-zone="windows">
+            <rect x="60" y="176" width="16" height="44" rx="2" class="dpe-house__glass" />
+            <rect x="324" y="176" width="16" height="44" rx="2" class="dpe-house__glass" />
+            <rect x="170" y="164" width="60" height="44" rx="3" class="dpe-house__glass" />
+            <line x1="200" y1="164" x2="200" y2="208" class="dpe-house__frame" />
+            <line x1="170" y1="186" x2="230" y2="186" class="dpe-house__frame" />
+          </g>
+
+          <!-- Ballon d'eau chaude -->
+          <g class="<%= zoneClass('hotWater') %>" data-dpe-zone="hotWater">
+            <rect x="98" y="198" width="32" height="62" rx="14" class="dpe-house__fill" />
+            <line x1="106" y1="214" x2="122" y2="214" class="dpe-house__detail-line" />
+            <path d="M114 198 v-14 h20" class="dpe-house__pipe" />
+          </g>
+
+          <!-- Radiateur -->
+          <g class="<%= zoneClass('heating') %>" data-dpe-zone="heating">
+            <rect x="246" y="222" width="60" height="36" rx="4" class="dpe-house__fill" />
+            <line x1="258" y1="227" x2="258" y2="253" class="dpe-house__detail-line" />
+            <line x1="270" y1="227" x2="270" y2="253" class="dpe-house__detail-line" />
+            <line x1="282" y1="227" x2="282" y2="253" class="dpe-house__detail-line" />
+            <line x1="294" y1="227" x2="294" y2="253" class="dpe-house__detail-line" />
+            <path d="M260 214 q-4 -5 0 -10 q4 -5 0 -10" class="dpe-house__heat" />
+            <path d="M276 214 q-4 -5 0 -10 q4 -5 0 -10" class="dpe-house__heat" />
+            <path d="M292 214 q-4 -5 0 -10 q4 -5 0 -10" class="dpe-house__heat" />
+          </g>
+
+          <!-- Dalle / plancher bas -->
+          <g class="<%= zoneClass('floor') %>" data-dpe-zone="floor">
+            <rect x="58" y="262" width="284" height="16" rx="3" class="dpe-house__fill" />
+          </g>
+        </svg>
+
+        <% ins.zones.forEach(function (zone) { var pin = PINS[zone.id]; %>
+          <button
+            type="button"
+            class="dpe-house__pin dpe-house__pin--<%= zone.state %>"
+            style="--x: <%= pin.x %>%; --y: <%= pin.y %>%"
+            data-dpe-zone-toggle="<%= zone.id %>"
+            aria-expanded="false"
+            aria-controls="dpe-house-detail-<%= zone.id %>"
+            aria-label="<%= zone.label %> : <%= STATE_LABELS[zone.state] %>"
+          ><span aria-hidden="true"><%= GLYPHS[zone.state] %></span></button>
+        <% }); %>
+      </div>
+
+      <div class="dpe-house__panel">
+        <ul class="dpe-house__legend" aria-label="Résumé">
+          <% LEGEND.forEach(function (entry) { var n = ins.counts[entry.state]; if (!n) return; %>
+            <li class="dpe-house__legend-item dpe-house__legend-item--<%= entry.state %>">
+              <span class="dpe-house__legend-dot" aria-hidden="true"><%= GLYPHS[entry.state] %></span>
+              <strong><%= n %></strong> <%= n > 1 ? entry.plural : entry.singular %>
+            </li>
+          <% }); %>
+        </ul>
+
+        <div class="dpe-house__detail" data-dpe-detail aria-live="polite">
+          <div class="dpe-house__detail-empty" data-dpe-detail-placeholder>
+            <span class="dpe-house__detail-empty-icon" aria-hidden="true">👆</span>
+            <p class="dpe-house__detail-empty-text">
+              Cliquez sur un élément de la maison pour comprendre ce qui va, ce qui ne va pas, et quoi faire.
+            </p>
+          </div>
+
+          <% ins.zones.forEach(function (zone) { %>
+            <article
+              class="dpe-house__detail-card dpe-house__detail-card--<%= zone.state %>"
+              id="dpe-house-detail-<%= zone.id %>"
+              data-dpe-zone-detail="<%= zone.id %>"
+              hidden
+            >
+              <p class="dpe-house__detail-eyebrow">
+                <span class="dpe-house__detail-badge" aria-hidden="true"><%= GLYPHS[zone.state] %></span>
+                <%= zone.label %>
+              </p>
+              <h3 class="dpe-house__detail-title"><%= zone.title %></h3>
+              <p class="dpe-house__detail-text"><%= zone.detail %></p>
+              <% if (zone.advice) { %>
+                <div class="dpe-house__advice">
+                  <p class="dpe-house__advice-label"><%= ADVICE_LABELS[zone.state] %></p>
+                  <p class="dpe-house__advice-text"><%= zone.advice %></p>
+                </div>
+              <% } %>
+            </article>
+          <% }); %>
+        </div>
+      </div>
+    </div>
+  </section>
+<% } %>

@@ -88,7 +88,10 @@
   <% } %>
 
   <!-- 2b. Localisation précise (panneau + modale de saisie) -->
-  <%- include("partials/listing-location-block", { listing: listing }) %>
+  <%- include("partials/listing-location-block", {
+    listing: listing,
+    linkedDpeInsights: typeof linkedDpeInsights !== 'undefined' ? linkedDpeInsights : null,
+  }) %>
 
   <!-- 3. Caractéristiques -->
   <section class="panel">

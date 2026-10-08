@@ -13,6 +13,9 @@
     "seed": "node src/scripts/seed.js",
     "import:ssmsi": "node src/scripts/import-ssmsi.js",
     "import:dvf": "node src/scripts/import-dvf.js",
+    "import:dpe": "node src/scripts/import-dpe.js",
+    "dpe:jobs": "node src/scripts/dpe-jobs.js",
+    "dpe:watch": "node src/scripts/dpe-watch.js",
     "test": "NODE_ENV=test LOG_LEVEL=silent node --test test/*.test.js"
   },
   "dependencies": {

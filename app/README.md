@@ -30,6 +30,10 @@ son bouton « S'authentifier ».
 | `npm test` | Tests unitaires et d'intégration (`node:test` + `supertest`) |
 | `npm run seed` | Recrée le compte de démonstration et ses annonces |
 | `npm run import:ssmsi` | Importe la base SSMSI (délinquance) depuis data.gouv ou des chemins locaux |
+| `npm run import:dpe` | Importe le DPE ADEME pour un ou plusieurs jours (`npm run import:dpe -- 2025-12-18`) |
+| `npm run dpe:jobs` | Liste les jobs d'import DPE (`--running`, `cancel <id>`) |
+| `npm run dpe:watch` | Suit la progression d'un job (`<id>`, `--day AAAA-MM-JJ`, `--running`) |
+| `npm run import:dvf` | Importe les ventes DVF (geo-dvf) sur une plage d'années |
 
 ## Configuration
 

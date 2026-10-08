@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createTestApp } from "./helpers.js";
+import createDpeOpendataService from "../src/services/dpe-opendata.service.js";
 import {
   BULK_PAGE_SIZE,
   BULK_ROW_THRESHOLD,
@@ -87,6 +88,21 @@ test("le ré-import par paquets n'efface que le jour demandé", () => {
     assert.equal(second, 1);
     assert.equal(repositories.dpe.findByNumero("DPE-C").numero_dpe, "DPE-C");
     assert.equal(repositories.dpe.deleteByModificationDayBatch("2025-12-18", 10), 0);
+  } finally {
+    close();
+  }
+});
+
+test("startImportBlocking refuse des dates invalides", () => {
+  const { repositories, close } = createTestApp();
+  try {
+    const dpe = createDpeOpendataService({ repositories, logger: null });
+    const bad = dpe.startImportBlocking({
+      dateFrom: "pas-une-date",
+      dateTo: "2025-12-18",
+    });
+    assert.match(bad.error, /invalides/i);
+    assert.equal(bad.run, undefined);
   } finally {
     close();
   }

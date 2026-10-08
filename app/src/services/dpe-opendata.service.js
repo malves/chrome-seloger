@@ -632,6 +632,86 @@ export default function createDpeOpendataService({ repositories, logger }) {
       return { jobs, skippedDays: skipped };
     },
 
+    /**
+     * Import bloquant pour la CLI : un jour à la suite, sans file parallèle.
+     * Crée les jobs en base (comme `startImport`) puis exécute `runJob` jusqu'au
+     * bout dans le process courant.
+     *
+     * @returns {{ error: string } | { jobIds: number[], skippedDays: number, days: string[], run: () => Promise<{ ok: boolean, error?: string, jobIds: number[], skippedDays: number }> }}
+     */
+    startImportBlocking({ dateFrom, dateTo, force = false } = {}) {
+      if (!isValidDay(dateFrom) || !isValidDay(dateTo)) {
+        return { error: "Dates invalides (format attendu AAAA-MM-JJ)." };
+      }
+      if (dateFrom > dateTo) {
+        return { error: "La date de début doit précéder la date de fin." };
+      }
+
+      const days = daysBetween(dateFrom, dateTo);
+      const daySet = new Set(days);
+
+      const jobTouchesImport = (job) => {
+        if (!job?.date_from || !job?.date_to || job.date_from > job.date_to) {
+          return false;
+        }
+        return daysBetween(job.date_from, job.date_to).some((d) => daySet.has(d));
+      };
+
+      for (const job of repo.listRunningJobs()) {
+        if (isJobStale(job)) {
+          interruptJob(job.id, MSG_STALE_AUTO);
+          continue;
+        }
+        if (force && jobTouchesImport(job)) {
+          interruptJob(job.id, "Interrompu : reprise par import en ligne de commande.");
+        }
+      }
+
+      const busyDays = repo.runningDays();
+      const toImport = days.filter((day) => !busyDays.has(day));
+      const skipped = days.length - toImport.length;
+
+      if (!toImport.length) {
+        return {
+          error:
+            skipped > 0
+              ? "Tous les jours sélectionnés sont déjà en cours d'import (arrêtez l'autre process ou relancez avec l'import CLI seul)."
+              : "Aucun jour à importer.",
+        };
+      }
+
+      const jobIds = [];
+      for (const day of toImport) {
+        jobIds.push(
+          repo.createJob({
+            dateFrom: day,
+            dateTo: day,
+            daysTotal: 1,
+          })
+        );
+      }
+
+      async function run() {
+        for (let i = 0; i < toImport.length; i += 1) {
+          const jobId = jobIds[i];
+          const day = toImport[i];
+          await runJob(jobId, [day]);
+          const job = repo.getJob(jobId);
+          if (job?.status === "error") {
+            return {
+              ok: false,
+              error: job.error || "Import en échec.",
+              jobIds,
+              skippedDays: skipped,
+            };
+          }
+        }
+        return { ok: true, jobIds, skippedDays: skipped };
+      }
+
+      return { jobIds, skippedDays: skipped, days: toImport, run };
+    },
+
     getRunningJob() {
       return repo.getRunningJob();
     },
