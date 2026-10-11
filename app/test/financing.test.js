@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   agencyFees,
+  buildAmortizationSchedule,
   computeFinancing,
+  defaultDownPaymentForListing,
+  listingFinancingParams,
   monthlyPayment,
   notaryRate,
 } from "../src/services/financing.service.js";
@@ -28,6 +31,29 @@ test("mensualité à taux nul : simple division du capital", () => {
 test("mensualité nulle sans capital ou sans durée", () => {
   assert.equal(monthlyPayment(0, 0.035, 25), 0);
   assert.equal(monthlyPayment(200_000, 0.035, 0), 0);
+});
+
+test("apport par défaut : 10 % du prix affiché de l'annonce", () => {
+  assert.equal(
+    defaultDownPaymentForListing({ price: 350_000 }),
+    35_000
+  );
+  assert.equal(defaultDownPaymentForListing({ price: 0 }), 0);
+  assert.equal(
+    listingFinancingParams(
+      { price: 400_000 },
+      { years: 25, interestRate: 0.035, insuranceRate: 0.003, downPayment: 0 }
+    ).downPayment,
+    40_000
+  );
+  assert.equal(
+    listingFinancingParams(
+      { price: 400_000 },
+      { years: 25, interestRate: 0.035, insuranceRate: 0.003, downPayment: 0 },
+      { params: { downPayment: 12_000 } }
+    ).downPayment,
+    12_000
+  );
 });
 
 test("frais de notaire selon ancien ou neuf", () => {
@@ -124,6 +150,47 @@ test("frais de notaire réduits dans le neuf", () => {
     RATES
   );
   assert.equal(r.notaryFees, 10_000); // 400 000 × 2,5 %
+});
+
+test("tableau d'amortissement : capital remboursé et solde final", () => {
+  const r = computeFinancing(
+    {
+      price: 300_000,
+      isNewBuild: false,
+      agency: { fees_included: true },
+      works: 20_000,
+      downPayment: 50_000,
+      years: 25,
+      interestRate: 0.035,
+      insuranceRate: 0.003,
+    },
+    RATES
+  );
+  const schedule = buildAmortizationSchedule(r);
+  assert.equal(schedule.rows.length, r.months);
+  assert.equal(schedule.rows[0].month, 1);
+  assert.equal(schedule.rows[schedule.rows.length - 1].balance, 0);
+  assert.equal(schedule.totals.principal, r.loanAmount);
+  const creditCostParts = schedule.totals.interest + schedule.totals.insurance;
+  assert.ok(
+    Math.abs(creditCostParts - r.creditCost) < 1,
+    `intérêts+assurance ${creditCostParts} vs coût crédit ${r.creditCost}`
+  );
+});
+
+test("tableau d'amortissement vide sans emprunt", () => {
+  const r = computeFinancing(
+    {
+      price: 100_000,
+      isNewBuild: true,
+      downPayment: 500_000,
+      years: 25,
+      interestRate: 0.035,
+    },
+    RATES
+  );
+  const schedule = buildAmortizationSchedule(r);
+  assert.equal(schedule.rows.length, 0);
 });
 
 test("valeurs non numériques traitées comme zéro", () => {

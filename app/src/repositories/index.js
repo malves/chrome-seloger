@@ -16,6 +16,8 @@ import createAppSettingsRepository from "./app-settings.repo.js";
 import createSsmsiRepository from "./ssmsi.repo.js";
 import createDvfRepository from "./dvf.repo.js";
 import createPostalInseeRepository from "./postal-insee.repo.js";
+import createGeocodeCacheRepository from "./geocode-cache.repo.js";
+import createWorksPlansRepository from "./works-plans.repo.js";
 
 export default function createRepositories(db) {
   const projects = createProjectsRepository(db);
@@ -32,6 +34,8 @@ export default function createRepositories(db) {
     ssmsi: createSsmsiRepository(db),
     dvf: createDvfRepository(db),
     postalInsee: createPostalInseeRepository(db),
+    geocodeCache: createGeocodeCacheRepository(db),
+    worksPlans: createWorksPlansRepository(db),
 
     /** Exécute plusieurs écritures de façon atomique. */
     transaction(fn) {

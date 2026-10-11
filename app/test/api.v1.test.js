@@ -299,8 +299,35 @@ withApp("un payload minimal est accepté", async ({ app, repositories }) => {
   const listing = repositories.listings.findById(user.id, res.body.id);
   assert.equal(listing.price, null);
   assert.equal(listing.transaction_type, "sale");
-  assert.deepEqual(listing.features, []);
   assert.equal(repositories.listings.listPriceHistory(listing.id).length, 0);
+});
+
+withApp("source d'énergie, chauffage et état sont conservés d'une capture à l'autre", async ({ app, repositories }) => {
+  const { user, key } = await createConnectedUser(repositories, "a@example.com");
+
+  const created = await request(app)
+    .post("/api/v1/listings")
+    .set(bearer(key))
+    .send(
+      listingPayload({
+        energy_source: "Gaz",
+        heating_system: "Chauffage central: Radiateur",
+        property_condition: "Rénovation nécessaire",
+      })
+    )
+    .expect(201);
+
+  await request(app)
+    .post("/api/v1/listings")
+    .set(bearer(key))
+    .send(listingPayload({ price: 380_000 }))
+    .expect(200);
+
+  const listing = repositories.listings.findById(user.id, created.body.id);
+  assert.equal(listing.price, 380_000);
+  assert.equal(listing.energy_source, "Gaz");
+  assert.equal(listing.heating_system, "Chauffage central: Radiateur");
+  assert.equal(listing.property_condition, "Rénovation nécessaire");
 });
 
 withApp("les champs facultatifs invalides sont ignorés", async ({ app, repositories }) => {

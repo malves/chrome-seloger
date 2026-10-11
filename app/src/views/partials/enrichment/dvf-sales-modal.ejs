@@ -1,5 +1,6 @@
 <%
   const r = radius;
+  const adjusted = Boolean(r.market_adjusted);
   const modalTitle =
     'Ventes DVF, ' + dvfTypeLabel + ', ' + fmt.number(r.meters) + ' m';
 %>
@@ -33,6 +34,12 @@
         Référence affichée :
         <strong><%= fmt.euro(r.median_price_m2) %>/m²</strong>
         <% if (r.recency_weighted) { %><span class="dvf-sales-dialog__tag">médiane pondérée</span><% } %>
+        <% if (adjusted) { %>
+          <span class="dvf-sales-dialog__tag">corrigée de l'évolution du marché</span>
+        <% } %>
+        <% if (r.surface_comparable_filter && r.surface_comparable_filter.surface_filtered) { %>
+          <span class="dvf-sales-dialog__tag">surface comparable ±<%= r.surface_comparable_filter.tolerance_pct %> %</span>
+        <% } %>
       </p>
     </header>
     <div class="dvf-sales-dialog__table-wrap" tabindex="0">
@@ -51,6 +58,11 @@
             <th scope="col" class="dvf-sales-table__th-sort" data-dvf-sort="price_per_m2" aria-sort="none">
               <button type="button" class="dvf-sales-table__sort-btn">€/m²</button>
             </th>
+            <% if (adjusted) { %>
+              <th scope="col" class="dvf-sales-table__th-sort" data-dvf-sort="adjusted_price_per_m2" aria-sort="none">
+                <button type="button" class="dvf-sales-table__sort-btn" title="€/m² ramené au prix d'aujourd'hui selon l'évolution du marché depuis l'année de la vente">€/m² actualisé</button>
+              </th>
+            <% } %>
             <th scope="col" class="dvf-sales-table__th-sort dvf-sales-table__col--narrow-hide" data-dvf-sort="distance" aria-sort="none">
               <button type="button" class="dvf-sales-table__sort-btn">Distance</button>
             </th>
@@ -69,12 +81,27 @@
               row.mutation_date
                 ? row.mutation_date.slice(0, 10)
                 : (row.year ? String(row.year) + '-01-01' : '');
+            const factorPct =
+              row.market_factor != null ? Math.round((row.market_factor - 1) * 1000) / 10 : null;
           %>
             <tr class="dvf-sales-table__row">
               <td data-sort-value="<%= dateSort %>"><%= dateLabel %></td>
               <td data-sort-value="<%= row.price != null ? row.price : '' %>"><%= row.price != null ? fmt.euro(row.price) : '—' %></td>
-              <td data-sort-value="<%= row.surface != null ? row.surface : '' %>"><%= row.surface != null ? fmt.number(row.surface) + ' m²' : '—' %></td>
+              <td data-sort-value="<%= row.surface != null ? row.surface : '' %>">
+                <%= row.surface != null ? fmt.number(row.surface) + ' m²' : '—' %>
+                <% if (row.surface_comparable) { %>
+                  <span class="dvf-sales-table__pill dvf-sales-table__pill--surface">Comparable</span>
+                <% } %>
+              </td>
               <td data-sort-value="<%= row.price_per_m2 != null ? row.price_per_m2 : '' %>"><%= row.price_per_m2 != null ? fmt.euro(row.price_per_m2) : '—' %></td>
+              <% if (adjusted) { %>
+                <td data-sort-value="<%= row.adjusted_price_per_m2 != null ? row.adjusted_price_per_m2 : '' %>">
+                  <%= row.adjusted_price_per_m2 != null ? fmt.euro(row.adjusted_price_per_m2) : '—' %>
+                  <% if (factorPct != null && factorPct !== 0) { %>
+                    <span class="dvf-sales-table__factor"><%= factorPct > 0 ? '+' : '−' %><%= Math.abs(factorPct).toLocaleString('fr-FR') %>&nbsp;%</span>
+                  <% } %>
+                </td>
+              <% } %>
               <td class="dvf-sales-table__col--narrow-hide" data-sort-value="<%= row.distance_m != null ? row.distance_m : '' %>"><%= row.distance_m != null ? fmt.number(row.distance_m) + ' m' : '—' %></td>
               <td class="dvf-sales-table__col--narrow-hide" data-sort-value="<%= row.used_in_reference ? '1' : '0' %>">
                 <% if (row.used_in_reference) { %>
@@ -88,11 +115,12 @@
         </tbody>
       </table>
     </div>
-    <% if (r.outlier_floor_m2 != null && r.outliers_excluded > 0) { %>
+    <% if (r.outlier_floor_m2 != null && r.outlier_ceiling_m2 != null && r.outliers_excluded > 0) { %>
       <p class="dvf-sales-dialog__footnote">
-        Les ventes exclues ont un prix au m² strictement inférieur à
-        <strong><%= fmt.euro(r.outlier_floor_m2) %></strong>
-        (50&nbsp;% de la médiane brute du rayon).
+        Les ventes exclues ont un prix au m² en dehors de la bande
+        <strong><%= fmt.euro(r.outlier_floor_m2) %></strong> –
+        <strong><%= fmt.euro(r.outlier_ceiling_m2) %></strong>
+        (50&nbsp;% à 200&nbsp;% de la médiane brute du rayon).
       </p>
     <% } %>
   </div>

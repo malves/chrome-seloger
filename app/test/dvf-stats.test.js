@@ -40,7 +40,7 @@ test("haversineMeters ~ 0 pour le même point", () => {
   assert.ok(haversineMeters(44.8, -0.5, 44.8, -0.5) < 1);
 });
 
-test("filterLowOutlierSales retire les ventes très sous la médiane locale", () => {
+test("filterLowOutlierSales retire les ventes très sous ou au-dessus de la médiane locale", () => {
   const sales = [
     { price_per_m2: 200 },
     { price_per_m2: 300 },
@@ -53,6 +53,22 @@ test("filterLowOutlierSales retire les ventes très sous la médiane locale", ()
   assert.equal(filtered.countReference, 3);
   assert.equal(filtered.excluded, 2);
   assert.equal(filtered.kept.length, 3);
+  assert.equal(filtered.outlier_floor_m2, 1500);
+  assert.equal(filtered.outlier_ceiling_m2, 6000);
+});
+
+test("filterLowOutlierSales retire aussi les ventes très au-dessus de la médiane", () => {
+  const sales = [
+    { price_per_m2: 7000 },
+    { price_per_m2: 7100 },
+    { price_per_m2: 7200 },
+    { price_per_m2: 7300 },
+    { price_per_m2: 21635 },
+  ];
+  const filtered = filterLowOutlierSales(sales, { lowRatio: 0.5 });
+  assert.equal(filtered.countReference, 4);
+  assert.equal(filtered.excluded, 1);
+  assert.equal(filtered.kept.some((s) => s.price_per_m2 === 21635), false);
 });
 
 test("buildDvfRadiusReference expose le détail des ventes", () => {
@@ -66,7 +82,9 @@ test("buildDvfRadiusReference expose le détail des ventes", () => {
   assert.equal(ref.count, 2);
   assert.equal(ref.sales.length, 2);
   assert.equal(ref.outliers_excluded, 1);
+  assert.equal(ref.outlier_ceiling_m2, 3299.5);
   assert.equal(ref.sales.find((s) => s.price_per_m2 === 212).used_in_reference, false);
+  assert.equal(ref.sales.find((s) => s.price_per_m2 === 3087.5).used_in_reference, true);
 });
 
 test("recencyWeightedMedian favorise les ventes récentes", () => {

@@ -4,7 +4,7 @@
 #
 # Usage :
 #   ./package.sh              → version lue dans manifest.json
-#   ./package.sh 0.3.0        → fixe la version (manifest + build.version.js)
+#   ./package.sh 0.3.0        → fixe la version dans manifest.json
 #
 # Sortie : dist/carnet-de-visites-<version>.zip
 #
@@ -67,10 +67,10 @@ copy_tree() {
   local dest="$2"
   mkdir -p "$dest"
   if command -v rsync >/dev/null 2>&1; then
-    rsync -a --exclude='config.local.js' --exclude='config.local.example.js' --exclude='build.version.js' "$src/" "$dest/"
+    rsync -a --exclude='config.local.js' --exclude='config.local.example.js' "$src/" "$dest/"
   else
     cp -a "$src/." "$dest/"
-    rm -f "${dest}/config.local.js" "${dest}/config.local.example.js" "${dest}/build.version.js"
+    rm -f "${dest}/config.local.js" "${dest}/config.local.example.js"
   fi
 }
 
@@ -79,15 +79,9 @@ copy_tree "${ROOT}/icons" "${STAGE}/icons"
 copy_tree "${ROOT}/styles" "${STAGE}/styles"
 cp "${ROOT}/manifest.json" "${STAGE}/manifest.json"
 
-cat >"${STAGE}/src/build.version.js" <<EOF
-/** Généré par package.sh — ne pas modifier à la main. */
-const EXTENSION_BUILD_VERSION = "${VERSION}";
+cat >"${STAGE}/src/config.local.js" <<EOF
+/** Généré par package.sh : aucune surcharge, l'URL de production s'applique. */
 EOF
-
-if [[ -f "${STAGE}/src/config.local.js" ]]; then
-  echo "Erreur : config.local.js ne doit pas figurer dans le paquet." >&2
-  exit 1
-fi
 
 if grep -E '"http://localhost|'\''http://localhost' "${STAGE}/src/config.js" >/dev/null 2>&1; then
   echo "Erreur : config.js pointe encore vers localhost." >&2

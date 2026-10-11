@@ -37,6 +37,67 @@ export function monthlyPayment(principal, annualRate, years) {
   return (principal * monthlyRate) / (1 - (1 + monthlyRate) ** -months);
 }
 
+function roundMoney(value) {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Tableau d'amortissement mensuel, aligné sur `computeFinancing` (assurance
+ * mensuelle constante sur la durée, dernière échéance ajustée).
+ */
+export function buildAmortizationSchedule(result) {
+  const loanAmount = Number(result.loanAmount) || 0;
+  const months = Math.max(0, Number(result.months) || 0);
+  const interestRate = Math.max(0, Number(result.interestRate) || 0);
+  const paymentExcludingInsurance =
+    Number(result.paymentExcludingInsurance) || 0;
+  const monthlyInsurance = Number(result.monthlyInsurance) || 0;
+
+  if (!(loanAmount > 0) || months <= 0) {
+    return {
+      rows: [],
+      totals: { principal: 0, interest: 0, insurance: 0, total: 0 },
+    };
+  }
+
+  const monthlyRate = interestRate / 12;
+  let balance = loanAmount;
+  const rows = [];
+  const totals = { principal: 0, interest: 0, insurance: 0, total: 0 };
+
+  for (let month = 1; month <= months; month += 1) {
+    const interest =
+      monthlyRate === 0 ? 0 : roundMoney(balance * monthlyRate);
+    let principal =
+      month === months
+        ? roundMoney(balance)
+        : roundMoney(paymentExcludingInsurance - interest);
+    if (principal > balance) principal = roundMoney(balance);
+
+    const payment = roundMoney(principal + interest);
+    const insurance = roundMoney(monthlyInsurance);
+    const total = roundMoney(payment + insurance);
+    balance = roundMoney(balance - principal);
+
+    rows.push({
+      month,
+      principal,
+      interest,
+      insurance,
+      payment,
+      total,
+      balance,
+    });
+
+    totals.principal = roundMoney(totals.principal + principal);
+    totals.interest = roundMoney(totals.interest + interest);
+    totals.insurance = roundMoney(totals.insurance + insurance);
+    totals.total = roundMoney(totals.total + total);
+  }
+
+  return { rows, totals };
+}
+
 /**
  * Calcule l'ensemble du tableau.
  *
@@ -105,6 +166,17 @@ export function computeFinancing(input, rates = config.financing) {
   };
 }
 
+/** Apport initial sur une fiche : part du prix affiché dans l'annonce. */
+export function defaultDownPaymentForListing(
+  listing,
+  rates = config.financing
+) {
+  const rate = Number(rates.defaultDownPaymentRate);
+  const price = Math.max(0, Number(listing?.price) || 0);
+  if (!(price > 0) || !(rate > 0)) return 0;
+  return Math.round(price * rate);
+}
+
 /**
  * Paramètres retenus pour une annonce : valeurs du compte, éventuellement
  * surchargées pour cette annonce, avec le prix de l'annonce comme prix négocié
@@ -118,7 +190,10 @@ export function listingFinancingParams(listing, accountDefaults, stored = null) 
   return {
     negotiatedPrice: pick("negotiatedPrice", listing.price ?? 0),
     works: pick("works", 0),
-    downPayment: pick("downPayment", accountDefaults.downPayment),
+    downPayment: pick(
+      "downPayment",
+      defaultDownPaymentForListing(listing)
+    ),
     years: pick("years", accountDefaults.years),
     interestRate: pick("interestRate", accountDefaults.interestRate),
     insuranceRate: pick("insuranceRate", accountDefaults.insuranceRate),
@@ -160,6 +235,8 @@ export function financingForListing(listing, params, rates = config.financing) {
 export default {
   computeFinancing,
   monthlyPayment,
+  buildAmortizationSchedule,
+  defaultDownPaymentForListing,
   agencyFees,
   notaryRate,
   listingFinancingParams,

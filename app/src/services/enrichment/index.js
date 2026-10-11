@@ -12,6 +12,7 @@
  *     order: 0,              // ordre d'exécution (0 = en premier)
  *     group: 'territory',    // facultatif : regroupement d'affichage sur la fiche
  *     display: true,         // facultatif : false = provider cache-only (pas de bloc)
+ *     standalone: true,      // facultatif : exclu de la chaîne « tous », lancé à part
  *     resolvesInsee: true,   // facultatif : s'exécute même sans code INSEE
  *     async fetch(ctx) {}    // ctx = { listing, inseeCode, deptCode, fetchJson, ... }
  *   }
@@ -30,6 +31,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import config, { rootDir } from "../../config.js";
 import { listingTerritory } from "../../lib/listing-territory.js";
+import { buildPricePosition } from "../../lib/price-position.js";
 import { daysSince } from "../../lib/time.js";
 import {
   departmentCodeFromInsee,
@@ -247,9 +249,11 @@ export default function createEnrichmentService({ repositories, logger }) {
     runsInFlight.add(runKey);
 
     const { providers } = await getRegistry();
+    // Les providers « standalone » (lents, ex. vision) ne font pas partie de
+    // la chaîne séquentielle : ils sont lancés explicitement par `only`.
     const selected = only
       ? providers.filter((provider) => provider.key === only)
-      : providers;
+      : providers.filter((provider) => !provider.standalone);
 
     try {
       for (const provider of selected) {
@@ -281,11 +285,44 @@ export default function createEnrichmentService({ repositories, logger }) {
    * Lance l'enrichissement sans bloquer la réponse HTTP : même process, pas de
    * file de messages en V1.
    */
-  function schedule(userId, listingId, options) {
-    setImmediate(() => {
-      runForListing(userId, listingId, options).catch((err) => {
+  function schedule(userId, listingId, options = {}) {
+    const {
+      skipProbableLocation = false,
+      skipPhotoAnalysis = false,
+      ...runOptions
+    } = options;
+    setImmediate(async () => {
+      // Un `only` explicite ne lance que ce provider (ex. relance de l'analyse photos).
+      if (runOptions.only) {
+        try {
+          await runForListing(userId, listingId, runOptions);
+        } catch (err) {
+          logger.error({ err, listingId, only: runOptions.only }, "enrichissement ciblé");
+        }
+        return;
+      }
+
+      if (!skipProbableLocation) {
+        try {
+          // Zone probable : lancer en premier à l'enregistrement (LLM), avant
+          // les autres providers souvent plus lents.
+          await runForListing(userId, listingId, { only: "probable-location" });
+        } catch (err) {
+          logger.error({ err, listingId }, "zone probable (enrichissement)");
+        }
+      }
+
+      // L'analyse des photos (vision, plusieurs appels) tourne en parallèle de
+      // la chaîne classique : elle ne doit pas retarder marché / territoire.
+      const photoAnalysis = skipPhotoAnalysis
+        ? Promise.resolve()
+        : runForListing(userId, listingId, { only: "photo-analysis" }).catch((err) => {
+            logger.error({ err, listingId }, "analyse des photos (enrichissement)");
+          });
+      const chain = runForListing(userId, listingId, runOptions).catch((err) => {
         logger.error({ err, listingId }, "orchestration d'enrichissement");
       });
+      await Promise.allSettled([photoAnalysis, chain]);
     });
   }
 
@@ -331,6 +368,37 @@ export default function createEnrichmentService({ repositories, logger }) {
     const quartier = stored["immo-data-quartier"]?.data || null;
     const dvf = stored["dvf-local"]?.data || null;
     data.address_comparison = quartier || dvf ? { quartier, dvf } : null;
+  }
+
+  /** Référence la plus précise disponible (rayon DVF > grand quartier > commune). */
+  function applyPricePosition(data, listing) {
+    const cmp = data.address_comparison;
+    data.price_position = buildPricePosition({
+      listing,
+      commune: data.commune,
+      dvf: cmp?.dvf || null,
+      quartier: cmp?.quartier || null,
+      market: marketSeriesFor(data, listing),
+    });
+  }
+
+  /** Série mensuelle du type de bien : commune, à défaut département. */
+  function marketSeriesFor(data, listing) {
+    const block = data.evolution?.by_type?.[listing.property_type];
+    if (block?.commune?.points?.length >= 2) {
+      return {
+        points: block.commune.points,
+        label: data.evolution.commune_name || data.commune?.name || "la commune",
+      };
+    }
+    if (block?.department?.points?.length >= 2) {
+      const dept = data.evolution.department;
+      return {
+        points: block.department.points,
+        label: dept?.name || (dept?.code ? `le département ${dept.code}` : "le département"),
+      };
+    }
+    return null;
   }
 
   /** Fusionne le volet départemental de la délinquance (cache département). */
@@ -425,6 +493,7 @@ export default function createEnrichmentService({ repositories, logger }) {
           mergeImmoDepartment(data, deptCode);
           applyImmoVerdict(data, listing);
           attachAddressComparison(data, stored, listing);
+          applyPricePosition(data, listing);
           patchImmoDataMarketHorizons(data);
         } else if (provider.key === "delinquance" && data) {
           mergeDelinquanceDepartment(data, deptCode);
@@ -466,12 +535,13 @@ export default function createEnrichmentService({ repositories, logger }) {
 
   async function listProviders() {
     const { providers } = await getRegistry();
-    return providers.map(({ key, label, scope, group, display }) => ({
+    return providers.map(({ key, label, scope, group, display, standalone }) => ({
       key,
       label,
       scope,
       group,
       display,
+      standalone: Boolean(standalone),
     }));
   }
 

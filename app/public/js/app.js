@@ -149,6 +149,72 @@
     if (existing) existing.destroy();
   }
 
+  function pricem2LegendDatasetIndex(seriesKey) {
+    return seriesKey === "dept" ? 1 : 0;
+  }
+
+  function pricem2LegendPanel(canvas) {
+    return canvas ? canvas.closest("[data-pricem2-panel]") : null;
+  }
+
+  function pricem2LegendRoot(canvas) {
+    var panel = pricem2LegendPanel(canvas);
+    return panel ? panel.querySelector(".pricem2__legend") : null;
+  }
+
+  function syncPricem2LegendButton(btn, visible) {
+    if (!btn) return;
+    btn.classList.toggle("is-on", visible);
+    btn.classList.toggle("is-off", !visible);
+    btn.setAttribute("aria-pressed", visible ? "true" : "false");
+  }
+
+  function syncPricem2LegendFromChart(canvas, chart) {
+    var legend = pricem2LegendRoot(canvas);
+    if (!legend || !chart) return;
+    legend.querySelectorAll("[data-pricem2-legend-series]").forEach(function (btn) {
+      var idx = pricem2LegendDatasetIndex(btn.getAttribute("data-pricem2-legend-series"));
+      var visible =
+        idx < chart.data.datasets.length && chart.isDatasetVisible(idx);
+      syncPricem2LegendButton(btn, visible);
+    });
+  }
+
+  function applyPricem2LegendVisibility(canvas, chart) {
+    var legend = pricem2LegendRoot(canvas);
+    if (!legend || !chart) return;
+    legend.querySelectorAll("[data-pricem2-legend-series]").forEach(function (btn) {
+      var idx = pricem2LegendDatasetIndex(btn.getAttribute("data-pricem2-legend-series"));
+      if (idx >= chart.data.datasets.length) return;
+      var visible = btn.getAttribute("aria-pressed") !== "false";
+      chart.setDatasetVisibility(idx, visible);
+    });
+    chart.update("none");
+    syncPricem2LegendFromChart(canvas, chart);
+  }
+
+  function bindPricem2ChartLegend(canvas) {
+    var legend = pricem2LegendRoot(canvas);
+    if (!legend || legend.dataset.pricem2LegendBound === "1") return;
+    legend.dataset.pricem2LegendBound = "1";
+    legend.addEventListener("click", function (event) {
+      var btn = event.target.closest("[data-pricem2-legend-series]");
+      if (!btn || !legend.contains(btn)) return;
+      var panel = legend.closest("[data-pricem2-panel]");
+      var chartCanvas =
+        panel && panel.querySelector("canvas[data-pricem2-chart]");
+      if (!chartCanvas || !window.Chart) return;
+      var chart = window.Chart.getChart(chartCanvas);
+      if (!chart) return;
+      var idx = pricem2LegendDatasetIndex(btn.getAttribute("data-pricem2-legend-series"));
+      if (idx >= chart.data.datasets.length) return;
+      var nextVisible = !chart.isDatasetVisible(idx);
+      chart.setDatasetVisibility(idx, nextVisible);
+      chart.update();
+      syncPricem2LegendButton(btn, nextVisible);
+    });
+  }
+
   function createPricem2Chart(canvas, config) {
     return loadChartJs().then(function (Chart) {
       destroyPricem2Chart(canvas);
@@ -199,7 +265,7 @@
           fill: false,
         });
       }
-      return new Chart(canvas, {
+      var chart = new Chart(canvas, {
         type: "line",
         data: {
           labels: config.labels.map(String),
@@ -289,6 +355,9 @@
           },
         },
       });
+      bindPricem2ChartLegend(canvas);
+      applyPricem2LegendVisibility(canvas, chart);
+      return chart;
     });
   }
 
@@ -1206,6 +1275,50 @@
       if (!tab) return;
       activate(tab.getAttribute("data-hexasmal-section"));
     });
+  })();
+
+  // Admin DPE : onglets Import / Recherche sur la même page.
+  (function initDpeSectionTabs() {
+    var root = document.querySelector("[data-dpe-section-tabs]");
+    if (!root) return;
+    var tabs = Array.prototype.slice.call(
+      root.querySelectorAll("[data-dpe-section]")
+    );
+    var panels = Array.prototype.slice.call(
+      document.querySelectorAll("[data-dpe-section-panel]")
+    );
+
+    function activate(name, updateUrl) {
+      tabs.forEach(function (tab) {
+        var active = tab.getAttribute("data-dpe-section") === name;
+        tab.classList.toggle("is-active", active);
+        tab.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      panels.forEach(function (panel) {
+        var active = panel.getAttribute("data-dpe-section-panel") === name;
+        panel.classList.toggle("is-active", active);
+        panel.hidden = !active;
+      });
+      if (updateUrl && window.history && window.history.replaceState) {
+        var url = new URL(window.location.href);
+        if (name === "search") url.searchParams.set("tab", "search");
+        else url.searchParams.delete("tab");
+        window.history.replaceState({}, "", url.pathname + url.search);
+      }
+    }
+
+    root.addEventListener("click", function (event) {
+      var tab = event.target.closest("[data-dpe-section]");
+      if (!tab) return;
+      activate(tab.getAttribute("data-dpe-section"), true);
+    });
+
+    var initial = "import";
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get("tab") === "search") initial = "search";
+    } catch (e) {}
+    activate(initial, false);
   })();
 
   // Admin : inspecteur JSON du cache enrichissement.
@@ -2161,6 +2274,226 @@
     });
   })();
 
+  // Analyse des photos : clic sur une miniature → lightbox ; après un swap
+  // htmx du panneau, les badges « Projection » / « Plan » sont (re)posés sur
+  // la galerie.
+  (function initPhotoAnalysis() {
+    var lightbox = document.getElementById("photo-analysis-lightbox");
+    var lightboxImg = lightbox && lightbox.querySelector("[data-photo-lightbox-img]");
+    var lightboxTitle = lightbox && lightbox.querySelector("[data-photo-lightbox-title]");
+    var lightboxClose = lightbox && lightbox.querySelector(".pa-lightbox__close");
+    var lightboxTrigger = null;
+
+    function closeLightbox() {
+      if (!lightbox || lightbox.hidden) return;
+      lightbox.hidden = true;
+      document.body.classList.remove("is-modal-open");
+      if (lightboxImg) {
+        lightboxImg.removeAttribute("src");
+        lightboxImg.alt = "";
+      }
+      if (lightboxTrigger && typeof lightboxTrigger.focus === "function") {
+        lightboxTrigger.focus({ preventScroll: true });
+      }
+      lightboxTrigger = null;
+    }
+
+    function openLightbox(button) {
+      if (!lightbox || !lightboxImg) return;
+      var thumb = button.querySelector("img");
+      var src = thumb && thumb.getAttribute("src");
+      if (!src) return;
+      var numEl = button.querySelector(".pa-ref__num");
+      var position = numEl ? numEl.textContent.trim() : "";
+      lightboxTrigger = button;
+      lightboxImg.src = src;
+      lightboxImg.alt = position ? "Photo " + position + " de l'annonce" : "Photo de l'annonce";
+      if (lightboxTitle) {
+        lightboxTitle.textContent = position
+          ? "Photo " + position + " agrandie"
+          : "Photo agrandie";
+      }
+      lightbox.hidden = false;
+      document.body.classList.add("is-modal-open");
+      if (lightboxClose && typeof lightboxClose.focus === "function") {
+        lightboxClose.focus({ preventScroll: true });
+      }
+    }
+
+    if (lightbox) {
+      lightbox.addEventListener("click", function (event) {
+        if (event.target.closest("[data-photo-lightbox-dismiss]")) {
+          event.preventDefault();
+          closeLightbox();
+        }
+      });
+      document.addEventListener("keydown", function (event) {
+        if (lightbox.hidden || event.key !== "Escape") return;
+        event.preventDefault();
+        closeLightbox();
+      });
+    }
+
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest ? event.target.closest("[data-photo-jump]") : null;
+      if (!button) return;
+      event.preventDefault();
+      openLightbox(button);
+    });
+
+    var debugModal = document.getElementById("photo-analysis-debug-modal");
+    var debugContent =
+      debugModal && debugModal.querySelector("[data-photo-analysis-debug-content]");
+    var debugFetchController = null;
+
+    function closeDebugModal() {
+      if (!debugModal) return;
+      if (debugFetchController) {
+        debugFetchController.abort();
+        debugFetchController = null;
+      }
+      debugModal.hidden = true;
+      document.body.classList.remove("is-modal-open");
+    }
+
+    function bindDebugPanel(panel) {
+      if (!panel) return;
+      var copyBtn = panel.querySelector("[data-pa-debug-copy]");
+      var jsonField = panel.querySelector("[data-pa-debug-json]");
+      if (copyBtn && jsonField) {
+        copyBtn.addEventListener("click", function () {
+          var text = jsonField.value;
+          var done = function () {
+            copyBtn.classList.add("is-copied");
+            copyBtn.setAttribute("aria-label", "Copié");
+            copyBtn.setAttribute("title", "Copié");
+            window.setTimeout(function () {
+              copyBtn.classList.remove("is-copied");
+              copyBtn.setAttribute("aria-label", "Copier le JSON");
+              copyBtn.setAttribute("title", "Copier");
+            }, 1500);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(function () {
+              jsonField.select();
+              document.execCommand("copy");
+              done();
+            });
+          } else {
+            jsonField.select();
+            document.execCommand("copy");
+            done();
+          }
+        });
+      }
+    }
+
+    function openDebugModal(url) {
+      if (!debugModal || !debugContent || !url) return;
+      debugModal.hidden = false;
+      document.body.classList.add("is-modal-open");
+      debugContent.innerHTML = '<p class="field__hint">Chargement…</p>';
+      if (debugFetchController) debugFetchController.abort();
+      debugFetchController = new AbortController();
+      fetch(url, {
+        credentials: "same-origin",
+        signal: debugFetchController.signal,
+        headers: { Accept: "text/html" },
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.text();
+        })
+        .then(function (html) {
+          debugContent.innerHTML = html;
+          bindDebugPanel(debugContent.querySelector("[data-pa-debug-panel]"));
+        })
+        .catch(function (err) {
+          if (err && err.name === "AbortError") return;
+          debugContent.innerHTML =
+            '<p class="field__hint">Impossible de charger le diagnostic (' +
+            (err && err.message ? err.message : "erreur") +
+            ").</p>";
+        })
+        .finally(function () {
+          debugFetchController = null;
+        });
+    }
+
+    if (debugModal) {
+      debugModal.addEventListener("click", function (event) {
+        if (event.target.closest("[data-photo-analysis-debug-dismiss]")) {
+          event.preventDefault();
+          closeDebugModal();
+        }
+      });
+      document.addEventListener("keydown", function (event) {
+        if (debugModal.hidden || event.key !== "Escape") return;
+        event.preventDefault();
+        closeDebugModal();
+      });
+    }
+
+    document.addEventListener("click", function (event) {
+      var openBtn = event.target.closest
+        ? event.target.closest("[data-photo-analysis-debug-open]")
+        : null;
+      if (!openBtn) return;
+      event.preventDefault();
+      openDebugModal(openBtn.getAttribute("data-photo-analysis-debug-url"));
+    });
+
+    function applyGalleryBadges(panel) {
+      if (!panel || !panel.hasAttribute("data-gallery-badges")) return;
+      var badges;
+      try {
+        badges = JSON.parse(decodeURIComponent(panel.getAttribute("data-gallery-badges")));
+      } catch (_err) {
+        return;
+      }
+      var carousel = document.querySelector("[data-carousel]");
+      if (!carousel) return;
+
+      carousel.querySelectorAll("[data-carousel-thumb]").forEach(function (thumb) {
+        var i = thumb.getAttribute("data-carousel-thumb");
+        var badge = badges[i];
+        var existing = thumb.querySelector(".carousel__thumb-flag");
+        if (existing) existing.remove();
+        thumb.classList.toggle("carousel__thumb--flagged", Boolean(badge));
+        if (!badge) return;
+        var flag = document.createElement("span");
+        flag.className = "carousel__thumb-flag";
+        flag.setAttribute("aria-hidden", "true");
+        flag.textContent = badge.label;
+        thumb.appendChild(flag);
+      });
+
+      var slides = carousel.querySelectorAll(".carousel__slide");
+      slides.forEach(function (slide, i) {
+        var badge = badges[String(i)];
+        var existing = slide.querySelector(".carousel__flag");
+        if (existing) existing.remove();
+        slide.classList.toggle("carousel__slide--flagged", Boolean(badge));
+        if (!badge) return;
+        var flag = document.createElement("span");
+        flag.className = "carousel__flag carousel__flag--" + badge.cls;
+        flag.textContent = badge.label;
+        slide.appendChild(flag);
+      });
+    }
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      var target = event.detail && event.detail.target;
+      if (!target) return;
+      if (!target.isConnected && target.id) target = document.getElementById(target.id);
+      if (!target) return;
+      var panel = target.matches && target.matches("[data-photo-analysis]")
+        ? target
+        : target.querySelector && target.querySelector("[data-photo-analysis]");
+      applyGalleryBadges(panel);
+    });
+  })();
+
   // Montants du financement : espace des milliers pendant la saisie.
   // Les champs sont en texte pour pouvoir afficher « 20 000 » ; le serveur
   // ignore les séparateurs.
@@ -2345,6 +2678,70 @@
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
       event.preventDefault();
       stepAmount(input, event.key === "ArrowUp" ? 1 : -1);
+    });
+  })();
+
+  // Financement : tableau d'amortissement (modale dans le bloc htmx).
+  (function initFinancingAmortizationModal() {
+    var lastFocused = null;
+
+    function getModal() {
+      return document.querySelector("[data-financing-amortization-modal]");
+    }
+
+    function openModal(trigger) {
+      var modal = getModal();
+      if (!modal) return;
+      lastFocused = trigger || document.activeElement;
+      modal.hidden = false;
+      modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("is-modal-open");
+      var closeBtn = modal.querySelector("[data-financing-amortization-dismiss]");
+      if (closeBtn && typeof closeBtn.focus === "function") {
+        window.setTimeout(function () {
+          closeBtn.focus();
+        }, 0);
+      }
+    }
+
+    function closeModal() {
+      var modal = getModal();
+      var wasVisible = modal && !modal.hidden;
+      if (modal) {
+        modal.hidden = true;
+        modal.setAttribute("aria-hidden", "true");
+      }
+      document.body.classList.remove("is-modal-open");
+      if (
+        wasVisible &&
+        lastFocused &&
+        typeof lastFocused.focus === "function"
+      ) {
+        lastFocused.focus();
+      }
+      lastFocused = null;
+    }
+
+    document.addEventListener("click", function (event) {
+      var openBtn = event.target.closest("[data-financing-amortization-open]");
+      if (openBtn) {
+        if (openBtn.disabled) return;
+        event.preventDefault();
+        openModal(openBtn);
+        return;
+      }
+      if (event.target.closest("[data-financing-amortization-dismiss]")) {
+        event.preventDefault();
+        closeModal();
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      var modal = getModal();
+      if (modal && !modal.hidden && event.key === "Escape") {
+        event.preventDefault();
+        closeModal();
+      }
     });
   })();
 
@@ -2883,7 +3280,7 @@
     document.addEventListener("click", function (event) {
       var btn = event.target.closest("[data-dpe-search-reset]");
       if (!btn) return;
-      var panel = btn.closest('[data-settings-panel="search"]');
+      var panel = btn.closest("[data-dpe-search-panel]");
       var form = panel && panel.querySelector(".dpe-search-form");
       if (!form) return;
       event.preventDefault();
@@ -3415,11 +3812,414 @@
   })();
 
   // Fiche annonce : modale de saisie de l'adresse réelle (champs structurés).
+  // À l'enregistrement, on cherche le DPE de l'adresse : associé d'office s'il
+  // n'y a aucun doute, sinon étape de confirmation dans la même modale.
   (function initListingAddressModal() {
     var lastFocused = null;
+    var DEFAULT_TITLE = "Adresse réelle du bien";
+    var DPE_STEP_TITLE = "Recherche du DPE associé à cette adresse";
+    var SUBMIT_LABEL = "Enregistrer";
+    var SEARCH_LABEL = "Recherche du DPE…";
+    var STREET_ABBREVIATIONS = {
+      r: "rue", av: "avenue", ave: "avenue", bd: "boulevard", bld: "boulevard",
+      pl: "place", imp: "impasse", all: "allee", ch: "chemin", chem: "chemin",
+      rte: "route", sq: "square", qu: "quai", fg: "faubourg", fbg: "faubourg",
+      st: "saint", ste: "sainte",
+    };
+    // Adresse saisie et candidats de l'étape DPE en cours.
+    var pending = null;
 
     function modal() {
       return document.querySelector("[data-listing-address-modal]");
+    }
+
+    function csrfToken() {
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      return meta ? meta.content : "";
+    }
+
+    function normalizeWord(word) {
+      var w = String(word || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+      return STREET_ABBREVIATIONS[w] || w;
+    }
+
+    function normalizedStreet(text) {
+      return String(text || "")
+        .split(/[\s\-'’.,/]+/)
+        .map(normalizeWord)
+        .filter(Boolean)
+        .join(" ");
+    }
+
+    function step(m, name) {
+      return m && m.querySelector('[data-listing-address-step="' + name + '"]');
+    }
+
+    function setTitle(m, text) {
+      var title = m && m.querySelector("[data-listing-address-title]");
+      if (title) title.textContent = text;
+    }
+
+    function setSubmitLoading(m, loading) {
+      var btn = m && m.querySelector("[data-listing-address-submit]");
+      if (!btn) return;
+      btn.disabled = loading;
+      btn.classList.toggle("is-loading", loading);
+      var label = btn.querySelector(".btn__label");
+      if (label) label.textContent = loading ? SEARCH_LABEL : SUBMIT_LABEL;
+    }
+
+    function showFormStep(m, focusStreet) {
+      if (!m) return;
+      pending = null;
+      var form = step(m, "form");
+      var dpe = step(m, "dpe");
+      if (dpe) dpe.hidden = true;
+      if (form) form.hidden = false;
+      setTitle(m, DEFAULT_TITLE);
+      setSubmitLoading(m, false);
+      if (focusStreet) {
+        var f = fields(m);
+        if (f && f.street) {
+          f.street.focus();
+          f.street.select();
+        }
+      }
+    }
+
+    function readTyped(m) {
+      var f = fields(m);
+      return {
+        street: f.street ? f.street.value.trim() : "",
+        complement: f.complement ? f.complement.value.trim() : "",
+        postal_code: f.postal ? f.postal.value.trim() : "",
+        city: f.city ? f.city.value.trim() : "",
+      };
+    }
+
+    function lookupDpe(m, typed) {
+      var form = m.querySelector("[data-listing-address-form]");
+      var listingId = form && form.getAttribute("data-listing-id");
+      if (!listingId) return Promise.resolve({ status: "none", candidates: [] });
+      return fetch("/listings/" + listingId + "/address/dpe-lookup", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken(),
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          street: typed.street,
+          postal_code: typed.postal_code,
+          city: typed.city,
+        }),
+      }).then(function (res) {
+        if (!res.ok) throw new Error("dpe_lookup_http_" + res.status);
+        return res.json();
+      });
+    }
+
+    /** Enregistre l'adresse (et le DPE éventuel) puis remplace le bloc localisation. */
+    function saveAddress(m, address, numeroDpe) {
+      var form = m.querySelector("[data-listing-address-form]");
+      var listingId = form && form.getAttribute("data-listing-id");
+      if (!listingId || !window.htmx || typeof window.htmx.ajax !== "function") {
+        if (form) form.submit();
+        return Promise.resolve();
+      }
+      return window.htmx.ajax("POST", "/listings/" + listingId + "/address", {
+        target: "#listing-location-block",
+        swap: "outerHTML",
+        values: {
+          _csrf: csrfToken(),
+          street: address.street,
+          complement: address.complement || "",
+          postal_code: address.postal_code,
+          city: address.city,
+          address_source: "manual",
+          linked_dpe_numero: numeroDpe || "",
+        },
+      });
+    }
+
+    function addressFromCandidate(typed, candidate) {
+      return {
+        street: candidate.street || typed.street,
+        complement: typed.complement,
+        postal_code: candidate.postalCode || typed.postal_code,
+        city: candidate.city || typed.city,
+      };
+    }
+
+    function submitAddress(m) {
+      var form = m.querySelector("[data-listing-address-form]");
+      if (form && typeof form.reportValidity === "function" && !form.reportValidity()) {
+        return;
+      }
+      var typed = readTyped(m);
+      setSubmitLoading(m, true);
+
+      lookupDpe(m, typed)
+        .catch(function (err) {
+          // La recherche du DPE ne doit jamais bloquer l'enregistrement.
+          console.warn("[Adresse] Recherche du DPE impossible :", err);
+          return { status: "none", candidates: [] };
+        })
+        .then(function (result) {
+          if (result && result.status === "match" && result.numeroDpe) {
+            var best = (result.candidates || [])[0] || { street: result.street };
+            return saveAddress(m, addressFromCandidate(typed, best), result.numeroDpe);
+          }
+          if (result && result.status === "choose" && result.candidates && result.candidates.length) {
+            setSubmitLoading(m, false);
+            showDpeStep(m, typed, result);
+            return null;
+          }
+          return saveAddress(m, typed, null);
+        })
+        .catch(function (err) {
+          console.error("[Adresse] Enregistrement impossible :", err);
+          setSubmitLoading(m, false);
+        });
+    }
+
+    /** Numéro de voie (118, 12 bis…) : complété par le DPE, pas souligné comme une correction de libellé. */
+    function isCivicNumberPart(part) {
+      var t = String(part || "").trim();
+      return /^\d+(?:\s*(?:bis|ter|quater))?$/i.test(t) || /^\d+[a-zA-Z]$/.test(t);
+    }
+
+    /** Met en valeur les mots de la voie proposée absents de la saisie (correction). */
+    function streetWithCorrections(candidateStreet, typedStreet) {
+      var typedWords = {};
+      normalizedStreet(typedStreet).split(" ").forEach(function (w) {
+        if (w) typedWords[w] = true;
+      });
+      var frag = document.createDocumentFragment();
+      String(candidateStreet || "").split(/(\s+)/).forEach(function (part) {
+        if (!part) return;
+        if (/^\s+$/.test(part)) {
+          frag.appendChild(document.createTextNode(part));
+          return;
+        }
+        var words = normalizedStreet(part).split(" ").filter(Boolean);
+        var corrected =
+          words.length &&
+          words.some(function (w) { return !typedWords[w]; }) &&
+          !isCivicNumberPart(part);
+        if (corrected) {
+          var mark = document.createElement("mark");
+          mark.textContent = part;
+          frag.appendChild(mark);
+        } else {
+          frag.appendChild(document.createTextNode(part));
+        }
+      });
+      return frag;
+    }
+
+    function floorLabel(floor) {
+      if (floor == null) return null;
+      if (floor === 0) return "Rez-de-chaussée";
+      if (floor < 0) return "Sous-sol";
+      return floor === 1 ? "1er étage" : floor + "e étage";
+    }
+
+    function dateLabel(iso) {
+      if (!iso) return null;
+      var d = new Date(String(iso).slice(0, 10) + "T00:00:00");
+      if (isNaN(d.getTime())) return null;
+      return "Diagnostic du " + d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+    }
+
+    function typeLabel(type) {
+      if (type === "appartement") return "Appartement";
+      if (type === "maison") return "Maison";
+      if (type === "immeuble") return "DPE d'immeuble";
+      return null;
+    }
+
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text != null) node.textContent = text;
+      return node;
+    }
+
+    function appendChip(list, text, modifier) {
+      if (!text) return;
+      list.appendChild(
+        el("li", "listing-address-dpe__chip" + (modifier ? " listing-address-dpe__chip--" + modifier : ""), text)
+      );
+    }
+
+    function isCorrected(candidate, typed) {
+      return normalizedStreet(candidate.street) !== normalizedStreet(typed.street);
+    }
+
+    function buildDpeOption(candidate, index, typed) {
+      var li = el("li", "listing-address-dpe__option");
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", "false");
+      li.setAttribute("data-listing-address-dpe-option", String(index));
+      li.tabIndex = -1;
+
+      var letter = candidate.etiquetteDpe ? String(candidate.etiquetteDpe).toUpperCase() : null;
+      var grade = el(
+        "span",
+        letter
+          ? "listing-address-dpe__grade dpe-label dpe-label--" + letter.toLowerCase()
+          : "listing-address-dpe__grade listing-address-dpe__grade--none",
+        letter || "?"
+      );
+      grade.title = letter ? "Étiquette DPE " + letter : "Étiquette non renseignée";
+      grade.appendChild(el("span", "listing-address-dpe__grade-caption", "DPE"));
+      li.appendChild(grade);
+
+      var body = el("div", "listing-address-dpe__body");
+      var head = el("div", "listing-address-dpe__head");
+      var titles = el("div");
+      var street = el("p", "listing-address-dpe__street");
+      street.appendChild(streetWithCorrections(candidate.street, typed.street));
+      titles.appendChild(street);
+      var locality = [candidate.postalCode, candidate.city].filter(Boolean).join(" ");
+      if (locality) titles.appendChild(el("p", "listing-address-dpe__locality", locality));
+      head.appendChild(titles);
+      if (candidate.matched && candidate.matched.surface && candidate.confidence >= 70) {
+        head.appendChild(el("span", "listing-address-dpe__match", "✓ Correspond à l'annonce"));
+      }
+      body.appendChild(head);
+
+      if (isCorrected(candidate, typed)) {
+        var correction = el("p", "listing-address-dpe__correction", "Vous aviez saisi ");
+        correction.appendChild(el("s", null, typed.street));
+        body.appendChild(correction);
+      }
+
+      var chips = el("ul", "listing-address-dpe__chips");
+      appendChip(chips, candidate.surface ? Math.round(candidate.surface) + " m²" : null);
+      appendChip(chips, floorLabel(candidate.floor));
+      appendChip(chips, typeLabel(candidate.typeBatiment));
+      appendChip(chips, candidate.otherNumber ? "Autre numéro que celui saisi" : null, "warn");
+      appendChip(
+        chips,
+        candidate.numberUnknown && typed.street && /^\s*\d/.test(typed.street) ? "N° de rue absent du DPE" : null,
+        "warn"
+      );
+      if (chips.childNodes.length) body.appendChild(chips);
+
+      var meta = [candidate.complement, dateLabel(candidate.dateEtablissement)]
+        .filter(Boolean)
+        .join(" · ");
+      if (meta) body.appendChild(el("p", "listing-address-dpe__meta", meta));
+
+      li.appendChild(body);
+      return li;
+    }
+
+    function dpeLead(result) {
+      var count = result.candidates.length;
+      if (result.reason === "number") {
+        return count > 1
+          ? "Vous n'avez pas indiqué de numéro : voici les logements de cette rue qui correspondent le mieux à l'annonce."
+          : "Vous n'avez pas indiqué de numéro : s'agit-il de ce logement ?";
+      }
+      if (
+        result.candidates.some(function (c) {
+          return c.otherNumber;
+        })
+      ) {
+        return "Un logement d'un autre numéro de cette rue correspond aussi à l'annonce. Lequel est le bien ?";
+      }
+      if (result.reason === "address") {
+        return count > 1
+          ? "Cette adresse n'apparaît pas telle quelle dans la base DPE. Choisissez le bon logement :"
+          : "Cette adresse n'apparaît pas telle quelle dans la base DPE. S'agit-il de ce logement ?";
+      }
+      return count > 1
+        ? "Plusieurs logements de cette adresse ont un DPE. Lequel est le bien ?"
+        : "Un DPE existe à cette adresse, sans correspondre tout à fait à l'annonce. Est-ce ce logement ?";
+    }
+
+    function dpeOptions(m) {
+      return m ? m.querySelectorAll("[data-listing-address-dpe-option]") : [];
+    }
+
+    function selectedIndex(m) {
+      var selected = m && m.querySelector("[data-listing-address-dpe-option].is-selected");
+      return selected ? Number(selected.getAttribute("data-listing-address-dpe-option")) : -1;
+    }
+
+    function selectOption(m, option, focus) {
+      dpeOptions(m).forEach(function (node) {
+        var on = node === option;
+        node.classList.toggle("is-selected", on);
+        node.setAttribute("aria-selected", on ? "true" : "false");
+        node.tabIndex = on ? 0 : -1;
+      });
+      if (option && focus) option.focus();
+    }
+
+    function moveSelection(m, delta) {
+      var options = dpeOptions(m);
+      if (!options.length) return;
+      var next = Math.min(options.length - 1, Math.max(0, selectedIndex(m) + delta));
+      selectOption(m, options[next], true);
+    }
+
+    function showDpeStep(m, typed, result) {
+      pending = { typed: typed, candidates: result.candidates };
+      var single = result.candidates.length === 1;
+
+      m.querySelector("[data-listing-address-dpe-lead]").textContent = dpeLead(result);
+      m.querySelector("[data-listing-address-dpe-confirm-label]").textContent = single
+        ? "Oui, associer"
+        : "Associer ce DPE";
+      m.querySelector("[data-listing-address-dpe-skip-label]").textContent = single
+        ? "Non, sans DPE"
+        : "Aucun";
+
+      var list = m.querySelector("[data-listing-address-dpe-list]");
+      list.classList.toggle("is-single", single);
+      list.textContent = "";
+      result.candidates.forEach(function (candidate, index) {
+        list.appendChild(buildDpeOption(candidate, index, typed));
+      });
+
+      var confirmBtn = m.querySelector("[data-listing-address-dpe-confirm]");
+      confirmBtn.disabled = false;
+      confirmBtn.classList.remove("is-loading");
+
+      step(m, "form").hidden = true;
+      step(m, "dpe").hidden = false;
+      setTitle(m, DPE_STEP_TITLE);
+      selectOption(m, dpeOptions(m)[0], true);
+    }
+
+    function setDpeStepBusy(m, busyBtn) {
+      m.querySelectorAll(".listing-address-dpe__actions button").forEach(function (btn) {
+        btn.disabled = true;
+      });
+      if (busyBtn) busyBtn.classList.add("is-loading");
+    }
+
+    function confirmDpe(m) {
+      if (!pending) return;
+      var candidate = pending.candidates[selectedIndex(m)];
+      if (!candidate) return;
+      setDpeStepBusy(m, m.querySelector("[data-listing-address-dpe-confirm]"));
+      saveAddress(m, addressFromCandidate(pending.typed, candidate), candidate.numeroDpe);
+    }
+
+    function skipDpe(m) {
+      if (!pending) return;
+      setDpeStepBusy(m, null);
+      saveAddress(m, pending.typed, null);
     }
 
     function fields(m) {
@@ -3447,6 +4247,7 @@
       }
       if (f.city) f.city.value = button.getAttribute("data-city") || "";
 
+      showFormStep(m, false);
       lastFocused = document.activeElement;
       m.hidden = false;
       document.body.classList.add("is-modal-open");
@@ -3461,12 +4262,21 @@
       // fraîche est déjà `hidden`, mais le body garde `is-modal-open`.
       var wasVisible = m && !m.hidden;
       if (m) m.hidden = true;
+      pending = null;
       document.body.classList.remove("is-modal-open");
       if (wasVisible && lastFocused && typeof lastFocused.focus === "function") {
         lastFocused.focus();
       }
       lastFocused = null;
     }
+
+    document.addEventListener("submit", function (event) {
+      var form = event.target.closest && event.target.closest("[data-listing-address-form]");
+      if (!form) return;
+      event.preventDefault();
+      var m = modal();
+      if (m && !m.hidden) submitAddress(m);
+    });
 
     document.addEventListener("click", function (event) {
       if (event.target.closest(".listing-location__maps-link")) {
@@ -3478,9 +4288,50 @@
         openFromButton(openBtn);
         return;
       }
+      var m = modal();
+      if (m && !m.hidden) {
+        if (event.target.closest("[data-listing-address-dpe-back]")) {
+          showFormStep(m, true);
+          return;
+        }
+        if (event.target.closest("[data-listing-address-dpe-confirm]")) {
+          confirmDpe(m);
+          return;
+        }
+        if (event.target.closest("[data-listing-address-dpe-skip]")) {
+          skipDpe(m);
+          return;
+        }
+        var option = event.target.closest("[data-listing-address-dpe-option]");
+        if (option) {
+          selectOption(m, option, true);
+          return;
+        }
+      }
       if (event.target.closest("[data-listing-address-dismiss]")) {
         closeModal();
       }
+    });
+
+    // Double-clic sur un logement : sélection et confirmation d'un geste.
+    document.addEventListener("dblclick", function (event) {
+      var option = event.target.closest && event.target.closest("[data-listing-address-dpe-option]");
+      var m = modal();
+      if (!option || !m || m.hidden) return;
+      selectOption(m, option, false);
+      confirmDpe(m);
+    });
+
+    // Échec serveur à l'enregistrement : on rend la main sans fermer la modale.
+    document.body.addEventListener("htmx:responseError", function (event) {
+      var target = event.detail && event.detail.target;
+      var m = modal();
+      if (!m || m.hidden || !target || target.id !== "listing-location-block") return;
+      setSubmitLoading(m, false);
+      m.querySelectorAll(".listing-address-dpe__actions button").forEach(function (btn) {
+        btn.disabled = false;
+        btn.classList.remove("is-loading");
+      });
     });
 
     document.addEventListener("keydown", function (event) {
@@ -3498,8 +4349,37 @@
         }
         return;
       }
+
+      var dpeStep = step(m, "dpe");
+      var inDpeStep = dpeStep && !dpeStep.hidden;
+      if (inDpeStep && event.target.closest("[data-listing-address-dpe-list]")) {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          moveSelection(m, event.key === "ArrowDown" ? 1 : -1);
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          confirmDpe(m);
+          return;
+        }
+        if (event.key === " ") {
+          var focused = document.activeElement;
+          if (focused && focused.matches("[data-listing-address-dpe-option]")) {
+            event.preventDefault();
+            selectOption(m, focused, true);
+          }
+          return;
+        }
+      }
+
       if (event.key !== "Escape") return;
       event.preventDefault();
+      // Échap dans l'étape DPE : retour à la saisie plutôt que fermeture.
+      if (inDpeStep) {
+        showFormStep(m, true);
+        return;
+      }
       closeModal();
     });
 
@@ -3664,7 +4544,10 @@
     document.body.addEventListener("htmx:afterSwap", function (event) {
       var target = event.detail && event.detail.target;
       if (!target) return;
-      if (target.id === "listing-location-block") {
+      if (
+        target.id === "listing-location-block" ||
+        target.id === "listing-linked-dpe-block"
+      ) {
         initStageHeights(target);
         return;
       }
@@ -3716,10 +4599,13 @@
       });
     }
 
-    function mapsHref(query) {
+    function mapsHref(candidate) {
+      if (candidate && candidate.mapsUrl) return candidate.mapsUrl;
+      var query =
+        (candidate && (candidate.mapsQuery || candidate.street)) || candidate || "";
       return (
         "https://www.google.com/maps/search/?api=1&query=" +
-        encodeURIComponent(query || "")
+        encodeURIComponent(query)
       );
     }
 
@@ -3784,7 +4670,7 @@
 
       var maps = document.createElement("a");
       maps.className = "address-book__map listing-address-ai-result__maps";
-      maps.href = mapsHref(candidate.mapsQuery || candidate.street);
+      maps.href = mapsHref(candidate);
       maps.target = "_blank";
       maps.rel = "noopener noreferrer";
       maps.setAttribute(
@@ -3801,6 +4687,26 @@
       if (value === true) return "✓ match";
       if (value === false) return "✗ non";
       return "— (absent de l'annonce)";
+    }
+
+    var DPE_DEBUG_DATE_ROWS = [
+      { critere: "Dernière modification DPE", key: "date_derniere_modification_dpe" },
+      { critere: "Date d'établissement", key: "date_etablissement_dpe" },
+      { critere: "Fin de validité DPE", key: "date_fin_validite_dpe" },
+      { critere: "Date réception ADEME", key: "date_reception_dpe" },
+      { critere: "Date visite diagnostiqueur", key: "date_visite_diagnostiqueur" },
+    ];
+
+    function dpeDateDebugTableRows(source) {
+      var dates = (source && source.dates) || {};
+      return DPE_DEBUG_DATE_ROWS.map(function (def) {
+        return {
+          critere: def.critere,
+          annonce: null,
+          base: dates[def.key] ?? null,
+          resultat: "Exclu de la recherche (debug)",
+        };
+      });
     }
 
     /**
@@ -3834,9 +4740,12 @@
           { critere: "Type DPE", valeur: crit.typeBatiment ?? "(vide)" },
           { critere: "DPE", valeur: crit.dpe ?? "(vide)" },
           { critere: "GES", valeur: crit.ges ?? "(vide)" },
+          { critere: "Conso (kWhEP/m².an)", valeur: crit.consoM2 ?? "(vide)" },
+          { critere: "Émissions (kg CO₂/m².an)", valeur: crit.emissionsM2 ?? "(vide)" },
           { critere: "Surface (m²)", valeur: crit.surfaceM2 ?? "(vide)" },
           { critere: "Étage", valeur: crit.etage ?? "(vide)" },
           { critere: "Année", valeur: crit.anneeConstruction ?? "(vide)" },
+          { critere: "Énergie chauffage", valeur: crit.sourceEnergie ?? "(vide)" },
         ];
       }
 
@@ -3868,6 +4777,8 @@
           { critere: "Surface (m²)", annonce: crit.surfaceM2, base: s.surface, resultat: matchGlyph(m2.surface) },
           { critere: "DPE", annonce: crit.dpe, base: s.dpe, resultat: matchGlyph(m2.dpe) },
           { critere: "GES", annonce: crit.ges, base: s.ges, resultat: matchGlyph(m2.ges) },
+          { critere: "Conso (kWhEP/m².an)", annonce: crit.consoM2, base: s.conso, resultat: matchGlyph(m2.conso) },
+          { critere: "Émissions (kg CO₂/m².an)", annonce: crit.emissionsM2, base: s.emissions, resultat: matchGlyph(m2.emissions) },
           {
             critere: "Étage",
             annonce: crit.etage,
@@ -3888,7 +4799,13 @@
             base: s.annee != null ? s.annee : s.periode ? "période " + s.periode : null,
             resultat: matchGlyph(m2.year),
           },
-        ];
+          {
+            critere: "Énergie chauffage",
+            annonce: crit.sourceEnergie,
+            base: s.energie,
+            resultat: matchGlyph(m2.energy),
+          },
+        ].concat(dpeDateDebugTableRows(s));
         var label =
           "#" +
           (i + 1) +
@@ -4333,6 +5250,7 @@
     }
 
     function parseCoord(value) {
+      if (value == null || value === "") return null;
       var n = Number(value);
       return Number.isFinite(n) ? n : null;
     }
@@ -4381,6 +5299,9 @@
           L.marker([lat, lng]).addTo(map);
           viewEl._leafletMap = map;
           viewEl.dataset.mapReady = "1";
+          if (host && typeof window.__setListingMapExpandVisible === "function") {
+            window.__setListingMapExpandVisible(host, true);
+          }
           window.setTimeout(function () {
             map.invalidateSize();
           }, 0);
@@ -4394,10 +5315,13 @@
       var scope = root || document;
       scope.querySelectorAll("[data-listing-map-view]").forEach(function (viewEl) {
         var host = viewEl.closest("[data-listing-map]");
-        if (!host) return;
+        if (!host || host.getAttribute("data-precise-location") !== "1") return;
         var lat = parseCoord(host.getAttribute("data-lat"));
         var lng = parseCoord(host.getAttribute("data-lng"));
         if (lat == null || lng == null) return;
+        var col = host.closest("[data-location-col]");
+        var placeholder = host.querySelector("[data-location-placeholder]");
+        if (placeholder) placeholder.hidden = true;
         initMapInView(viewEl, lat, lng);
       });
     }
@@ -4409,6 +5333,10 @@
     // Permet aux swaps non-HTMX (ex. application de l'adresse détectée) de
     // (ré)initialiser la carte sur un fragment fraîchement injecté.
     window.__initListingMaps = scan;
+    window.__destroyListingMapView = destroyMap;
+    window.__parseMapCoord = parseCoord;
+    // Partagé avec le moteur de localisation probable (dessin heatmap/zone).
+    window.__loadLeaflet = loadLeaflet;
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", onReady);
@@ -4419,12 +5347,964 @@
     document.body.addEventListener("htmx:afterSwap", function (event) {
       var target = event.detail && event.detail.target;
       if (!target) return;
+      if (!target.isConnected && target.id) {
+        target = document.getElementById(target.id);
+        if (!target) return;
+      }
       if (
         target.id === "listing-location-block" ||
         target.querySelector("[data-listing-map-view]")
       ) {
         scan(target);
       }
+    });
+  })();
+
+  // Fiche annonce : zone probable automatique (sauf adresse réelle précise).
+  (function initProbableLocation() {
+    function csrfToken() {
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      return meta ? meta.content : "";
+    }
+
+    function readBasemap(host) {
+      try {
+        var raw = host && host.getAttribute("data-basemap-config");
+        return raw ? JSON.parse(decodeURIComponent(raw)) : null;
+      } catch (_err) {
+        return null;
+      }
+    }
+
+    // Couleur de chaleur : rouge (faible) → vert (fort), via jaune.
+    function heatColor(score) {
+      var hue = Math.round(120 * Math.max(0, Math.min(1, score))); // 0=rouge,120=vert
+      return "hsl(" + hue + ", 85%, 50%)";
+    }
+
+    function destroyInlineMap(host) {
+      var viewEl = host && host.querySelector("[data-listing-map-view]");
+      if (viewEl && typeof window.__destroyListingMapView === "function") {
+        window.__destroyListingMapView(viewEl);
+      }
+    }
+
+    function ensureMap(host, center) {
+      var viewEl = host && host.querySelector("[data-listing-map-view]");
+      if (!viewEl) return Promise.resolve(null);
+      if (viewEl._leafletMap) {
+        if (host.getAttribute("data-precise-location") === "1") {
+          return Promise.resolve(viewEl._leafletMap);
+        }
+        destroyInlineMap(host);
+      }
+      var loader = window.__loadLeaflet;
+      if (!loader) return Promise.resolve(null);
+      var basemap = readBasemap(host);
+      if (!basemap || !basemap.url) return Promise.resolve(null);
+      return loader().then(function (L) {
+        if (!viewEl.isConnected) return null;
+        var map = L.map(viewEl, {
+          scrollWheelZoom: false,
+          attributionControl: true,
+        }).setView([center.latitude, center.longitude], 15);
+        var opts = { maxZoom: 19, attribution: basemap.attribution || "" };
+        if (basemap.subdomains) opts.subdomains = basemap.subdomains;
+        L.tileLayer(basemap.url, opts).addTo(map);
+        viewEl._leafletMap = map;
+        viewEl.dataset.mapReady = "1";
+        var placeholder = host.querySelector("[data-location-placeholder]");
+        if (placeholder) placeholder.hidden = true;
+        window.setTimeout(function () {
+          map.invalidateSize();
+        }, 0);
+        return map;
+      });
+    }
+
+    function distanceMeters(lat1, lng1, lat2, lng2) {
+      var R = 6371000;
+      var toRad = Math.PI / 180;
+      var dLat = (lat2 - lat1) * toRad;
+      var dLng = (lng2 - lng1) * toRad;
+      var s =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * toRad) *
+          Math.cos(lat2 * toRad) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+    }
+
+    // Quasi tout le nuage est au score max : le rectangle de recherche est saturé.
+    function heatSaturated(heat) {
+      if (!heat || heat.length < 30) return false;
+      var max = 0;
+      for (var i = 0; i < heat.length; i += 1) {
+        if (heat[i].score > max) max = heat[i].score;
+      }
+      if (!(max > 0)) return false;
+      var near = 0;
+      for (var j = 0; j < heat.length; j += 1) {
+        if (heat[j].score >= max * 0.9) near += 1;
+      }
+      return near / heat.length >= 0.45;
+    }
+
+    /** Cercle des lieux cités, aligné sur le resserrage serveur (rayon 350–1500 m). */
+    function constraintFocus(result) {
+      var list = (result.constraints || []).filter(function (c) {
+        return (
+          !c.rejected &&
+          Number.isFinite(c.latitude) &&
+          Number.isFinite(c.longitude)
+        );
+      });
+      if (!list.length) return null;
+      var wsum = 0;
+      var lat = 0;
+      var lon = 0;
+      var parts = [];
+      list.forEach(function (c) {
+        var w = Math.max(
+          0.05,
+          Number.isFinite(c.geocoding_confidence) ? c.geocoding_confidence : 0.5
+        );
+        wsum += w;
+        lat += c.latitude * w;
+        lon += c.longitude * w;
+        parts.push({ lat: c.latitude, lon: c.longitude, w: w });
+      });
+      var center = { latitude: lat / wsum, longitude: lon / wsum };
+      var acc = 0;
+      parts.forEach(function (p) {
+        var d = distanceMeters(center.latitude, center.longitude, p.lat, p.lon);
+        acc += p.w * d * d;
+      });
+      var rms = Math.sqrt(acc / wsum);
+      return {
+        center: center,
+        radius: Math.round(Math.min(1500, Math.max(350, rms * 1.15))),
+      };
+    }
+
+    /**
+     * Zone dessinée : dégradé à l'intérieur d'un cercle. Si l'estimation stockée
+     * est un plateau (ancien cache), on resserre sur les lieux cités.
+     */
+    function zoneForDraw(result) {
+      var heat = (result.heatmap || []).map(function (c) {
+        return { lat: c.lat, lng: c.lng, score: c.score };
+      });
+      var center = result.center;
+      var radius = result.estimated_radius_m || 0;
+      if (!center) return { heat: heat, center: null, radius: radius };
+
+      if (heatSaturated(heat)) {
+        var focus = constraintFocus(result);
+        if (focus) {
+          center = focus.center;
+          radius = focus.radius;
+          heat = heat
+            .map(function (cell) {
+              var d = distanceMeters(
+                center.latitude,
+                center.longitude,
+                cell.lat,
+                cell.lng
+              );
+              return {
+                lat: cell.lat,
+                lng: cell.lng,
+                score: radius > 0 ? Math.max(0, 1 - d / radius) : 0,
+              };
+            })
+            .filter(function (cell) {
+              return cell.score >= 0.15;
+            });
+        }
+      } else if (heat.length && radius > 0) {
+        heat = heat.filter(function (cell) {
+          return (
+            distanceMeters(center.latitude, center.longitude, cell.lat, cell.lng) <=
+            radius
+          );
+        });
+      }
+      return { heat: heat, center: center, radius: radius };
+    }
+
+    function draw(map, L, result) {
+      if (map._plocLayer) {
+        map.removeLayer(map._plocLayer);
+      }
+      var group = L.layerGroup().addTo(map);
+      map._plocLayer = group;
+      var boundsPts = [];
+      var zone = zoneForDraw(result);
+
+      (zone.heat || []).forEach(function (cell) {
+        L.circleMarker([cell.lat, cell.lng], {
+          radius: 7,
+          stroke: false,
+          fillColor: heatColor(cell.score),
+          fillOpacity: 0.15 + 0.55 * cell.score,
+        }).addTo(group);
+        boundsPts.push([cell.lat, cell.lng]);
+      });
+
+      var center = zone.center;
+      var radius = zone.radius;
+
+      (result.top_candidates || []).forEach(function (cand, i) {
+        if (
+          center &&
+          radius > 0 &&
+          distanceMeters(center.latitude, center.longitude, cand.latitude, cand.longitude) >
+            radius
+        ) {
+          return;
+        }
+        L.circleMarker([cand.latitude, cand.longitude], {
+          radius: i === 0 ? 9 : 6,
+          color: "#111827",
+          weight: 2,
+          fillColor: "#22c55e",
+          fillOpacity: 0.9,
+        })
+          .bindTooltip(
+            "Candidat " + (i + 1) + " — score " + Math.round(cand.score * 100) + "%"
+          )
+          .addTo(group);
+        boundsPts.push([cand.latitude, cand.longitude]);
+      });
+
+      if (center) {
+        L.circleMarker([center.latitude, center.longitude], {
+          radius: 5,
+          color: "#b91c1c",
+          weight: 2,
+          fillColor: "#ef4444",
+          fillOpacity: 1,
+        })
+          .bindTooltip("Centre estimé")
+          .addTo(group);
+        if (radius > 0) {
+          L.circle([center.latitude, center.longitude], {
+            radius: radius,
+            color: "#1d4ed8",
+            weight: 2,
+            fill: false,
+          }).addTo(group);
+          var dLat = radius / 111320;
+          var dLng = radius / (111320 * Math.cos((center.latitude * Math.PI) / 180));
+          boundsPts.push(
+            [center.latitude + dLat, center.longitude],
+            [center.latitude - dLat, center.longitude],
+            [center.latitude, center.longitude + dLng],
+            [center.latitude, center.longitude - dLng]
+          );
+        }
+      }
+
+      if (boundsPts.length) {
+        try {
+          map.fitBounds(L.latLngBounds(boundsPts).pad(0.15));
+        } catch (_err) {
+          /* ignore */
+        }
+      }
+    }
+
+    var STATUS_LABELS = {
+      estimated: "Zone probable estimée",
+      inconsistent: "Contraintes incompatibles",
+      exact_address: "Adresse déjà connue",
+      unavailable: "Estimation indisponible",
+      insufficient: "Indices insuffisants",
+    };
+
+    function pct01(value) {
+      if (value == null || !Number.isFinite(value)) return "—";
+      return Math.round(value * 100) + " %";
+    }
+
+    function constraintDistanceLabel(c) {
+      if (c.relation === "travel_time") {
+        var min = c.max_minutes != null ? c.max_minutes + " min" : "";
+        var minLo = c.min_minutes != null ? "≥ " + c.min_minutes + " min" : "";
+        return [minLo, min].filter(Boolean).join(" ") || "—";
+      }
+      if (c.relation === "distance") {
+        var m = c.max_meters != null ? c.max_meters + " m" : "";
+        var mLo = c.min_meters != null ? "≥ " + c.min_meters + " m" : "";
+        return [mLo, m].filter(Boolean).join(" ") || "—";
+      }
+      return c.vague_kind || "proche (convention)";
+    }
+
+    /**
+     * Résumé lisible + détail technique en console (chargement cache ou recalcul).
+     * Variable globale : window.__lastLocationEstimate
+     */
+    function logLocationEstimateDebug(result) {
+      if (!result) return;
+      window.__lastLocationEstimate = result;
+
+      var status = result.status || "?";
+      var statusLabel = STATUS_LABELS[status] || status;
+      var rootLabel =
+        "[Zone probable] " +
+        statusLabel +
+        " — confiance " +
+        pct01(result.confidence) +
+        " — " +
+        (result.constraints_used != null ? result.constraints_used : "?") +
+        " indice(s) utilisé(s)" +
+        (result.constraints_rejected
+          ? ", " + result.constraints_rejected + " rejeté(s)"
+          : "");
+
+      if (console.groupCollapsed) console.groupCollapsed(rootLabel);
+      else console.log(rootLabel);
+
+      console.log("%c" + statusLabel, "font-weight:600;font-size:13px");
+      if (result.cached && result.cached_at) {
+        console.log(
+          "Résultat enregistré le " +
+            new Date(result.cached_at).toLocaleString("fr-FR") +
+            " (aucun appel LLM)."
+        );
+      } else if (result.cached === false) {
+        console.log("Calcul frais (non servi depuis le cache annonce).");
+      }
+      if (status === "estimated" || status === "inconsistent") {
+        var radius =
+          result.estimated_radius_m != null
+            ? "~" + result.estimated_radius_m + " m"
+            : "n/c";
+        console.log(
+          "Confiance " +
+            pct01(result.confidence) +
+            " · rayon " +
+            radius +
+            " · " +
+            (result.constraints_used || 0) +
+            " indice(s) utilisé(s)" +
+            (result.constraints_rejected
+              ? ", " + result.constraints_rejected + " rejeté(s)"
+              : "")
+        );
+      }
+      var candidatesSummary = result.top_candidates || [];
+      if (candidatesSummary.length) {
+        candidatesSummary.forEach(function (c, i) {
+          console.log(
+            "Candidat " +
+              (i + 1) +
+              " — " +
+              pct01(c.score) +
+              " (" +
+              c.latitude.toFixed(4) +
+              ", " +
+              c.longitude.toFixed(4) +
+              ")"
+          );
+        });
+      }
+      console.log(""); // séparateur avant le détail technique
+
+      console.table([
+        {
+          champ: "Statut",
+          valeur: status + " (" + statusLabel + ")",
+        },
+        {
+          champ: "Confiance globale",
+          valeur: pct01(result.confidence),
+        },
+        {
+          champ: "Rayon estimé",
+          valeur:
+            result.estimated_radius_m != null
+              ? result.estimated_radius_m + " m"
+              : "—",
+        },
+        {
+          champ: "Centre",
+          valeur: result.center
+            ? result.center.latitude + ", " + result.center.longitude
+            : "—",
+        },
+        {
+          champ: "Indices utilisés / rejetés",
+          valeur:
+            (result.constraints_used != null ? result.constraints_used : "—") +
+            " / " +
+            (result.constraints_rejected != null ? result.constraints_rejected : "—"),
+        },
+        {
+          champ: "Cellules heatmap",
+          valeur: (result.heatmap && result.heatmap.length) || 0,
+        },
+        {
+          champ: "Adresse exacte (texte)",
+          valeur: result.exact_address || "—",
+        },
+        {
+          champ: "Depuis le cache annonce",
+          valeur: result.cached ? "oui" : "non",
+        },
+        {
+          champ: "Enregistré le",
+          valeur: result.cached_at
+            ? new Date(result.cached_at).toLocaleString("fr-FR")
+            : "—",
+        },
+      ]);
+
+      if (result.warnings && result.warnings.length) {
+        console.warn("[Zone probable] Avertissements:", result.warnings);
+      }
+
+      var constraints = result.constraints || [];
+      if (console.groupCollapsed) {
+        console.groupCollapsed(
+          "Contraintes (extraction → géocodage → accessibilité)"
+        );
+      }
+      if (constraints.length) {
+        console.table(
+          constraints.map(function (c, i) {
+            return {
+              "#": i + 1,
+              lieu: c.place || "?",
+              type: c.place_type || "—",
+              relation: c.relation || "—",
+              distance_temps: constraintDistanceLabel(c),
+              transport: c.transport || "—",
+              precision: c.precision || "—",
+              conf_extraction: c.confidence != null ? pct01(c.confidence) : "—",
+              lat: c.latitude != null ? c.latitude : "—",
+              lng: c.longitude != null ? c.longitude : "—",
+              conf_geocodage:
+                c.geocoding_confidence != null
+                  ? pct01(c.geocoding_confidence)
+                  : "—",
+              accessibilite: c.access_mode || "—",
+              rejete: c.rejected ? "oui" : "non",
+              motif_rejet: c.reject_reason || "—",
+              label_osm: c.geocoded_label
+                ? String(c.geocoded_label).slice(0, 60)
+                : "—",
+            };
+          })
+        );
+      } else {
+        console.info(
+          "[Zone probable] Aucune contrainte détaillée (statut " + status + ")."
+        );
+      }
+      if (console.groupEnd) console.groupEnd();
+
+      var candidates = result.top_candidates || [];
+      if (candidates.length) {
+        if (console.groupCollapsed) console.groupCollapsed("Candidats (grille)");
+        console.table(
+          candidates.map(function (c, i) {
+            return {
+              rang: i + 1,
+              score_grille: pct01(c.score),
+              latitude: c.latitude,
+              longitude: c.longitude,
+            };
+          })
+        );
+        if (console.groupEnd) console.groupEnd();
+      }
+
+      var heat = result.heatmap || [];
+      if (heat.length) {
+        var topHeat = heat.slice().sort(function (a, b) {
+          return (b.score || 0) - (a.score || 0);
+        });
+        if (console.groupCollapsed) {
+          console.groupCollapsed(
+            "Heatmap (top " + Math.min(15, topHeat.length) + " cellules / " + heat.length + ")"
+          );
+        }
+        console.table(
+          topHeat.slice(0, 15).map(function (cell, i) {
+            return {
+              rang: i + 1,
+              score: pct01(cell.score),
+              lat: cell.lat,
+              lng: cell.lng,
+            };
+          })
+        );
+        if (console.groupEnd) console.groupEnd();
+      }
+
+      var poly = (result.best_area && result.best_area.polygon) || [];
+      if (poly.length >= 3) {
+        console.info(
+          "[Zone probable] Polygone zone (~" + poly.length + " sommets) :",
+          poly
+        );
+      }
+
+      console.info(
+        "[Zone probable] Objet complet : window.__lastLocationEstimate"
+      );
+      if (console.groupEnd) console.groupEnd();
+    }
+
+    function setLocationLoading(panelRoot, on) {
+      var overlay =
+        panelRoot && panelRoot.querySelector(".listing-location__overlay");
+      if (overlay) overlay.classList.toggle("is-loading", Boolean(on));
+    }
+
+    function setPlaceholderState(host, mode) {
+      var ph = host && host.querySelector("[data-location-placeholder]");
+      if (!ph) return;
+      var title = ph.querySelector("[data-location-placeholder-title]");
+      var text = ph.querySelector("[data-location-placeholder-text]");
+      if (mode === "loading") {
+        ph.hidden = false;
+        if (title) title.textContent = "Analyse en cours";
+        if (text) {
+          text.textContent =
+            "Recherche d'indices de localisation dans l'annonce…";
+        }
+      } else if (mode === "empty") {
+        ph.hidden = false;
+        if (title) title.textContent = "Bien non localisé";
+        if (text) {
+          text.textContent =
+            "Aucun indice suffisant dans l'annonce pour estimer une zone. Saisissez ou déterminez l'adresse réelle pour afficher le bien sur la carte.";
+        }
+      } else if (mode === "hide") {
+        ph.hidden = true;
+      }
+    }
+
+    function drawExactAddress(map, L, result) {
+      if (map._plocLayer) {
+        map.removeLayer(map._plocLayer);
+      }
+      var group = L.layerGroup().addTo(map);
+      map._plocLayer = group;
+      var center = result.center;
+      L.marker([center.latitude, center.longitude])
+        .bindTooltip(
+          result.exact_address
+            ? "Adresse repérée : " + result.exact_address
+            : "Position estimée"
+        )
+        .addTo(group);
+      map.setView([center.latitude, center.longitude], 17);
+    }
+
+    function applyEstimateResult(col, result, host) {
+      var mapHost = host || col.querySelector("[data-listing-map]");
+      var panelRoot = col.closest(".listing-location");
+      setLocationLoading(panelRoot, false);
+
+      if (!mapHost || mapHost.getAttribute("data-precise-location") === "1") {
+        return;
+      }
+
+      if (result && result.error) {
+        logLocationEstimateDebug({
+          status: "unavailable",
+          warnings: [result.error.message || "Erreur."],
+        });
+        setPlaceholderState(mapHost, "empty");
+        return;
+      }
+
+      logLocationEstimateDebug(result);
+
+      var showHeatmap =
+        result &&
+        (result.status === "estimated" || result.status === "inconsistent") &&
+        result.center &&
+        result.heatmap &&
+        result.heatmap.length > 0;
+
+      var showExactFromText =
+        result &&
+        result.status === "exact_address" &&
+        result.center &&
+        Number.isFinite(result.center.latitude) &&
+        Number.isFinite(result.center.longitude);
+
+      if (!showHeatmap && !showExactFromText) {
+        setPlaceholderState(mapHost, "empty");
+        return;
+      }
+
+      setPlaceholderState(mapHost, "hide");
+      mapHost._plocResult = result;
+      destroyInlineMap(mapHost);
+      ensureMap(mapHost, result.center).then(function (map) {
+        if (!map || !window.L) return;
+        if (showHeatmap) {
+          draw(map, window.L, result);
+        } else {
+          drawExactAddress(map, window.L, result);
+        }
+        if (typeof window.__setListingMapExpandVisible === "function") {
+          window.__setListingMapExpandVisible(mapHost, true);
+        }
+      });
+    }
+
+    function fetchProbableForHost(host, attempt) {
+      if (!host || host.getAttribute("data-auto-probable") !== "1") return;
+      if (host.getAttribute("data-precise-location") === "1") return;
+
+      var col = host.closest("[data-location-col]");
+      var url = host.getAttribute("data-location-cache-url");
+      if (!col || !url) return;
+
+      var tries = attempt || 0;
+      var panelRoot = col.closest(".listing-location");
+      if (tries === 0) {
+        host.setAttribute("data-probable-bootstrapped", "1");
+        setLocationLoading(panelRoot, true);
+        setPlaceholderState(host, "loading");
+        if (host._plocFetchAbort) {
+          try {
+            host._plocFetchAbort.abort();
+          } catch (_err) {
+            /* ignore */
+          }
+        }
+        host._plocFetchAbort = new AbortController();
+      }
+
+      var fetchSignal =
+        host._plocFetchAbort && host._plocFetchAbort.signal
+          ? host._plocFetchAbort.signal
+          : undefined;
+
+      fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: fetchSignal,
+      })
+        .then(function (res) {
+          return res.json().catch(function () {
+            return { ready: true, status: "unavailable" };
+          });
+        })
+        .then(function (result) {
+          if (!host.isConnected) return;
+          if (
+            result &&
+            result.status === "exact_address" &&
+            !result.center &&
+            host.getAttribute("data-auto-probable") === "1"
+          ) {
+            if (tries < 3) {
+              window.setTimeout(function () {
+                fetchProbableForHost(host, tries + 1);
+              }, tries === 0 ? 80 : 400);
+              return;
+            }
+          }
+          if (!result || result.ready === false) {
+            if (tries < 45) {
+              window.setTimeout(function () {
+                fetchProbableForHost(host, tries + 1);
+              }, 2000);
+              return;
+            }
+            result = { ready: true, status: "unavailable" };
+          }
+          applyEstimateResult(col, result, host);
+        })
+        .catch(function (err) {
+          if (err && err.name === "AbortError") return;
+          if (!host.isConnected) return;
+          if (tries < 45) {
+            window.setTimeout(function () {
+              fetchProbableForHost(host, tries + 1);
+            }, 2000);
+            return;
+          }
+          setLocationLoading(panelRoot, false);
+          setPlaceholderState(host, "empty");
+        });
+    }
+
+    function bootstrapProbableLocations(root) {
+      var scope = root || document;
+      scope.querySelectorAll('[data-auto-probable="1"]').forEach(function (host) {
+        fetchProbableForHost(host);
+      });
+    }
+
+    window.__bootstrapProbableLocations = bootstrapProbableLocations;
+
+    function onReady() {
+      bootstrapProbableLocations(document);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", onReady);
+    } else {
+      onReady();
+    }
+
+    function onLocationBlockReady(target) {
+      if (!target) return;
+      // htmx 2 + outerHTML : detail.target est l'ancien nœud, détaché du DOM.
+      if (!target.isConnected && target.id) {
+        target = document.getElementById(target.id);
+        if (!target) return;
+      }
+      if (
+        target.id !== "listing-location-block" &&
+        !target.querySelector('[data-auto-probable="1"]') &&
+        !target.querySelector("[data-precise-location]")
+      ) {
+        return;
+      }
+      if (typeof window.__initListingMaps === "function") {
+        window.__initListingMaps(target);
+      }
+      bootstrapProbableLocations(target);
+    }
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      onLocationBlockReady(event.detail && event.detail.target);
+    });
+
+    document.body.addEventListener("htmx:afterSettle", function (event) {
+      var target = event.detail && event.detail.target;
+      if (target && target.id === "listing-location-block") {
+        onLocationBlockReady(target);
+      }
+    });
+
+    window.__drawProbableOnMap = draw;
+
+    document.body.addEventListener("click", function (event) {
+      var btn = event.target.closest("[data-location-probable-refresh]");
+      if (!btn || btn.disabled) return;
+
+      var panel = btn.closest(".listing-location");
+      var col = panel && panel.querySelector("[data-location-col]");
+      var mapHost = panel && panel.querySelector("[data-listing-map]");
+      var url = btn.getAttribute("data-location-estimate-url");
+      if (!panel || !col || !url) return;
+
+      btn.disabled = true;
+      setLocationLoading(panel, true);
+      if (
+        mapHost &&
+        mapHost.getAttribute("data-auto-probable") === "1" &&
+        mapHost.getAttribute("data-precise-location") !== "1"
+      ) {
+        setPlaceholderState(mapHost, "loading");
+      }
+
+      fetch(url, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken(),
+        },
+        credentials: "same-origin",
+        cache: "no-store",
+        body: JSON.stringify({ force: true }),
+      })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            if (!res.ok) {
+              var msg =
+                (body && body.error && body.error.message) ||
+                "Recalcul de la zone impossible.";
+              return { error: { message: msg } };
+            }
+            return body;
+          });
+        })
+        .then(function (result) {
+          if (!panel.isConnected) return;
+          if (
+            mapHost &&
+            mapHost.getAttribute("data-auto-probable") === "1" &&
+            mapHost.getAttribute("data-precise-location") !== "1"
+          ) {
+            applyEstimateResult(col, result, mapHost);
+          } else {
+            setLocationLoading(panel, false);
+            if (result && !result.error) {
+              logLocationEstimateDebug(result);
+            }
+          }
+        })
+        .catch(function () {
+          if (!panel.isConnected) return;
+          if (
+            mapHost &&
+            mapHost.getAttribute("data-auto-probable") === "1"
+          ) {
+            applyEstimateResult(
+              col,
+              { error: { message: "Erreur réseau lors du recalcul." } },
+              mapHost
+            );
+          } else {
+            setLocationLoading(panel, false);
+          }
+        })
+        .finally(function () {
+          if (btn.isConnected) btn.disabled = false;
+        });
+    });
+  })();
+
+  // Fiche annonce : agrandir la carte (modale plein écran).
+  (function initListingMapExpandModal() {
+    function setExpandVisible(host, visible) {
+      var btn = host && host.querySelector("[data-listing-map-expand]");
+      if (btn) btn.hidden = !visible;
+    }
+    window.__setListingMapExpandVisible = setExpandVisible;
+
+    function getModal() {
+      return document.querySelector("[data-listing-location-map-modal]");
+    }
+
+    function readBasemap(host) {
+      try {
+        var raw = host && host.getAttribute("data-basemap-config");
+        return raw ? JSON.parse(decodeURIComponent(raw)) : null;
+      } catch (_err) {
+        return null;
+      }
+    }
+
+    function closeModal() {
+      var modal = getModal();
+      if (!modal || modal.hidden) return;
+      modal.hidden = true;
+      document.body.classList.remove("is-modal-open");
+      var viewEl = modal.querySelector("[data-listing-map-modal-view]");
+      if (viewEl && typeof window.__destroyListingMapView === "function") {
+        window.__destroyListingMapView(viewEl);
+      }
+    }
+
+    function openModal(sourceHost) {
+      var modal = getModal();
+      if (!modal || !sourceHost || sourceHost.querySelector("[data-location-placeholder]:not([hidden])")) {
+        return;
+      }
+      var inlineView = sourceHost.querySelector("[data-listing-map-view]");
+      if (!inlineView || !inlineView._leafletMap) {
+        var hasPrecise =
+          sourceHost.getAttribute("data-precise-location") === "1" &&
+          sourceHost.getAttribute("data-lat") &&
+          sourceHost.getAttribute("data-lng");
+        if (!sourceHost._plocResult && !hasPrecise) return;
+      }
+
+      var modalHost = modal.querySelector("[data-listing-map-modal-host]");
+      var viewEl = modal.querySelector("[data-listing-map-modal-view]");
+      var basemapRaw = sourceHost.getAttribute("data-basemap-config");
+      if (modalHost && basemapRaw) {
+        modalHost.setAttribute("data-basemap-config", basemapRaw);
+      }
+
+      modal.hidden = false;
+      document.body.classList.add("is-modal-open");
+
+      var loader = window.__loadLeaflet;
+      if (!loader) return;
+
+      loader()
+        .then(function (L) {
+          if (modal.hidden || !viewEl) return;
+          if (typeof window.__destroyListingMapView === "function") {
+            window.__destroyListingMapView(viewEl);
+          }
+
+          var basemap = readBasemap(modalHost || sourceHost);
+          if (!basemap || !basemap.url) return;
+
+          var map = L.map(viewEl, {
+            scrollWheelZoom: true,
+            attributionControl: true,
+          });
+          var opts = { maxZoom: 19, attribution: basemap.attribution || "" };
+          if (basemap.subdomains) opts.subdomains = basemap.subdomains;
+          L.tileLayer(basemap.url, opts).addTo(map);
+          viewEl._leafletMap = map;
+          viewEl.dataset.mapReady = "1";
+
+          var result = sourceHost._plocResult;
+          var drawFn = window.__drawProbableOnMap;
+          if (result && drawFn) {
+            drawFn(map, L, result);
+          } else {
+            var parse =
+              window.__parseMapCoord ||
+              function (v) {
+                var n = Number(v);
+                return Number.isFinite(n) ? n : null;
+              };
+            var lat = parse(sourceHost.getAttribute("data-lat"));
+            var lng = parse(sourceHost.getAttribute("data-lng"));
+            if (lat != null && lng != null) {
+              map.setView([lat, lng], 17);
+              L.marker([lat, lng]).addTo(map);
+            } else if (inlineView && inlineView._leafletMap) {
+              var inlineMap = inlineView._leafletMap;
+              map.setView(inlineMap.getCenter(), inlineMap.getZoom());
+            }
+          }
+
+          window.setTimeout(function () {
+            map.invalidateSize();
+          }, 0);
+          window.setTimeout(function () {
+            map.invalidateSize();
+          }, 220);
+        })
+        .catch(function (err) {
+          console.warn("[Carte] Impossible d'ouvrir la carte agrandie.", err);
+          closeModal();
+        });
+    }
+
+    document.addEventListener("click", function (event) {
+      var expandBtn = event.target.closest("[data-listing-map-expand]");
+      if (expandBtn) {
+        event.preventDefault();
+        openModal(expandBtn.closest("[data-listing-map]"));
+        return;
+      }
+      if (event.target.closest("[data-listing-location-map-dismiss]")) {
+        closeModal();
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") return;
+      var modal = getModal();
+      if (!modal || modal.hidden) return;
+      event.preventDefault();
+      closeModal();
     });
   })();
 
@@ -4475,37 +6355,55 @@
       panel.style.left = Math.round(left) + "px";
     }
 
+    function isDvfSalesModal(root) {
+      return Boolean(root && root.classList && root.classList.contains("modal--dvf-sales"));
+    }
+
     function openPopover(id, anchor) {
-      var popover = document.getElementById(id);
-      if (!popover || !anchor) return;
-      var panel = popover.querySelector("[data-dvf-sales-panel]");
-      if (!panel) return;
+      var root = document.getElementById(id);
+      if (!root || !anchor) return;
+      var panel = root.querySelector("[data-dvf-sales-panel]");
+      var asModal = !panel && isDvfSalesModal(root);
+      if (!panel && !asModal) return;
 
       closeAnyOpen();
       lastFocused = anchor;
-      openPopoverEl = popover;
+      openPopoverEl = root;
       openAnchor = anchor;
 
-      popover.hidden = false;
-      popover.classList.add("is-open");
+      root.hidden = false;
+      root.classList.add("is-open");
       setAnchorExpanded(anchor, true);
+      if (asModal) {
+        document.body.classList.add("is-modal-open");
+      }
 
       requestAnimationFrame(function () {
-        positionDvfSalesPopover(panel, anchor);
-        var closeBtn = panel.querySelector("[data-dvf-sales-dismiss]");
-        if (closeBtn) closeBtn.focus();
+        if (panel) {
+          positionDvfSalesPopover(panel, anchor);
+        }
+        var closeBtn = panel
+          ? panel.querySelector("[data-dvf-sales-dismiss]")
+          : root.querySelector(".modal__close, [data-dvf-sales-dismiss]");
+        if (closeBtn && typeof closeBtn.focus === "function") {
+          closeBtn.focus();
+        }
       });
     }
 
-    function closePopover(popover) {
-      if (!popover) return;
-      var wasVisible = !popover.hidden;
-      var panel = popover.querySelector("[data-dvf-sales-panel]");
-      popover.hidden = true;
-      popover.classList.remove("is-open");
+    function closePopover(root) {
+      if (!root) return;
+      var wasVisible = !root.hidden;
+      var panel = root.querySelector("[data-dvf-sales-panel]");
+      var asModal = isDvfSalesModal(root);
+      root.hidden = true;
+      root.classList.remove("is-open");
       if (panel) {
         panel.style.top = "";
         panel.style.left = "";
+      }
+      if (asModal) {
+        document.body.classList.remove("is-modal-open");
       }
       if (openAnchor) setAnchorExpanded(openAnchor, false);
       openPopoverEl = null;
@@ -4522,6 +6420,9 @@
         return;
       }
       document.querySelectorAll("[data-dvf-sales-popover]:not([hidden])").forEach(function (el) {
+        closePopover(el);
+      });
+      document.querySelectorAll(".modal.modal--dvf-sales:not([hidden])").forEach(function (el) {
         closePopover(el);
       });
     }
@@ -4618,13 +6519,15 @@
         return;
       }
       if (event.target.closest("[data-dvf-sales-dismiss]")) {
-        var popover = event.target.closest("[data-dvf-sales-popover]");
-        closePopover(popover);
+        event.preventDefault();
+        var root = event.target.closest("[data-dvf-sales-popover], .modal.modal--dvf-sales");
+        closePopover(root);
         return;
       }
       if (
         openPopoverEl &&
         !openPopoverEl.hidden &&
+        openPopoverEl.querySelector("[data-dvf-sales-panel]") &&
         !event.target.closest("[data-dvf-sales-popover]") &&
         !event.target.closest("[data-dvf-sales-open]")
       ) {
@@ -4634,6 +6537,8 @@
 
     document.addEventListener("keydown", function (event) {
       if (event.key !== "Escape") return;
+      if (!openPopoverEl || openPopoverEl.hidden) return;
+      event.preventDefault();
       closeAnyOpen();
     });
 
@@ -4702,5 +6607,20 @@
       });
     }
   })();
+
+  document.addEventListener("click", function (event) {
+    var toggle = event.target.closest
+      ? event.target.closest("[data-listing-description-toggle]")
+      : null;
+    if (!toggle) return;
+    var root = toggle.closest("[data-listing-description]");
+    if (!root) return;
+    var text = root.querySelector(".listing-description__text");
+    if (!text) return;
+    var expanded = text.classList.toggle("is-clamped");
+    expanded = !expanded;
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    toggle.textContent = expanded ? "Voir moins" : "Voir plus";
+  });
 
 })();

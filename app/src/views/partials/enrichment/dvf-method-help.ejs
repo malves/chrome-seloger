@@ -20,13 +20,26 @@
         <%= r.recency_weighted ? 'Médiane pondérée (ventes récentes davantage prises en compte)' : 'Médiane des ventes' %>
         <% if (halfMonths) { %>. Demi-vie d'environ <%= halfMonths %> mois<% } %>
       </li>
+      <% if (r.market_adjusted) { %>
+        <li>
+          Chaque vente est ramenée au prix d'aujourd'hui selon l'évolution moyenne du marché
+          depuis son année
+        </li>
+      <% } %>
+      <% if (r.surface_comparable_filter && r.surface_comparable_filter.surface_filtered) { %>
+        <li>
+          Estimation basée sur les ventes de <strong>surface comparable</strong>
+          (<%= fmt.number(r.surface_comparable_filter.min) %>–<%= fmt.number(r.surface_comparable_filter.max) %> m²,
+          <%= fmt.number(r.surface_comparable_filter.count_in_band) %> vente<%= r.surface_comparable_filter.count_in_band > 1 ? 's' : '' %>)
+        </li>
+      <% } %>
       <li>Rayon de <strong><%= fmt.number(r.meters) %> m</strong> autour de l'adresse saisie</li>
       <li>Ventes sur les <strong><%= r.years %> dernières années</strong> (source DVF / Etalab)</li>
       <li><%= fmt.dvfPublicationNotice() %></li>
       <% if (r.outliers_excluded > 0 && r.count_reference) { %>
         <li>
           <strong><%= fmt.number(r.count_reference) %> ventes</strong> retenues pour le €/m² affiché.
-          <strong><%= fmt.number(r.outliers_excluded) %></strong> exclue<%= r.outliers_excluded > 1 ? 's' : '' %> (valeur atypique<% if (r.outlier_floor_m2 != null) { %>, sous <%= fmt.euro(r.outlier_floor_m2) %>/m²<% } %>).
+          <strong><%= fmt.number(r.outliers_excluded) %></strong> exclue<%= r.outliers_excluded > 1 ? 's' : '' %> (valeur atypique<% if (r.outlier_floor_m2 != null && r.outlier_ceiling_m2 != null) { %>, hors <%= fmt.euro(r.outlier_floor_m2) %>–<%= fmt.euro(r.outlier_ceiling_m2) %>/m²<% } %>).
         </li>
       <% } %>
       <% if (r.widened) { %>

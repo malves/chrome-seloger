@@ -8,9 +8,10 @@
 import config from "../config.js";
 import HttpError from "../lib/http-error.js";
 
-/** Vrai si l'utilisateur est le compte administrateur. */
+/** Vrai si l'utilisateur est un compte administrateur (`config.adminEmails`). */
 export function isAdmin(user) {
-  return Boolean(user?.email && user.email.toLowerCase() === config.adminEmail);
+  const email = user?.email?.toLowerCase();
+  return Boolean(email && config.adminEmails.includes(email));
 }
 
 export function loadUser(repositories) {

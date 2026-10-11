@@ -31,28 +31,6 @@
 
     <header class="status-pipe__head">
       <h2 class="status-pipe__title">Indiquez où vous en êtes</h2>
-      <button
-        class="btn btn--sm status-pipe__reject<%= isRejected ? ' is-active' : ' btn--danger' %>"
-        type="submit"
-        name="status"
-        value="rejected"
-        aria-pressed="<%= isRejected ? 'true' : 'false' %>"
-        title="<%= isRejected ? 'Cliquer pour réactiver le parcours' : 'Cliquer pour écarter cette annonce' %>"
-        aria-label="<%= isRejected ? 'Réactiver le parcours à l\'étape précédente' : 'Écarter cette annonce' %>"
-      >
-        <span class="status-pipe__reject-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <%- icons.rejected %>
-          </svg>
-        </span>
-        <% if (isRejected) { %>
-          <span class="status-pipe__reject-label-full">Réactiver cette annonce</span>
-          <span class="status-pipe__reject-label-short">Réactiver</span>
-        <% } else { %>
-          <span class="status-pipe__reject-label-full">Écarter cette annonce</span>
-          <span class="status-pipe__reject-label-short">Écarter</span>
-        <% } %>
-      </button>
     </header>
 
     <ol class="status-pipe__track">

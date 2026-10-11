@@ -45,7 +45,7 @@
       return;
     }
 
-    // Caractéristiques énergétiques + année de construction (SeLoger).
+    // DPE/GES, année, caractéristiques du bien (SeLoger).
     if (data.channel === DETAILS_CHANNEL && data.details) {
       lastDetails = data.details;
       return;
@@ -927,9 +927,9 @@
    * de construction. Sur SeLoger, ces champs ne figurent ni dans le JSON-LD ni
    * dans les balises Open Graph (qui ne portent qu'un extrait SEO tronqué) :
    * sans cet apport, l'annonce serait enregistrée avec une description amputée
-   * et sans performance énergétique ni année de construction. Pour le DPE, le
-   * GES et l'année, les valeurs déjà extraites par le carnet priment (on comble
-   * les trous) ; la description complète, elle, remplace l'extrait tronqué.
+   * et sans performance énergétique ni caractéristiques structurées. Pour le
+   * DPE, le GES et l'année, les valeurs déjà extraites par le carnet priment
+   * (on comble les trous) ; la description complète remplace l'extrait tronqué.
    */
   function mergeDetails(listing, details) {
     if (!listing || !details) return;
@@ -957,6 +957,9 @@
     fill("ges_value", details.ges_value);
     fill("year_built", details.year_built);
     fill("floor", details.floor);
+    fill("energy_source", details.energy_source);
+    fill("heating_system", details.heating_system);
+    fill("property_condition", details.property_condition);
   }
 
   /** Demandes venues du popup ou du service worker. */

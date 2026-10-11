@@ -24,9 +24,20 @@ import { listingDpeSearchCriteria } from "../lib/listing-dpe-criteria.js";
 import createListingsService from "../services/listings.service.js";
 import createListingFetchService from "../services/listing-fetch.service.js";
 import createTravelService from "../services/travel.service.js";
-import createAddressAiService from "../services/address-ai.service.js";
+import createAddressAiService, {
+  enrichAddressAiCandidateMaps,
+} from "../services/address-ai.service.js";
+import createAddressDpeLookupService from "../services/address-dpe-lookup.service.js";
+import createProbableLocationRunService from "../services/location/probable-location-run.service.js";
+import createPhotoAnalysisRunService from "../services/photo-analysis/photo-analysis-run.service.js";
+import { photoAnalysisViewModel } from "../lib/photo-analysis/view-model.js";
+import * as photoLabels from "../lib/photo-analysis/labels.js";
+import { PHOTO_ANALYSIS_PROVIDER } from "../lib/photo-analysis-cache.js";
+import createWorksPlanService from "../services/works-plan.service.js";
+import { plannerOptions } from "../lib/works/works-plan.js";
 import { listingPayloadSchema } from "../schemas/listing.payload.js";
 import {
+  buildAmortizationSchedule,
   financingForListing,
   listingFinancingParams,
   readListingFinancingForm,
@@ -34,6 +45,7 @@ import {
 import { logActivity } from "../lib/activity.js";
 import { departmentCodeFromInsee } from "../lib/immo-data-market.js";
 import { buildDpeInsights } from "../lib/dpe-insights.js";
+import { resolveGoogleMapsListingUrl } from "../lib/google-maps-url.js";
 
 /** Nombre maximum de brouillons d'import conservés par session. */
 const MAX_DRAFTS = 20;
@@ -67,6 +79,18 @@ function parseIntOrNull(value) {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+async function userAddressMapsHref(listing) {
+  if (!listing?.user_address) return null;
+  return resolveGoogleMapsListingUrl(
+    {
+      lat: listing.user_lat,
+      lng: listing.user_lng,
+      query: listing.user_address,
+    },
+    { apiKey: config.googleMaps.apiKey }
+  );
+}
+
 /** Normalise la query string en filtres sûrs. */
 function readFilters(query) {
   const priceMin = parseIntOrNull(query.price_min);
@@ -93,6 +117,26 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   const listingFetch = createListingFetchService({ logger });
   const travel = createTravelService({ logger });
   const addressAi = createAddressAiService({ repositories, logger });
+  const addressDpeLookup = createAddressDpeLookupService({ repositories, logger });
+  const probableLocationRun = createProbableLocationRunService({
+    repositories,
+    logger,
+  });
+  const photoAnalysisRun = createPhotoAnalysisRunService({ repositories, logger });
+  const worksPlans = createWorksPlanService({ repositories, photoAnalysisRun });
+
+  /**
+   * Analyse des photos pour la fiche : résultat stocké + modèle d'affichage.
+   * Si rien n'est stocké alors que l'annonce a des photos (annonce antérieure
+   * au déploiement, ou cache invalidé), on programme l'analyse.
+   */
+  function photoAnalysisForListing(listing, photos, dpeInsights) {
+    const stored = photoAnalysisRun.readStored(listing);
+    if (!stored.ready && stored.status === "pending") {
+      enrichment.schedule(listing.user_id, listing.id, { only: PHOTO_ANALYSIS_PROVIDER });
+    }
+    return photoAnalysisViewModel(stored, photos, dpeInsights);
+  }
 
   function linkedDpeInsightsForListing(listing, fmt) {
     const numero = listing.linked_dpe_numero;
@@ -102,12 +146,23 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     return buildDpeInsights(record, fmt);
   }
 
-  function linkedDpeNumeroFromBody(body, source) {
-    if (source !== "detected") return null;
+  function linkedDpeNumeroFromBody(body) {
     const raw = body.linked_dpe_numero;
     if (typeof raw !== "string" || !raw.trim()) return null;
     const numero = raw.trim();
     return repositories.dpe.findByNumero(numero) ? numero : null;
+  }
+
+  /** DPE lié + analyse photo (view-model) après changement d'adresse HTMX. */
+  function addressHtmxLocals(listing, fmt) {
+    const photos = repositories.listings.listPhotos(listing.id);
+    const linkedDpeInsights = linkedDpeInsightsForListing(listing, fmt);
+    const photoAnalysis = photoAnalysisForListing(
+      listing,
+      photos,
+      linkedDpeInsights
+    );
+    return { photos, linkedDpeInsights, photoAnalysis };
   }
 
   // Ces deux routes reçoivent du JSON (fetch côté client) ; le reste du site
@@ -133,6 +188,24 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       }),
   });
 
+  // Estimation de localisation : LLM + géocodage + isochrones (quotas tiers).
+  const locationLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 10,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    skip: () => config.isTest,
+    keyGenerator: (req) =>
+      req.user ? `u:${req.user.id}` : ipKeyGenerator(req.ip),
+    handler: (req, res) =>
+      res.status(429).json({
+        error: {
+          code: "rate_limited",
+          message: "Trop d'estimations d'affilée. Patientez une minute.",
+        },
+      }),
+  });
+
   /** Charge l'annonce du compte courant ou lève une 404. L'admin peut ouvrir toute fiche. */
   function loadListing(req) {
     const id = Number(req.params.id);
@@ -151,7 +224,12 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     );
     const stored = repositories.enrichments.findOne(listing.id, "financing");
     const params = listingFinancingParams(listing, defaults, stored?.data);
-    return { params, result: financingForListing(listing, params) };
+    const result = financingForListing(listing, params);
+    return {
+      params,
+      result,
+      amortization: buildAmortizationSchedule(result),
+    };
   }
 
   /* ------------------------------ Liste ------------------------------ */
@@ -342,13 +420,21 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         listing.city,
         { fetchJson: enrichment.fetchJson }
       );
+      const photos = repositories.listings.listPhotos(listing.id);
+      const linkedDpeInsights = linkedDpeInsightsForListing(listing, res.locals.fmt);
+
+      const userAddressMapsHrefValue = await userAddressMapsHref(listing);
 
       res.render("listing", {
         title: listing.title || "Annonce",
         listing,
-        linkedDpeInsights: linkedDpeInsightsForListing(listing, res.locals.fmt),
+        userAddressMapsHref: userAddressMapsHrefValue,
+        linkedDpeInsights,
         postalInseeCode,
-        photos: repositories.listings.listPhotos(listing.id),
+        photos,
+        photoAnalysis: photoAnalysisForListing(listing, photos, linkedDpeInsights),
+        photoLabels,
+        scripts: photos.length ? ["/public/js/works-planner.js"] : [],
         priceHistory: repositories.listings.listPriceHistory(listing.id),
         // Le financement a son propre bloc ; les autres providers sont groupés
         // par vocation d'affichage (territoire vs analyse de marché), pas par
@@ -378,6 +464,178 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       });
     } catch (err) {
       return next(err);
+    }
+  });
+
+  /* ----------------------- Analyse des photos ------------------------ */
+
+  /** Panneau « État visible du bien » (polling htmx tant que l'analyse tourne). */
+  router.get("/listings/:id/photo-analysis/panel", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const { photos, photoAnalysis } = addressHtmxLocals(
+        listing,
+        res.locals.fmt
+      );
+      return renderPhotoAnalysisPanel(req, res, listing, photoAnalysis, photos);
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  /**
+   * Résultat stocké brut (JSON). Ne lance jamais le modèle : sert au débogage
+   * et aux futurs moteurs (travaux, estimation).
+   */
+  router.get("/listings/:id/photo-analysis/stored", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      res.set("Cache-Control", "no-store");
+      return res.json(photoAnalysisRun.readStored(listing));
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  /** Panneau de diagnostic (lots vision, exclusions) : administration uniquement. */
+  router.get(
+    "/listings/:id/photo-analysis/debug",
+    requireAdminForEnrichmentRefresh,
+    (req, res, next) => {
+      try {
+        const listing = loadListing(req);
+        const row = repositories.enrichments.findOne(listing.id, PHOTO_ANALYSIS_PROVIDER);
+        res.set("Cache-Control", "no-store");
+        return res.render("partials/listing-photo-analysis-debug", {
+          layout: false,
+          listing,
+          stored: photoAnalysisRun.readStored(listing),
+          row,
+          photoLabels,
+        });
+      } catch (err) {
+        return next(err);
+      }
+    }
+  );
+
+  function renderPhotoAnalysisPanel(
+    req,
+    res,
+    listing,
+    photoAnalysis,
+    photos = null
+  ) {
+    const gallery = photos ?? repositories.listings.listPhotos(listing.id);
+    res.set("Cache-Control", "no-store");
+    return res.render("partials/listing-photo-analysis", {
+      layout: false,
+      listing,
+      photos: gallery,
+      photoAnalysis,
+      photoLabels,
+      worksHasPhotos: gallery.length > 0,
+      refreshWorksHeadAside: true,
+    });
+  }
+
+  /** Recalcul forcé (appels vision payants) : administration uniquement. */
+  router.post(
+    "/listings/:id/photo-analysis/run",
+    requireAdminForEnrichmentRefresh,
+    (req, res, next) => {
+      try {
+        const listing = loadListing(req);
+        repositories.enrichments.removeOne(listing.id, PHOTO_ANALYSIS_PROVIDER);
+        enrichment.schedule(listing.user_id, listing.id, { only: PHOTO_ANALYSIS_PROVIDER });
+        logActivity(logger, req, "analyse des photos relancée", {
+          listingId: listing.id,
+          status: "pending",
+        });
+
+        if (!req.get("hx-request")) {
+          return res.redirect(`/listings/${listing.id}`);
+        }
+        const { photos, linkedDpeInsights, photoAnalysis } = addressHtmxLocals(
+          listing,
+          res.locals.fmt
+        );
+        return renderPhotoAnalysisPanel(
+          req,
+          res,
+          listing,
+          photoAnalysisViewModel(
+            photoAnalysisRun.readStored(listing),
+            photos,
+            linkedDpeInsights
+          ),
+          photos
+        );
+      } catch (err) {
+        return next(err);
+      }
+    }
+  );
+
+  /* ------------------------- Plan de travaux ------------------------- */
+
+  const worksJsonBody = express.json({ limit: "1mb" });
+
+  function worksPlanResponse(state) {
+    return {
+      ok: true,
+      plan: state.plan,
+      stored: state.stored,
+      aiStatus: state.aiStatus,
+      aiAnalyzedAt: state.aiAnalyzedAt,
+      updatedAt: state.updatedAt,
+      photos: state.photos,
+    };
+  }
+
+  /** Les erreurs de ces routes JSON restent en JSON (le site rend sinon une page). */
+  function worksJsonError(res, next, err) {
+    if (err instanceof HttpError && err.status < 500) {
+      return res.status(err.status).json({ ok: false, error: { message: err.message } });
+    }
+    return next(err);
+  }
+
+  router.get("/listings/:id/works/plan", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      res.set("Cache-Control", "no-store");
+      return res.json({
+        ...worksPlanResponse(worksPlans.getPlan(listing)),
+        options: plannerOptions(),
+      });
+    } catch (err) {
+      return worksJsonError(res, next, err);
+    }
+  });
+
+  router.put("/listings/:id/works/plan", worksJsonBody, (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const state = worksPlans.save(listing, req.body?.plan);
+      logActivity(logger, req, "plan de travaux enregistré", {
+        listingId: listing.id,
+        rooms: state.plan.rooms.length,
+      });
+      return res.json(worksPlanResponse(state));
+    } catch (err) {
+      return worksJsonError(res, next, err);
+    }
+  });
+
+  router.delete("/listings/:id/works/plan", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const state = worksPlans.reset(listing);
+      logActivity(logger, req, "plan de travaux réinitialisé", { listingId: listing.id });
+      return res.json(worksPlanResponse(state));
+    } catch (err) {
+      return worksJsonError(res, next, err);
     }
   });
 
@@ -473,15 +731,6 @@ export default function createListingsRouter({ repositories, enrichment, logger 
           champsManquants: payload.champsManquants,
           filtresRechercheDpe: payload.filtresRechercheDpe,
         });
-        logger.info(
-          {
-            listingId: listing.id,
-            criteres: payload.criteres,
-            champsManquants: payload.champsManquants,
-            filtresRechercheDpe: payload.filtresRechercheDpe,
-          },
-          "address-ai/criteria"
-        );
         return res.json(payload);
       } catch (err) {
         return next(err);
@@ -496,22 +745,97 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   router.post(
     "/listings/:id/address-ai/search",
     jsonBody,
-    (req, res, next) => {
+    async (req, res, next) => {
       try {
         const listing = loadListing(req);
-        const result = addressAi.search(listing);
+        const result = addressAi.search(listing, { userId: req.user?.id });
+        const candidates = await enrichAddressAiCandidateMaps(
+          result.candidates,
+          (query) => travel.geocodeAddress(query),
+          { mapsApiKey: config.googleMaps.apiKey }
+        );
         logActivity(logger, req, "recherche DPE (déterminer l'adresse)", {
           listingId: listing.id,
           mode: result.mode,
-          candidates: result.candidates.length,
+          candidates: candidates.length,
           champsRequisManquants: result.champsRequisManquants,
         });
+        return res.json({ ...result, candidates });
+      } catch (err) {
+        return next(err);
+      }
+    }
+  );
+
+  /**
+   * Résultat déjà calculé à l'enregistrement (enrichissement). Ne lance jamais
+   * le LLM : la fiche interroge cet endpoint (éventuellement en poll).
+   */
+  router.get("/listings/:id/location/stored", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      res.set("Cache-Control", "no-store");
+      return res.json(probableLocationRun.readStored(listing));
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  /**
+   * Recalcul forcé (LLM + géocodage). Réservé à un usage explicite ; la fiche
+   * utilise GET /location/stored pour afficher le cache.
+   */
+  router.post(
+    "/listings/:id/location/estimate",
+    requireAdminForEnrichmentRefresh,
+    jsonBody,
+    locationLimiter,
+    async (req, res, next) => {
+      try {
+        const listing = loadListing(req);
+        const force = Boolean(req.body?.force);
+        const result = await probableLocationRun.runForListing(listing, { force });
+
+        logActivity(
+          logger,
+          req,
+          result.cached ? "localisation probable (cache)" : "localisation probable estimée",
+          {
+            listingId: listing.id,
+            status: result.status,
+            constraintsUsed: result.constraints_used ?? 0,
+            constraintsRejected: result.constraints_rejected ?? 0,
+            cached: Boolean(result.cached),
+          }
+        );
         return res.json(result);
       } catch (err) {
         return next(err);
       }
     }
   );
+
+  /** DPE de l'adresse saisie dans la modale, avant enregistrement. */
+  router.post("/listings/:id/address/dpe-lookup", jsonBody, (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const body = req.body || {};
+      const result = addressDpeLookup.lookup(listing, {
+        street: typeof body.street === "string" ? body.street.slice(0, 120) : "",
+        postalCode: typeof body.postal_code === "string" ? body.postal_code : "",
+        city: typeof body.city === "string" ? body.city.slice(0, 80) : "",
+      });
+      logActivity(logger, req, "recherche DPE (adresse saisie)", {
+        listingId: listing.id,
+        status: result.status,
+        candidates: result.candidates.length,
+      });
+      res.set("Cache-Control", "no-store");
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      return next(err);
+    }
+  });
 
   router.post("/listings/:id/address", async (req, res, next) => {
     try {
@@ -527,7 +851,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
           lat: geo?.lat ?? null,
           lng: geo?.lon ?? null,
           source,
-          linkedDpeNumero: linkedDpeNumeroFromBody(req.body, source),
+          linkedDpeNumero: linkedDpeNumeroFromBody(req.body),
         });
         logActivity(logger, req, "adresse réelle saisie", {
           listingId: listing.id,
@@ -545,7 +869,11 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       repositories.listings.setInseeCode(listing.id, null, { force: true });
       // L'adresse pilote les caches propres à l'annonce (grand quartier, DVF) et
       // le verdict Immo Data : on repart de zéro pour ces entrées.
-      for (const key of ["immo-data", "immo-data-quartier", "dvf-local"]) {
+      for (const key of [
+        "immo-data",
+        "immo-data-quartier",
+        "dvf-local",
+      ]) {
         repositories.enrichments.removeOne(listing.id, key);
       }
 
@@ -557,20 +885,24 @@ export default function createListingsRouter({ repositories, enrichment, logger 
           only: "commune",
         });
       }
-      enrichment.schedule(req.user.id, listing.id);
+      enrichment.schedule(req.user.id, listing.id, {
+        skipProbableLocation: true,
+      });
 
       const updated = repositories.listings.findById(req.user.id, listing.id);
 
       if (!req.get("hx-request")) {
         return res.redirect(`/listings/${listing.id}`);
       }
-      return res.render("partials/listing-location-block", {
+      const addressLocals = addressHtmxLocals(updated, res.locals.fmt);
+      return res.render("partials/listing-address-htmx-response", {
         layout: false,
         listing: updated,
-        linkedDpeInsights: linkedDpeInsightsForListing(
-          updated,
-          res.locals.fmt
-        ),
+        userAddressMapsHref: await userAddressMapsHref(updated),
+        linkedDpeInsights: addressLocals.linkedDpeInsights,
+        photos: addressLocals.photos,
+        photoAnalysis: addressLocals.photoAnalysis,
+        photoLabels,
       });
     } catch (err) {
       return next(err);
@@ -628,7 +960,11 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       return res.render("partials/financing", {
         layout: false,
         listing,
-        financing: { params, result },
+        financing: {
+          params,
+          result,
+          amortization: buildAmortizationSchedule(result),
+        },
       });
     } catch (err) {
       return next(err);

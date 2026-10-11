@@ -1,0 +1,48 @@
+<%
+  var pa = photoAnalysis;
+  var L = photoLabels;
+  var pending = !pa.ready;
+  var admin = typeof isAdmin !== "undefined" && isAdmin;
+  var showWorks = typeof worksHasPhotos !== "undefined" && worksHasPhotos;
+  function lbl(map, key, fallback) { return L.label(map, key, fallback); }
+%>
+<div
+  id="listing-works-head-aside"
+  class="panel__head-aside"
+  <% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %>hx-swap-oob="true"<% } %>
+>
+  <% if (pa.ready && pa.status === "ok") { %>
+    <span class="badge badge--muted" title="Fiabilité de l'analyse : <%= lbl(L.QUALITY_CONFIDENCE_LABELS, pa.quality.confidence) %>">
+      <%= pa.usablePhotoCount %> photo<%= pa.usablePhotoCount > 1 ? "s" : "" %> exploitable<%= pa.usablePhotoCount > 1 ? "s" : "" %> sur <%= pa.photoCount %>
+    </span>
+  <% } %>
+  <% if (admin) { %>
+    <button
+      type="button"
+      class="btn btn--ghost btn--sm"
+      data-photo-analysis-debug-open
+      data-photo-analysis-debug-url="/listings/<%= listing.id %>/photo-analysis/debug"
+    >
+      Diagnostic technique
+    </button>
+  <% } %>
+  <% if (admin && !pending) { %>
+    <form
+      hx-post="/listings/<%= listing.id %>/photo-analysis/run"
+      hx-target="#listing-photo-analysis"
+      hx-swap="outerHTML"
+      class="pa-refresh"
+    >
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <button type="submit" class="btn btn--ghost btn--sm" title="Recalculer (appels au modèle de vision)">
+        Relancer l'analyse des photos
+      </button>
+    </form>
+  <% } %>
+  <% if (showWorks) { %>
+    <button type="button" class="btn btn--green btn--sm works__cta" data-works-open>
+      <svg class="wi" aria-hidden="true"><use href="#wi-grid"></use></svg>
+      Paramétrer les pièces
+    </button>
+  <% } %>
+</div>

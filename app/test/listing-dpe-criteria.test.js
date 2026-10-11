@@ -29,8 +29,11 @@ test("listingDpeSearchCriteria", () => {
     dpe: "d",
     ges: "C",
     surface: 55.5,
+    dpe_value: 212,
+    ges_value: 18,
     floor: 3,
     year_built: 1978,
+    energy_source: "Gaz",
   });
   assert.equal(payload.listingId, 42);
   assert.deepEqual(payload.criteres, {
@@ -40,9 +43,13 @@ test("listingDpeSearchCriteria", () => {
     typeBatiment: "appartement",
     dpe: "D",
     ges: "C",
+    consoM2: 212,
+    emissionsM2: 18,
     surfaceM2: 55.5,
     anneeConstruction: 1978,
     etage: 3,
+    sourceEnergie: "Gaz",
+    famillesEnergie: ["gaz"],
   });
   assert.deepEqual(payload.champsManquants, []);
   assert.equal(payload.filtresRechercheDpe.code_postal, "69003");

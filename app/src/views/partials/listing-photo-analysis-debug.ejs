@@ -1,0 +1,211 @@
+<%
+  var L = photoLabels;
+  function lbl(map, key, fallback) { return L.label(map, key, fallback); }
+  var result = stored && stored.ready && stored.status === "ok" ? stored : null;
+  var debug = result && result.analysis_debug;
+  var images = (result && result.images) || [];
+  var batches = (debug && debug.image_pass && debug.image_pass.image_pass_batches) || [];
+  var retryBatches = (debug && debug.image_pass && debug.image_pass.retry_batches) || [];
+  var jsonPayload = {
+    listing_id: listing.id,
+    enrichment_status: row ? row.status : null,
+    enrichment_error: row ? row.error : null,
+    stored_status: stored ? stored.status : null,
+    stored_ready: stored ? stored.ready : null,
+    warnings: stored && stored.warnings ? stored.warnings : [],
+    analysis_debug: debug || null,
+    images: images.map(function (img) {
+      return {
+        order: img.order,
+        id: img.id,
+        classification: img.classification,
+        raw_classification: img.raw_classification || null,
+        room_type: img.room_type,
+        usable: img.usable_for_condition_analysis,
+        exclusion_reason: img.exclusion_reason,
+        quality_issues: (img.quality && img.quality.issues) || [],
+        retried: Boolean(img.retried),
+        first_attempt: img.first_attempt || null,
+        download_error: img.error || null,
+      };
+    }),
+  };
+%>
+<div class="pa-debug" data-pa-debug-panel>
+  <p class="pa-debug__intro field__hint">
+    Détail technique réservé à l'administration : lots vision, motifs d'exclusion par photo, erreurs API.
+    Les analyses déjà en cache avant cette version peuvent ne pas inclure le détail des lots.
+  </p>
+
+  <dl class="pa-debug__meta">
+    <div><dt>Statut stocké</dt><dd><%= stored ? (stored.ready ? stored.status : "pending") : "—" %></dd></div>
+    <% if (row) { %>
+      <div><dt>Ligne enrichissement</dt><dd><%= row.status %><% if (row.error) { %> — <%= row.error %><% } %></dd></div>
+      <% if (row.fetched_at) { %><div><dt>Mis à jour</dt><dd><%= fmt.date(row.fetched_at) %></dd></div><% } %>
+    <% } %>
+    <% if (debug && debug.model) { %><div><dt>Modèle</dt><dd><%= debug.model %></dd></div><% } %>
+    <% if (debug && debug.image_pass) { %>
+      <div><dt>Lots vision</dt><dd><%= debug.image_pass.failed_batch_count || 0 %> échec(s) sur <%= debug.image_pass.batch_count || batches.length %></dd></div>
+    <% } %>
+    <% if (debug && debug.synthesis_error) { %>
+      <div><dt>Synthèse</dt><dd class="pa-debug__error"><%= debug.synthesis_error %></dd></div>
+    <% } %>
+  </dl>
+
+  <% if (!result) { %>
+    <p class="field__hint">
+      <% if (stored && !stored.ready) { %>
+        Analyse en cours ou pas encore démarrée. Rechargez après la fin du traitement.
+      <% } else if (stored && stored.warnings && stored.warnings[0]) { %>
+        <%= stored.warnings[0] %>
+      <% } else { %>
+        Aucun résultat <code>ok</code> en cache pour cette annonce.
+      <% } %>
+    </p>
+  <% } else { %>
+    <% var adjustments = (debug && debug.condition_adjustments) || []; %>
+    <% if (adjustments.length) { %>
+      <h3 class="pa-debug__h3">Ajustements d'état (règles déterministes)</h3>
+      <div class="pa-debug__table-wrap">
+        <table class="pa-debug__table">
+          <thead>
+            <tr>
+              <th scope="col">Portée</th>
+              <th scope="col">IA</th>
+              <th scope="col">Retenu</th>
+              <th scope="col">Motif</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% adjustments.forEach(function (a) { %>
+              <tr>
+                <td><code><%= a.scope %></code></td>
+                <td><%= a.from %></td>
+                <td><%= a.to %></td>
+                <td><%= a.reason %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+
+    <% if (batches.length) { %>
+      <h3 class="pa-debug__h3">Lots de la passe par image</h3>
+      <div class="pa-debug__table-wrap">
+        <table class="pa-debug__table">
+          <thead>
+            <tr>
+              <th scope="col">Lot</th>
+              <th scope="col">Statut</th>
+              <th scope="col">Attendu</th>
+              <th scope="col">Reçu</th>
+              <th scope="col">Manquant</th>
+              <th scope="col">Erreur</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% batches.forEach(function (b) { %>
+              <tr class="<%= b.status === 'failed' ? 'pa-debug__row--fail' : '' %>">
+                <td>#<%= b.batch_index + 1 %></td>
+                <td><%= b.status === 'failed' ? 'Échec' : 'OK' %></td>
+                <td><code class="pa-debug__ids"><%= (b.expected_ids || []).join(", ") %></code></td>
+                <td><code class="pa-debug__ids"><%= (b.received_ids || []).join(", ") || "—" %></code></td>
+                <td><code class="pa-debug__ids"><%= (b.missing_ids || []).length ? b.missing_ids.join(", ") : "—" %></code></td>
+                <td class="pa-debug__error-cell"><%= b.error ? b.error : "—" %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% } else { %>
+      <p class="field__hint">Pas de trace des lots pour cette analyse (recalculez après mise à jour du serveur).</p>
+    <% } %>
+
+    <% if (retryBatches.length) { %>
+      <h3 class="pa-debug__h3">Seconde lecture des images non classées</h3>
+      <p class="field__hint">
+        <%= (debug.image_pass.recovered_ids || []).length %> image(s) récupérée(s) sur <%= (debug.image_pass.retried_ids || []).length %> relue(s), par lots de <%= debug.image_pass.retry_batch_size %>.
+      </p>
+      <div class="pa-debug__table-wrap">
+        <table class="pa-debug__table">
+          <thead>
+            <tr>
+              <th scope="col">Lot</th>
+              <th scope="col">Statut</th>
+              <th scope="col">Attendu</th>
+              <th scope="col">Reçu</th>
+              <th scope="col">Erreur</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% retryBatches.forEach(function (b) { %>
+              <tr class="<%= b.status === 'failed' ? 'pa-debug__row--fail' : '' %>">
+                <td>#<%= b.batch_index + 1 %></td>
+                <td><%= b.status === 'failed' ? 'Échec' : 'OK' %></td>
+                <td><code class="pa-debug__ids"><%= (b.expected_ids || []).join(", ") %></code></td>
+                <td><code class="pa-debug__ids"><%= (b.received_ids || []).join(", ") || "—" %></code></td>
+                <td class="pa-debug__error-cell"><%= b.error ? b.error : "—" %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+
+    <h3 class="pa-debug__h3">Par photo (<%= images.length %>)</h3>
+    <div class="pa-debug__table-wrap">
+      <table class="pa-debug__table">
+        <thead>
+          <tr>
+            <th scope="col">N°</th>
+            <th scope="col">Id</th>
+            <th scope="col">Classification</th>
+            <th scope="col">Exploitable</th>
+            <th scope="col">Motif d'exclusion</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% images.forEach(function (img) { %>
+            <tr class="<%= img.exclusion_reason ? 'pa-debug__row--warn' : '' %>">
+              <td><%= img.order %></td>
+              <td><code><%= img.id %></code></td>
+              <td>
+                <%= lbl(L.CLASSIFICATION_LABELS, img.classification) %>
+                <% if (img.raw_classification) { %><br><code>« <%= img.raw_classification %> »</code><% } %>
+                <% if (img.retried) { %><br><small><%= img.first_attempt ? "récupérée en seconde lecture" : "relue, sans succès" %></small><% } %>
+              </td>
+              <td><%= img.usable_for_condition_analysis ? "oui" : "non" %></td>
+              <td>
+                <% if (img.exclusion_reason) { %>
+                  <%= lbl(L.EXCLUSION_LABELS, img.exclusion_reason) %>
+                <% } else { %>
+                  —
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+
+  <div class="pa-debug__json">
+    <div class="pa-debug__json-head">
+      <h3 class="pa-debug__h3 pa-debug__json-title">JSON de diagnostic</h3>
+      <button
+        type="button"
+        class="btn btn--ghost btn--icon-only pa-debug__copy-btn"
+        data-pa-debug-copy
+        aria-label="Copier le JSON"
+        title="Copier"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+        </svg>
+      </button>
+    </div>
+    <textarea class="pa-debug__json-field" readonly rows="12" data-pa-debug-json><%= JSON.stringify(jsonPayload, null, 2) %></textarea>
+  </div>
+</div>

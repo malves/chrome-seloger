@@ -7,9 +7,14 @@
   var parts = fmt.parseUserAddress(listing.user_address);
   var hasAddress = Boolean(listing.user_address);
   var located = listing.user_lat != null && listing.user_lng != null;
-  var mapsQuery = located
-    ? listing.user_lat + ',' + listing.user_lng
-    : listing.user_address;
+  var mapsHref =
+    typeof userAddressMapsHref !== "undefined" && userAddressMapsHref
+      ? userAddressMapsHref
+      : fmt.googleMapsListingUrl({
+          lat: listing.user_lat,
+          lng: listing.user_lng,
+          query: listing.user_address,
+        });
   var sourceLabel = listing.user_address_source === 'detected'
     ? 'Détectée automatiquement'
     : 'Adresse saisie manuellement';
@@ -24,7 +29,47 @@
       <p class="panel__eyebrow">Localisation</p>
       <h2 class="panel__title">Aide à la localisation</h2>
     </div>
+    <% if (listing && listing.id && typeof isAdmin !== "undefined" && isAdmin) { %>
+      <div class="panel__head-aside listing-location__head-aside">
+        <button
+          type="button"
+          class="btn btn--ghost btn--sm listing-location__refresh"
+          data-location-probable-refresh
+          data-location-estimate-url="/listings/<%= listing.id %>/location/estimate"
+          title="Recalculer la zone probable (LLM et géocodage)"
+        >
+          Actualiser
+        </button>
+      </div>
+    <% } %>
   </div>
+
+  <% if (!hasAddress) { %>
+    <aside class="listing-location__why" aria-labelledby="listing-location-why-title">
+      <p class="listing-location__why-title" id="listing-location-why-title">
+        Pour estimer ce logement, il faut son adresse
+      </p>
+      <p class="listing-location__why-lead">
+        L'annonce ne donne qu'un secteur&nbsp;: la commune, ou une zone déduite
+        des lieux cités. Même affichée sur la carte, cette zone reste trop large
+        pour juger ce bien.
+      </p>
+      <ul class="listing-location__why-list">
+        <li>
+          <span class="listing-location__why-label">Prix au m&#8288;²</span>
+          <span class="listing-location__why-text">
+            Comparé aux ventes juste autour de cette adresse.
+          </span>
+        </li>
+        <li>
+          <span class="listing-location__why-label">Travaux</span>
+          <span class="listing-location__why-text">
+            Le DPE de ce logement peut être retrouvé, et les travaux estimés.
+          </span>
+        </li>
+      </ul>
+    </aside>
+  <% } %>
 
   <div class="listing-location__grid">
     <!-- Colonne gauche : annonce puis adresse réelle -->
@@ -85,12 +130,20 @@
               <% } %>
               <span class="badge badge--muted listing-location__source-badge"><%= sourceLabel %></span>
             </div>
+            <% if (listing.linked_dpe_numero) { %>
+              <p class="listing-location__dpe-status listing-location__dpe-status--linked">
+                <span aria-hidden="true">✓</span> DPE associé
+                <span class="listing-location__dpe-numero">n° <%= listing.linked_dpe_numero %></span>
+              </p>
+            <% } else { %>
+              <p class="listing-location__dpe-status">Aucun DPE trouvé pour cette adresse.</p>
+            <% } %>
           </div>
           <div class="address-book__meta listing-location__meta">
             <div class="listing-location__meta-toolbar">
               <a
                 class="address-book__map listing-location__maps-link"
-                href="https://www.google.com/maps/search/?api=1&amp;query=<%= encodeURIComponent(mapsQuery) %>"
+                href="<%= mapsHref %>"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Ouvrir l'adresse dans Google Maps (nouvel onglet)"
@@ -122,7 +175,7 @@
           <div class="listing-location__card listing-location__card--empty">
             <p class="listing-location__empty-title">Aucune adresse renseignée</p>
             <p class="listing-location__empty-text">
-              Ajoutez l'adresse exacte pour localiser le bien sur la carte.
+              Le numéro et la rue débloquent le prix autour du bien et la recherche du DPE.
             </p>
             <div class="listing-location__empty-actions">
               <button
@@ -150,42 +203,63 @@
       </section>
     </div>
 
-    <!-- Colonne droite : carte OSM si localisée, sinon visuel d'attente -->
-    <div class="listing-location__col listing-location__col--map">
+    <!-- Colonne droite : adresse précise si connue, sinon zone probable (auto) -->
+    <div class="listing-location__col listing-location__col--map" data-location-col>
       <h3 class="listing-location__col-title listing-location__map-title">Carte</h3>
-      <% if (located) { %>
-        <div
-          class="listing-location__map listing-location__map--live"
-          data-listing-map
+      <p class="field__hint listing-location__col-hint">
+        <% if (located) { %>
+          Position issue de l'adresse réelle du bien.
+        <% } else { %>
+          Zone indicative, déduite des lieux cités dans l'annonce.
+        <% } %>
+      </p>
+      <div
+        class="listing-location__map listing-location__map--live"
+        data-listing-map
+        data-location-cache-url="/listings/<%= listing.id %>/location/stored"
+        <% if (located) { %>
           data-lat="<%= listing.user_lat %>"
           data-lng="<%= listing.user_lng %>"
-          data-basemap-config="<%= encodeURIComponent(JSON.stringify(basemap)) %>"
+          data-precise-location="1"
+        <% } else { %>
+          data-auto-probable="1"
+        <% } %>
+        data-basemap-config="<%= encodeURIComponent(JSON.stringify(basemap)) %>"
+      >
+        <button
+          type="button"
+          class="listing-location__map-expand"
+          data-listing-map-expand
+          hidden
+          aria-label="Agrandir la carte"
+          title="Agrandir la carte"
         >
-          <div
-            class="listing-location__map-view"
-            data-listing-map-view
-            role="application"
-            aria-label="Carte OpenStreetMap du bien"
-            tabindex="0"
-          ></div>
-        </div>
-      <% } else { %>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 3h6v6" />
+            <path d="M9 21H3v-6" />
+            <path d="M21 3l-7 7" />
+            <path d="M3 21l7-7" />
+          </svg>
+        </button>
         <div
-          class="listing-location__map"
-          data-listing-map
-          role="img"
-          aria-label="Carte indisponible tant qu'aucune adresse réelle n'est localisée"
-        >
-          <div class="listing-location__map-grid" aria-hidden="true"></div>
-          <div class="listing-location__map-placeholder">
+          class="listing-location__map-view"
+          data-listing-map-view
+          role="application"
+          aria-label="Carte OpenStreetMap du bien et de la zone probable"
+          tabindex="0"
+        ></div>
+        <% if (!located) { %>
+          <div class="listing-location__map-placeholder" data-location-placeholder>
             <span class="listing-location__map-icon" aria-hidden="true">📍</span>
-            <p class="listing-location__map-placeholder-title">Carte en attente</p>
-            <p class="listing-location__map-placeholder-text">
-              Saisissez ou déterminez l'adresse réelle pour afficher le bien ici.
+            <p class="listing-location__map-placeholder-title" data-location-placeholder-title>
+              Bien non localisé
+            </p>
+            <p class="listing-location__map-placeholder-text" data-location-placeholder-text>
+              Analyse des indices de localisation dans l'annonce…
             </p>
           </div>
-        </div>
-      <% } %>
+        <% } %>
+      </div>
     </div>
   </div>
 </div>

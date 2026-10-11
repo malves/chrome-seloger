@@ -14,11 +14,8 @@
 const SESSION_STORAGE_KEY = "carnetSession";
 const LAST_PROJECT_STORAGE_KEY = "carnetLastProjectId";
 
-/** Version embarquée dans le zip (`build.version.js`) ou lue depuis le manifest. */
+/** Version de l'extension, lue depuis le manifest (fixée par `package.sh`). */
 function extensionClientVersion() {
-  if (typeof EXTENSION_BUILD_VERSION !== "undefined" && EXTENSION_BUILD_VERSION) {
-    return String(EXTENSION_BUILD_VERSION);
-  }
   try {
     return chrome.runtime.getManifest().version;
   } catch {

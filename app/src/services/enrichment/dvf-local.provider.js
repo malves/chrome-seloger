@@ -24,6 +24,9 @@ export function needsDvfLocalRefresh(data) {
   if (!data?.radius) return true;
   if (data.radius.count_reference == null) return true;
   if (data.radius.outliers_excluded == null) return true;
+  if (data.radius.outlier_ceiling_m2 == null && data.radius.outliers_excluded > 0) {
+    return true;
+  }
   if (!data.radius.recency_weighted) return true;
   if (!Array.isArray(data.radius.sales) || !data.radius.sales.length) return true;
   return false;
@@ -53,6 +56,7 @@ function radiusReference(
     outliers_excluded: ref.outliers_excluded,
     median: ref.median,
     outlier_floor_m2: ref.outlier_floor_m2,
+    outlier_ceiling_m2: ref.outlier_ceiling_m2,
     sales: ref.sales,
   };
 }
@@ -115,6 +119,7 @@ export default {
       outliers_excluded: outliersExcluded,
       median: priceM2,
       outlier_floor_m2: outlierFloorM2,
+      outlier_ceiling_m2: outlierCeilingM2,
       sales: radiusSales,
     } = radiusReference(dvf, type, lat, lng, meters, yearFrom, {
       halfLifeDays,
@@ -136,6 +141,7 @@ export default {
         outliersExcluded = wider.outliers_excluded;
         priceM2 = wider.median;
         outlierFloorM2 = wider.outlier_floor_m2;
+        outlierCeilingM2 = wider.outlier_ceiling_m2;
         radiusSales = wider.sales;
         widened = true;
       }
@@ -173,6 +179,7 @@ export default {
         recency_weighted: true,
         recency_half_life_days: halfLifeDays,
         outlier_floor_m2: outlierFloorM2,
+        outlier_ceiling_m2: outlierCeilingM2,
         sales: radiusSales,
       },
       verdict,

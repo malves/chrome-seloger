@@ -16,7 +16,7 @@
     "import:dpe": "node src/scripts/import-dpe.js",
     "dpe:jobs": "node src/scripts/dpe-jobs.js",
     "dpe:watch": "node src/scripts/dpe-watch.js",
-    "test": "NODE_ENV=test LOG_LEVEL=silent node --test test/*.test.js"
+    "test": "NODE_ENV=test LOG_LEVEL=silent ADMIN_EMAILS=admin@test.local node --test test/*.test.js"
   },
   "dependencies": {
     "argon2": "^0.45.1",

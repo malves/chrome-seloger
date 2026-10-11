@@ -70,10 +70,12 @@ const config = {
   passwordMinLength: 10,
 
   /**
-   * Compte autorisé à accéder à l'espace d'administration. Comparaison
-   * insensible à la casse ; surchargeable via `ADMIN_EMAIL`.
+   * Comptes autorisés sur /admin (e-mails en base, comparaison insensible à la
+   * casse). `ADMIN_EMAILS` (liste séparée par des virgules) ou `ADMIN_EMAIL`.
    */
-  adminEmail: (process.env.ADMIN_EMAIL || "contact@malves.fr").toLowerCase(),
+  adminEmails: list(process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL).map(
+    (email) => email.toLowerCase()
+  ),
 
   /** Limites de débit. */
   rateLimits: {
@@ -116,7 +118,10 @@ const config = {
     radiusYears: num(process.env.DVF_RADIUS_YEARS, 5),
     /** Demi-vie (jours) des poids de récence pour la médiane pondérée du rayon. */
     radiusRecencyHalfLifeDays: num(process.env.DVF_RADIUS_RECENCY_HALF_LIFE_DAYS, 540),
-    /** Ventes sous ce ratio × médiane locale ignorées pour la référence €/m². */
+    /**
+     * Bande de référence autour de la médiane brute du rayon : ventes hors
+     * [ratio × M ; M / ratio] ignorées (défaut 0,5 → 50 % à 200 % de M).
+     */
     radiusOutlierLowRatio: num(process.env.DVF_RADIUS_OUTLIER_LOW_RATIO, 0.5),
   },
 
@@ -130,6 +135,8 @@ const config = {
       process.env.IMMO_DATA_BASE_URL || "https://api.immo-data.fr"
     ).replace(/\/+$/, ""),
     timeoutMs: num(process.env.IMMO_DATA_TIMEOUT_MS, 12000),
+    /** Durée de validité du cache communal / départemental / quartier (jours). */
+    cacheTtlDays: num(process.env.IMMO_DATA_CACHE_TTL_DAYS, 25),
     userAgent: "CarnetDeVisites/1.0",
 
     /**
@@ -165,6 +172,15 @@ const config = {
   },
 
   /**
+   * Clé Google Maps (metadata Street View uniquement, sans quota). Permet d'ouvrir
+   * Street View seulement quand une prise de vue existe ; sinon lien recherche Maps.
+   */
+  googleMaps: {
+    apiKey: String(process.env.GOOGLE_MAPS_API_KEY || "").trim(),
+    metadataTimeoutMs: num(process.env.GOOGLE_MAPS_METADATA_TIMEOUT_MS, 5000),
+  },
+
+  /**
    * Valeurs indicatives du tableau de financement. Les droits de mutation
    * varient selon le département : la V1 applique un taux forfaitaire,
    * présenté comme une estimation.
@@ -177,6 +193,8 @@ const config = {
     insuranceRate: 0.003,
     years: 25,
     debtRatio: 0.35,
+    /** Apport par défaut sur une fiche : part du prix affiché de l'annonce. */
+    defaultDownPaymentRate: 0.1,
     downPayment: 0,
     works: 0,
   },
@@ -189,6 +207,154 @@ const config = {
    */
   basemap: {
     cartoKey: String(process.env.CARTO_BASEMAP_KEY || "").trim(),
+  },
+
+  /**
+   * Modèle de langage (extraction de contraintes de localisation). Client
+   * compatible OpenAI : `POST {baseUrl}/chat/completions`. Fonctionne tel quel
+   * avec OpenAI, Mistral, Groq, OpenRouter, Ollama local, etc. La clé vit
+   * uniquement ici : elle n'est jamais exposée au navigateur. Le LLM ne fait
+   * QUE « texte libre → contraintes structurées » ; aucun calcul géographique.
+   */
+  llm: {
+    apiKey: String(process.env.LLM_API_KEY || "").trim(),
+    baseUrl: (process.env.LLM_BASE_URL || "https://api.openai.com/v1").replace(
+      /\/+$/,
+      ""
+    ),
+    model: String(process.env.LLM_MODEL || "gpt-4o-mini").trim(),
+    timeoutMs: num(process.env.LLM_TIMEOUT_MS, 20000),
+  },
+
+  /**
+   * Analyse des photos d'annonce (vision). Client compatible OpenAI, mêmes
+   * conventions que `llm` : la clé vit uniquement ici. Par défaut on réutilise
+   * la clé et l'URL du LLM texte ; `VISION_MODEL` / `VISION_IMAGE_DETAIL`
+   * pilotent le coût (gpt-4o-mini + détail « high » ≈ 0,05 € / 15 photos).
+   * Les photos sont téléchargées côté serveur puis envoyées en base64.
+   */
+  vision: {
+    apiKey: String(process.env.VISION_API_KEY || process.env.LLM_API_KEY || "").trim(),
+    baseUrl: (
+      process.env.VISION_BASE_URL ||
+      process.env.LLM_BASE_URL ||
+      "https://api.openai.com/v1"
+    ).replace(/\/+$/, ""),
+    model: String(process.env.VISION_MODEL || "gpt-4o-mini").trim(),
+    /** `high` (défauts fins visibles) ou `low` (moins cher) pour la passe par image. */
+    imageDetail: ["low", "high", "auto"].includes(process.env.VISION_IMAGE_DETAIL)
+      ? process.env.VISION_IMAGE_DETAIL
+      : "high",
+    /** Détail des images de la passe de synthèse, qui attribue l'état des pièces. */
+    synthesisImageDetail: ["low", "high", "auto"].includes(process.env.VISION_SYNTHESIS_DETAIL)
+      ? process.env.VISION_SYNTHESIS_DETAIL
+      : "high",
+    timeoutMs: num(process.env.VISION_TIMEOUT_MS, 90000),
+    /** Photos analysées au maximum par annonce (les suivantes sont ignorées). */
+    maxPhotos: num(process.env.VISION_MAX_PHOTOS, 30),
+    /** Images par appel de la passe « par image ». */
+    batchSize: num(process.env.VISION_BATCH_SIZE, 8),
+    /**
+     * Seconde tentative sur les images restées non classées (unknown, fiche
+     * absente, lot en échec) : taille des lots et plafond d'images relues.
+     * `VISION_MAX_RETRY_IMAGES=0` désactive la seconde tentative.
+     */
+    retryBatchSize: num(process.env.VISION_RETRY_BATCH_SIZE, 2),
+    maxRetryImages: num(process.env.VISION_MAX_RETRY_IMAGES, 12),
+    maxImageBytes: num(process.env.VISION_MAX_IMAGE_BYTES, 8 * 1024 * 1024),
+    downloadTimeoutMs: num(process.env.VISION_DOWNLOAD_TIMEOUT_MS, 10000),
+  },
+
+  /**
+   * Géocodage des lieux (POI type « Monoprix », « gare du Val d'Or ») via
+   * Nominatim OpenStreetMap. Nominatim exige un User-Agent/`email` identifiant
+   * et limite à ~1 req/s : les résultats sont mis en cache (`geocode_cache`).
+   */
+  nominatim: {
+    baseUrl: (
+      process.env.NOMINATIM_BASE_URL || "https://nominatim.openstreetmap.org"
+    ).replace(/\/+$/, ""),
+    email: String(process.env.NOMINATIM_EMAIL || "").trim(),
+    userAgent:
+      String(process.env.NOMINATIM_USER_AGENT || "").trim() ||
+      "CarnetDeVisites/1.0 (+https://github.com/)",
+    timeoutMs: num(process.env.NOMINATIM_TIMEOUT_MS, 8000),
+  },
+
+  /**
+   * Réglages du moteur de localisation probable. Tout est paramétrable : les
+   * courbes de tolérance (les annonces arrondissent les temps/distances), les
+   * distances conventionnelles des formules vagues, les poids par type de
+   * contrainte, la finesse de la grille et le seuil d'incohérence.
+   */
+  probableLocation: {
+    /** Grille de scoring : nombre de cellules par axe et marge autour des zones. */
+    grid: {
+      size: num(process.env.PLOC_GRID_SIZE, 60),
+      paddingRatio: num(process.env.PLOC_GRID_PADDING_RATIO, 0.15),
+      /** Cellules conservées dans la heatmap au-delà de ce score normalisé. */
+      heatmapMinScore: num(process.env.PLOC_HEATMAP_MIN_SCORE, 0.15),
+    },
+
+    /**
+     * Tolérance sur un temps annoncé `M` minutes. `grace` : minutes au-delà de
+     * `M` encore notées 1. `span` : largeur de la décroissance linéaire vers 0
+     * après la grâce. Calé sur l'exemple de la spec (M=5 → 0 au-delà de 10).
+     */
+    toleranceMinutes: {
+      graceRatio: num(process.env.PLOC_TOL_MIN_GRACE_RATIO, 0),
+      spanRatio: num(process.env.PLOC_TOL_MIN_SPAN_RATIO, 1),
+      /** Exposant de la décroissance : 1 = linéaire, >1 = plus sévère. */
+      curve: num(process.env.PLOC_TOL_MIN_CURVE, 1.5),
+    },
+
+    /** Même logique pour une distance annoncée en mètres. */
+    toleranceMeters: {
+      graceRatio: num(process.env.PLOC_TOL_M_GRACE_RATIO, 0),
+      spanRatio: num(process.env.PLOC_TOL_M_SPAN_RATIO, 1),
+      curve: num(process.env.PLOC_TOL_M_CURVE, 1.5),
+    },
+
+    /** Rayons conventionnels (mètres) des formules vagues, à pied. */
+    vagueDistances: {
+      "a deux pas": num(process.env.PLOC_VAGUE_DEUX_PAS_M, 200),
+      proche: num(process.env.PLOC_VAGUE_PROCHE_M, 400),
+      "a proximite": num(process.env.PLOC_VAGUE_PROXIMITE_M, 700),
+      "face a": num(process.env.PLOC_VAGUE_FACE_M, 120),
+      pres: num(process.env.PLOC_VAGUE_PRES_M, 500),
+      /** Voie nommée sans numéro (plus serré qu'un POI « proche »). */
+      street: num(process.env.PLOC_VAGUE_STREET_M, 200),
+      default: num(process.env.PLOC_VAGUE_DEFAULT_M, 600),
+    },
+
+    /** Poids par nature de contrainte (les contraintes précises priment). */
+    weights: {
+      travelTimePrecise: num(process.env.PLOC_W_TIME, 1.0),
+      distancePrecise: num(process.env.PLOC_W_DISTANCE, 1.0),
+      /** Rue / voie explicitement citée dans l'annonce (sans numéro). */
+      streetNear: num(process.env.PLOC_W_STREET, 1.15),
+      /** Confiance géocodage minimale pour ancrer le centre sur la voie. */
+      streetAnchorMinGeocoding: num(process.env.PLOC_STREET_MIN_GEO, 0.35),
+      "a deux pas": num(process.env.PLOC_W_DEUX_PAS, 0.7),
+      proche: num(process.env.PLOC_W_PROCHE, 0.5),
+      "a proximite": num(process.env.PLOC_W_PROXIMITE, 0.4),
+      "face a": num(process.env.PLOC_W_FACE, 0.7),
+      pres: num(process.env.PLOC_W_PRES, 0.5),
+      vagueDefault: num(process.env.PLOC_W_VAGUE_DEFAULT, 0.4),
+    },
+
+    /** Vitesses moyennes (m/min) pour le repli cercle quand ORS est absent. */
+    speeds: {
+      walking: num(process.env.PLOC_SPEED_WALK_M_MIN, 80),
+      cycling: num(process.env.PLOC_SPEED_BIKE_M_MIN, 250),
+      driving: num(process.env.PLOC_SPEED_CAR_M_MIN, 500),
+    },
+
+    /** Sous ce score global max (0..1), les contraintes sont jugées incompatibles. */
+    consistencyThreshold: num(process.env.PLOC_CONSISTENCY_THRESHOLD, 0.35),
+
+    /** Nombre de candidats renvoyés dans `top_candidates`. */
+    topCandidates: num(process.env.PLOC_TOP_CANDIDATES, 5),
   },
 };
 
@@ -221,6 +387,12 @@ export function basemapClientConfig({ cartoKey } = config.basemap) {
 if (isProduction && config.sessionSecret === "change-me") {
   throw new Error(
     "SESSION_SECRET doit être défini en production (voir .env.example)."
+  );
+}
+
+if (!isTest && config.adminEmails.length === 0) {
+  throw new Error(
+    "ADMIN_EMAILS (ou ADMIN_EMAIL) doit être défini dans .env (voir .env.example)."
   );
 }
 

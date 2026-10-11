@@ -34,15 +34,15 @@
   <% var zoneById = {}; ins.zones.forEach(function (z) { zoneById[z.id] = z; }); %>
   <% function zoneClass(id) { return 'dpe-house__zone dpe-house__zone--' + zoneById[id].state; } %>
   <section
-    class="panel dpe-house"
+    class="works__part dpe-house"
     id="listing-linked-dpe"
     aria-labelledby="listing-linked-dpe-title"
     data-dpe-house
   >
-    <div class="panel__head">
-      <div>
-        <p class="panel__eyebrow">Énergie</p>
-        <h2 class="panel__title" id="listing-linked-dpe-title">Le logement en un coup d'œil</h2>
+    <div class="works__part-head">
+      <div class="works__part-heading">
+        <span class="works__part-icon works__part-icon--energy" aria-hidden="true"><svg class="wi"><use href="#wi-sun"></use></svg></span>
+        <p class="panel__eyebrow" id="listing-linked-dpe-title">Énergie</p>
       </div>
     </div>
 

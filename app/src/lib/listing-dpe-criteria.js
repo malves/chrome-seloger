@@ -2,6 +2,8 @@
  * Critères extraits d'une annonce pour rechercher le bien dans la base DPE.
  */
 
+import { energyFamilies } from "./energy-source.js";
+
 /** Département à partir d'un code postal français (5 chiffres). */
 export function departmentFromPostalCode(postalCode) {
   const raw = String(postalCode ?? "").trim();
@@ -25,6 +27,11 @@ function normalizeSurface(value) {
   if (value == null || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Valeur chiffrée DPE/GES (kWhEP/m².an ou kg CO₂/m².an), strictement positive. */
+function normalizeEnergyValue(value) {
+  return normalizeSurface(value);
 }
 
 function normalizeYear(value) {
@@ -83,10 +90,16 @@ export function listingDpeSearchCriteria(listing) {
   const dpe = normalizeLabel(listing.dpe);
   const ges = normalizeLabel(listing.ges);
   const surfaceM2 = normalizeSurface(listing.surface);
+  const consoM2 = normalizeEnergyValue(listing.dpe_value);
+  const emissionsM2 = normalizeEnergyValue(listing.ges_value);
   const anneeConstruction = normalizeYear(listing.year_built);
   const etage = normalizeFloor(listing.floor);
   const typeBien = normalizePropertyType(listing.property_type);
   const typeBatiment = propertyTypeToDpeBuildingType(typeBien);
+  const sourceEnergie = listing.energy_source
+    ? String(listing.energy_source).trim() || null
+    : null;
+  const famillesEnergie = sourceEnergie ? energyFamilies(sourceEnergie) : [];
 
   const criteres = {
     codePostal,
@@ -95,9 +108,14 @@ export function listingDpeSearchCriteria(listing) {
     typeBatiment,
     dpe,
     ges,
+    consoM2,
+    emissionsM2,
     surfaceM2,
     anneeConstruction,
     etage,
+    sourceEnergie,
+    /** Familles reconnues (« gaz », « electricite »…) ; null si aucune. */
+    famillesEnergie: famillesEnergie.length ? famillesEnergie : null,
   };
 
   const missing = [];
@@ -110,6 +128,8 @@ export function listingDpeSearchCriteria(listing) {
     type_batiment: typeBatiment,
     etiquette: dpe,
     etiquette_ges: ges,
+    conso_5_usages_par_m2_ep: consoM2,
+    emission_ges_5_usages_par_m2: emissionsM2,
     surface_min: surfaceM2,
     surface_max: surfaceM2,
     annee_min: anneeConstruction,

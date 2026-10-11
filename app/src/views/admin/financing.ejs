@@ -1,0 +1,208 @@
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content">
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Tableau de financement</p>
+          <h2 class="panel__title">Financement</h2>
+        </div>
+      </div>
+
+      <p class="field__hint" style="margin-bottom: var(--space-5)">
+        Taux indicatifs appliqués à toutes les simulations (frais de notaire forfaitaires,
+        garantie, valeurs par défaut du crédit et taux d'endettement). Les droits de mutation
+        varient selon le département : ces valeurs restent des estimations.
+      </p>
+
+      <%
+        var pct = function (rate) {
+          return (rate * 100).toLocaleString('fr-FR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+        };
+      %>
+
+      <form class="financing-admin-form" method="post" action="/admin/financing">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+        <div class="financing-admin-form__columns">
+          <div class="financing-admin-form__rule" aria-hidden="true"></div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--left financing-admin-form__field--row-1">
+          <label class="field__label" for="admin-notary-rate-old">Frais de notaire — ancien (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-notary-rate-old"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="notary_rate_old"
+              data-step="0.01"
+              data-min="0"
+              data-max="25"
+              data-decimals="2"
+              value="<%= pct(financing.notaryRateOld) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter les frais de notaire ancien de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer les frais de notaire ancien de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--right financing-admin-form__field--row-1">
+          <label class="field__label" for="admin-notary-rate-new">Frais de notaire — neuf (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-notary-rate-new"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="notary_rate_new"
+              data-step="0.01"
+              data-min="0"
+              data-max="25"
+              data-decimals="2"
+              value="<%= pct(financing.notaryRateNew) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter les frais de notaire neuf de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer les frais de notaire neuf de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--left financing-admin-form__field--row-2">
+          <label class="field__label" for="admin-guarantee-rate">Garantie emprunteur (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-guarantee-rate"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="guarantee_rate"
+              data-step="0.01"
+              data-min="0"
+              data-max="10"
+              data-decimals="2"
+              value="<%= pct(financing.guaranteeRate) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter la garantie de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer la garantie de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--right financing-admin-form__field--row-2">
+          <label class="field__label" for="admin-debt-ratio">Taux d'endettement max. (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-debt-ratio"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="debt_ratio"
+              data-step="1"
+              data-min="1"
+              data-max="100"
+              data-decimals="0"
+              value="<%= pct(financing.debtRatio) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le taux d'endettement d'un point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le taux d'endettement d'un point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--left financing-admin-form__field--row-3">
+          <label class="field__label" for="admin-interest-rate">Taux nominal par défaut (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-interest-rate"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="interest_rate"
+              data-step="0.01"
+              data-min="0"
+              data-max="25"
+              data-decimals="2"
+              value="<%= pct(financing.interestRate) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le taux nominal de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le taux nominal de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--right financing-admin-form__field--row-3">
+          <label class="field__label" for="admin-insurance-rate">Assurance emprunteur par défaut (%)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-insurance-rate"
+              class="input input--sm"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              name="insurance_rate"
+              data-step="0.01"
+              data-min="0"
+              data-max="5"
+              data-decimals="2"
+              value="<%= pct(financing.insuranceRate) %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter l'assurance de 0,01 point"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer l'assurance de 0,01 point"></button>
+            </span>
+          </div>
+        </div>
+
+          <div class="field financing-admin-form__field financing-admin-form__field--left financing-admin-form__field--row-4">
+          <label class="field__label" for="admin-years">Durée par défaut (ans)</label>
+          <div class="amount-stepper">
+            <input
+              id="admin-years"
+              class="input input--sm"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              name="years"
+              data-step="1"
+              data-min="1"
+              data-max="40"
+              data-decimals="0"
+              value="<%= financing.years %>"
+              required
+            />
+            <span class="amount-stepper__controls">
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter la durée d'un an"></button>
+              <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer la durée d'un an"></button>
+            </span>
+          </div>
+        </div>
+        </div>
+
+        <div class="financing-admin-form__actions">
+          <button class="btn btn--green" type="submit">Enregistrer</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>

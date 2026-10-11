@@ -1,8 +1,28 @@
 <%
   const params = financing.params;
   const r = financing.result;
+  const amortization = financing.amortization;
 %>
-<div id="financing-block" class="financing__grid">
+<div id="financing-block">
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Budget</p>
+      <h2 class="panel__title">Financement</h2>
+    </div>
+    <div class="panel__head-aside">
+      <button
+        type="button"
+        class="btn btn--ghost btn--sm"
+        data-financing-amortization-open
+        aria-haspopup="dialog"
+        aria-controls="financing-amortization-modal"
+        <% if (r.isFullyFunded) { %>disabled title="Aucun emprunt : l'apport couvre le projet."<% } %>
+      >
+        Tableau d'amortissement
+      </button>
+    </div>
+  </div>
+<div class="financing__grid">
   <!-- Colonne gauche : paramètres de la simulation -->
   <section class="financing-card financing-card--params">
     <header class="financing-card__head">
@@ -179,15 +199,15 @@
         <th>Assurance mensuelle</th>
         <td><%= fmt.euro(r.monthlyInsurance) %></td>
       </tr>
-      <tr class="specs--total">
+      <tr class="specs--total specs--strong">
         <th>Mensualité totale <span class="field__hint">(sur <%= r.months %> mois)</span></th>
-        <td><%= fmt.euro(r.totalMonthly) %></td>
+        <td><%= fmt.euro(r.totalMonthly) %> / mois</td>
       </tr>
-      <tr>
+      <tr class="specs--strong">
         <th>Coût total du crédit</th>
         <td><%= fmt.euro(r.creditCost) %></td>
       </tr>
-      <tr>
+      <tr class="specs--strong">
         <th>
           Revenu mensuel minimum
           <span class="field__hint">(endettement <%= fmt.percent(r.debtRatio, 0) %>)</span>
@@ -207,4 +227,9 @@
       Estimation indicative, ne constitue pas une offre de prêt ni un conseil.
     </p>
   </section>
+</div>
+
+<% if (!r.isFullyFunded) { %>
+  <%- include("financing-amortization-modal", { r: r, amortization: amortization }) %>
+<% } %>
 </div>

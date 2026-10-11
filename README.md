@@ -27,7 +27,7 @@ node scripts/build-prices.js
 
 ### Avant publication sur le Chrome Web Store
 
-1. Générer le zip : `cd chrome-extension && ./package.sh [x.y.z]` → `dist/carnet-de-visites-<version>.zip` (fixe `manifest.json`, embarque `build.version.js`, exclut `config.local.js`). L'extension envoie cette version dans l'en-tête `X-Carnet-Extension-Version` sur `/api/v1/*` (visible dans les logs serveur). Optionnel : `EXTENSION_MIN_VERSION` côté serveur pour refuser les anciennes extensions (426 `extension_outdated`).
+1. Générer le zip : `cd chrome-extension && ./package.sh [x.y.z]` → `dist/carnet-de-visites-<version>.zip` (fixe `manifest.json`, remplace `config.local.js` par une version vide). L'extension envoie cette version dans l'en-tête `X-Carnet-Extension-Version` sur `/api/v1/*` (visible dans les logs serveur). Optionnel : `EXTENSION_MIN_VERSION` côté serveur pour refuser les anciennes extensions (426 `extension_outdated`).
 2. `app/.env` (serveur prod) : `BASE_URL=https://carnetdevisites.fr` (cookies, liens OAuth extension).
 3. `chrome-extension/manifest.json` : vérifier `host_permissions`, incrémenter `version`, regénérer le zip si besoin.
 4. Côté serveur, renseigner `EXTENSION_ORIGINS=chrome-extension://<id-de-l-extension>` : seules les extensions listées peuvent alors recevoir une autorisation.

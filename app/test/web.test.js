@@ -482,6 +482,17 @@ withApp("l'adresse réelle se saisit, puis s'efface", async (ctx) => {
     "8 avenue Foch, Bat. C, 78120 Rambouillet"
   );
 
+  repositories.dpe.upsertMany([
+    {
+      numero_dpe: "DPE-ADDR-CLEAR",
+      etiquette_dpe: "D",
+      type_batiment: "appartement",
+      adresse_ban: "177 Boulevard de la République 92210 Saint-Cloud",
+      code_postal_ban: "92210",
+      nom_commune_ban: "Saint-Cloud",
+    },
+  ]);
+
   await agent
     .post(`/listings/${id}/address`)
     .set("HX-Request", "true")
@@ -492,13 +503,15 @@ withApp("l'adresse réelle se saisit, puis s'efface", async (ctx) => {
       postal_code: "92210",
       city: "Saint-Cloud",
       address_source: "detected",
+      linked_dpe_numero: "DPE-ADDR-CLEAR",
     })
     .expect(200);
   const fromDpe = repositories.listings.findById(user.id, id);
   assert.equal(fromDpe.user_address_source, "detected");
   assert.match(fromDpe.user_address, /177 Boulevard de la République/);
+  assert.equal(fromDpe.linked_dpe_numero, "DPE-ADDR-CLEAR");
 
-  // Effacement : une adresse vide remet le champ à null.
+  // Effacement : une adresse vide remet le champ à null et délie le DPE.
   const cleared = await agent
     .post(`/listings/${id}/address`)
     .set("HX-Request", "true")
@@ -506,7 +519,72 @@ withApp("l'adresse réelle se saisit, puis s'efface", async (ctx) => {
     .send({ _csrf: csrf, street: "", postal_code: "", city: "" })
     .expect(200);
   assert.ok(cleared.text);
-  assert.equal(repositories.listings.findById(user.id, id).user_address, null);
+  const afterClear = repositories.listings.findById(user.id, id);
+  assert.equal(afterClear.user_address, null);
+  assert.equal(afterClear.linked_dpe_numero, null);
+});
+
+withApp("adresse saisie : le DPE est recherché puis lié à l'enregistrement", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+  repositories.dpe.upsertMany([
+    {
+      numero_dpe: "DPE-MANUAL-1",
+      etiquette_dpe: "E",
+      type_batiment: "appartement",
+      surface_habitable_logement: 61.1,
+      adresse_ban: "Rue Gérhard 92800 Puteaux",
+      adresse_brut: "118 Rue Guerard",
+      code_postal_ban: "92800",
+      nom_commune_ban: "Puteaux",
+    },
+  ]);
+  const { id } = listingsService.save(
+    user,
+    listingPayload({
+      location: { city: "Puteaux", postal_code: "92800" },
+      property_type: "apartment",
+      surface: 61,
+      dpe: "E",
+    })
+  );
+  const agent = await loginAgent(app, "a@example.com");
+  const csrf = extractCsrf((await agent.get(`/listings/${id}`)).text);
+
+  const exact = await agent
+    .post(`/listings/${id}/address/dpe-lookup`)
+    .set("X-CSRF-Token", csrf)
+    .send({ street: "118 rue Gerhard", postal_code: "92800", city: "Puteaux" })
+    .expect(200);
+  assert.equal(exact.body.status, "match");
+  assert.equal(exact.body.numeroDpe, "DPE-MANUAL-1");
+  assert.equal(exact.body.street, "118 Rue Gérhard");
+
+  const typo = await agent
+    .post(`/listings/${id}/address/dpe-lookup`)
+    .set("X-CSRF-Token", csrf)
+    .send({ street: "118 rue Guerard", postal_code: "92800", city: "Puteaux" })
+    .expect(200);
+  assert.equal(typo.body.status, "choose");
+  assert.equal(typo.body.candidates[0].street, "118 Rue Gérhard");
+
+  const html = await agent
+    .post(`/listings/${id}/address`)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      street: "118 Rue Gérhard",
+      postal_code: "92800",
+      city: "Puteaux",
+      linked_dpe_numero: "DPE-MANUAL-1",
+    })
+    .expect(200);
+  const saved = repositories.listings.findById(user.id, id);
+  assert.equal(saved.user_address_source, "manual");
+  assert.equal(saved.linked_dpe_numero, "DPE-MANUAL-1");
+  assert.match(html.text, /DPE associé/);
+  assert.match(html.text, /data-dpe-house-stage/);
 });
 
 withApp("les critères DPE pour déterminer l'adresse sont exposés en JSON", async (ctx) => {
@@ -704,6 +782,8 @@ withApp("le tableau de financement se recalcule", async (ctx) => {
     .expect(200);
 
   assert.match(res.text, /Estimation indicative/);
+  assert.match(res.text, /Tableau d'amortissement/);
+  assert.match(res.text, /financing-amortization-modal/);
   assert.equal((res.text.match(/data-amount-step="1"/g) || []).length, 6);
   assert.equal((res.text.match(/data-amount-step="-1"/g) || []).length, 6);
   assert.match(res.text, /value="350[\u202f\u00a0 ]000"/);
@@ -892,10 +972,10 @@ withApp("la suppression du compte efface toutes les données", async (ctx) => {
 });
 
 withApp("l'admin enregistre le paramétrage financement", async ({ app, repositories }) => {
-  await createUser(repositories, config.adminEmail);
-  const agent = await loginAgent(app, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
+  const agent = await loginAgent(app, config.adminEmails[0]);
 
-  const page = await agent.get("/admin").expect(200);
+  const page = await agent.get("/admin/financing").expect(200);
   assert.match(page.text, /Financement/);
 
   const csrf = extractCsrf(page.text);
@@ -913,7 +993,7 @@ withApp("l'admin enregistre le paramétrage financement", async ({ app, reposito
       debt_ratio: "35",
     })
     .expect(302)
-    .expect("location", "/admin");
+    .expect("location", "/admin/financing");
 
   assert.equal(config.financing.notaryRateOld, 0.07);
   assert.equal(config.financing.years, 22);
@@ -922,8 +1002,8 @@ withApp("l'admin enregistre le paramétrage financement", async ({ app, reposito
 withApp(
   "l'admin clôt un import orphelin au rafraîchissement du statut",
   async ({ app, repositories, db }) => {
-    await createUser(repositories, config.adminEmail);
-    const agent = await loginAgent(app, config.adminEmail);
+    await createUser(repositories, config.adminEmails[0]);
+    const agent = await loginAgent(app, config.adminEmails[0]);
     const jobId = repositories.dpe.createJob({
       dateFrom: "2026-09-04",
       dateTo: "2026-09-04",
@@ -950,8 +1030,8 @@ withApp(
 );
 
 withApp("l'admin peut interrompre un import en cours", async ({ app, repositories }) => {
-  await createUser(repositories, config.adminEmail);
-  const agent = await loginAgent(app, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
+  const agent = await loginAgent(app, config.adminEmails[0]);
   const jobId = repositories.dpe.createJob({
     dateFrom: "2026-09-04",
     dateTo: "2026-09-04",
@@ -965,7 +1045,7 @@ withApp("l'admin peut interrompre un import en cours", async ({ app, repositorie
     rows_imported: 1200,
   });
 
-  const page = await agent.get("/admin").expect(200);
+  const page = await agent.get("/admin/dpe").expect(200);
   const csrf = extractCsrf(page.text);
 
   const res = await agent
@@ -981,8 +1061,8 @@ withApp("l'admin peut interrompre un import en cours", async ({ app, repositorie
 });
 
 withApp("l'admin peut relancer un import en échec", async ({ app, repositories }) => {
-  await createUser(repositories, config.adminEmail);
-  const agent = await loginAgent(app, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
+  const agent = await loginAgent(app, config.adminEmails[0]);
   const jobId = repositories.dpe.createJob({
     dateFrom: "2026-09-04",
     dateTo: "2026-09-05",
@@ -993,7 +1073,7 @@ withApp("l'admin peut relancer un import en échec", async ({ app, repositories 
     error: "Import interrompu : plus aucune activité détectée.",
   });
 
-  const page = await agent.get("/admin").expect(200);
+  const page = await agent.get("/admin/dpe").expect(200);
   assert.match(page.text, /Relancer/);
 
   const before = repositories.dpe.listRecentJobs(50).length;
@@ -1025,11 +1105,11 @@ withApp("l'admin peut relancer un import en échec", async ({ app, repositories 
 });
 
 withApp("l'admin gère les comptes utilisateurs", async ({ app, repositories }) => {
-  await createUser(repositories, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
   const victim = await createUser(repositories, "victime@example.com");
-  const agent = await loginAgent(app, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmails[0]);
 
-  const page = await agent.get("/admin").expect(200);
+  const page = await agent.get("/admin/users").expect(200);
   assert.match(page.text, /Utilisateurs/);
   assert.match(page.text, /victime@example.com/);
 
@@ -1074,7 +1154,7 @@ withApp("l'admin gère les comptes utilisateurs", async ({ app, repositories }) 
     })
     .expect(302);
 
-  const adminPage = await agent.get("/admin").expect(200);
+  const adminPage = await agent.get("/admin/users").expect(200);
   const deleteCsrf = extractCsrf(adminPage.text);
   await agent
     .post(`/admin/users/${victim.id}/delete`)
@@ -1097,9 +1177,9 @@ function hexasmalCsvFixture(extraRows = 0) {
 }
 
 withApp("l'admin importe le fichier HexaSmal", async ({ app, repositories }) => {
-  await createUser(repositories, config.adminEmail);
-  const agent = await loginAgent(app, config.adminEmail);
-  const page = await agent.get("/admin").expect(200);
+  await createUser(repositories, config.adminEmails[0]);
+  const agent = await loginAgent(app, config.adminEmails[0]);
+  const page = await agent.get("/admin/hexasmal").expect(200);
   assert.match(page.text, /HexaSmal/);
   assert.match(page.text, /data\.laposte\.fr\/datasets\/laposte-hexasmal/);
 
@@ -1117,12 +1197,12 @@ withApp("l'admin importe le fichier HexaSmal", async ({ app, repositories }) => 
 });
 
 withApp("l'admin parcourt la base HexaSmal avec recherche", async ({ app, repositories }) => {
-  await createUser(repositories, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
   repositories.postalInsee.replaceAll([
     { postal_code: "78120", insee_code: "78517" },
     { postal_code: "75001", insee_code: "75101" },
   ]);
-  const agent = await loginAgent(app, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmails[0]);
 
   const table = await agent
     .get("/admin/hexasmal/browse?hexasmal_q=78120")
@@ -1131,7 +1211,7 @@ withApp("l'admin parcourt la base HexaSmal avec recherche", async ({ app, reposi
   assert.match(table.text, /78517/);
   assert.doesNotMatch(table.text, /75101/);
 
-  const admin = await agent.get("/admin").expect(200);
+  const admin = await agent.get("/admin/hexasmal").expect(200);
   assert.match(admin.text, /Explorer la base/);
   assert.match(admin.text, /hexasmal-browse-q/);
 });
@@ -1168,7 +1248,7 @@ withApp("l'admin consulte et révoque une entrée du cache enrichissement", asyn
   repositories,
   listingsService,
 }) => {
-  await createUser(repositories, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
   const user = await createUser(repositories, "cache-user@example.com");
   const { id: listingId } = listingsService.save(
     user,
@@ -1189,8 +1269,8 @@ withApp("l'admin consulte et révoque une entrée du cache enrichissement", asyn
     data: { monthly: 1200 },
   });
 
-  const agent = await loginAgent(app, config.adminEmail);
-  const page = await agent.get("/admin").expect(200);
+  const agent = await loginAgent(app, config.adminEmails[0]);
+  const page = await agent.get("/admin/enrichment-cache").expect(200);
   assert.match(page.text, /Cache enrichissements/);
   assert.match(page.text, /75101/);
 
@@ -1227,14 +1307,14 @@ withApp("l'admin parcourt et révoque le cache départemental", async ({
   app,
   repositories,
 }) => {
-  await createUser(repositories, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
   repositories.enrichments.saveDepartment("92", "immo-data-dept", {
     department: { code: "92", name: "Hauts-de-Seine" },
     by_type: { apartment: { points: [] }, house: { points: [] } },
   });
 
-  const agent = await loginAgent(app, config.adminEmail);
-  const page = await agent.get("/admin").expect(200);
+  const agent = await loginAgent(app, config.adminEmails[0]);
+  const page = await agent.get("/admin/enrichment-cache").expect(200);
 
   const browse = await agent
     .get("/admin/enrichment-cache/browse?cache_scope=department")
@@ -1277,7 +1357,7 @@ withApp("l'admin peut vider tout le cache enrichissement", async ({
   repositories,
   listingsService,
 }) => {
-  await createUser(repositories, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
   const user = await createUser(repositories, "clear-cache@example.com");
   const { id: listingId } = listingsService.save(
     user,
@@ -1297,8 +1377,8 @@ withApp("l'admin peut vider tout le cache enrichissement", async ({
     data: { monthly: 1200 },
   });
 
-  const agent = await loginAgent(app, config.adminEmail);
-  const page = await agent.get("/admin").expect(200);
+  const agent = await loginAgent(app, config.adminEmails[0]);
+  const page = await agent.get("/admin/enrichment-cache").expect(200);
   const csrf = extractCsrf(page.text);
 
   const res = await agent
@@ -1328,7 +1408,7 @@ withApp("la recherche DPE admin filtre par date de dernière modification", asyn
   app,
   repositories,
 }) => {
-  await createUser(repositories, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
   repositories.dpe.upsertMany([
     {
       numero_dpe: "DPE-DAY-A",
@@ -1341,7 +1421,7 @@ withApp("la recherche DPE admin filtre par date de dernière modification", asyn
       code_postal_ban: "75001",
     },
   ]);
-  const agent = await loginAgent(app, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmails[0]);
   const res = await agent
     .get("/admin/dpe/search?date_modif=2025-12-18")
     .expect(200);
@@ -1351,9 +1431,9 @@ withApp("la recherche DPE admin filtre par date de dernière modification", asyn
 });
 
 withApp("l'admin ne peut pas supprimer son propre compte", async ({ app, repositories }) => {
-  const admin = await createUser(repositories, config.adminEmail);
-  const agent = await loginAgent(app, config.adminEmail);
-  const page = await agent.get("/admin").expect(200);
+  const admin = await createUser(repositories, config.adminEmails[0]);
+  const agent = await loginAgent(app, config.adminEmails[0]);
+  const page = await agent.get("/admin/users").expect(200);
   const csrf = extractCsrf(page.text);
 
   const res = await agent

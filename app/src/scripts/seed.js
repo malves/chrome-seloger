@@ -57,7 +57,6 @@ const LISTINGS = [
         fees_included: true,
         fees_percent: 4.5,
       },
-      features: ["garage", "jardin", "cave", "pompe à chaleur"],
       extension_data: {
         travel_times: [
           { label: "Bureau", mode: "car", minutes: 42 },
@@ -107,7 +106,6 @@ const LISTINGS = [
       },
       photos: [1, 2, 3].map((i) => photo("versailles", i)),
       agency: { name: "Particulier", fees_included: true },
-      features: ["balcon", "ascenseur", "parking", "cave"],
       extension_data: {
         travel_times: [{ label: "Bureau", mode: "car", minutes: 28 }],
         political_leaning: {
@@ -155,7 +153,6 @@ const LISTINGS = [
         fees_included: false,
         fees_percent: 3.5,
       },
-      features: ["garage", "plain-pied", "RE2020"],
       extension_data: {
         travel_times: [{ label: "Bureau", mode: "car", minutes: 67 }],
         political_leaning: {
@@ -196,7 +193,6 @@ const LISTINGS = [
         lng: 2.3799,
       },
       photos: [1, 2].map((i) => photo("paris11", i)),
-      features: ["meublé", "calme"],
       extension_data: {
         travel_times: [{ label: "Bureau", mode: "transit", minutes: 19 }],
         political_leaning: {

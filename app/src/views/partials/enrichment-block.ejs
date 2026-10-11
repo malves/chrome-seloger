@@ -6,13 +6,14 @@
   // Pour le bloc communal, le titre reprend le nom de la commune (évite de
   // répéter « Commune » en titre puis en ligne de détail). Fallback « Commune »
   // si la donnée n'est pas encore disponible.
+  const territoryScoped = provider.scope === "commune" && provider.group !== "market";
   const communeName =
-    provider.scope === "commune" && provider.data ? provider.data.name : null;
+    territoryScoped && provider.data ? provider.data.name : null;
   const resolvedTitle = communeName
     ? communeName
     : typeof sectionTitle !== "undefined"
       ? sectionTitle
-      : provider.scope === "commune"
+      : territoryScoped
         ? "Commune"
         : null;
   const resolvedEyebrow =

@@ -1,0 +1,87 @@
+<%
+  const schedule = amortization;
+  const rows = schedule.rows || [];
+%>
+<div
+  id="financing-amortization-modal"
+  class="modal modal--financing-amortization"
+  data-financing-amortization-modal
+  hidden
+  aria-hidden="true"
+>
+  <div class="modal__overlay" data-financing-amortization-dismiss></div>
+  <div
+    class="modal__dialog modal__dialog--wide financing-amortization-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="financing-amortization-modal-title"
+  >
+    <button
+      type="button"
+      class="modal__close"
+      data-financing-amortization-dismiss
+      aria-label="Fermer"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+    <header class="financing-amortization-dialog__head">
+      <h2 class="modal__title financing-amortization-dialog__title" id="financing-amortization-modal-title">
+        Tableau d'amortissement
+      </h2>
+      <p class="financing-amortization-dialog__lead">
+        Emprunt de <strong><%= fmt.euro(r.loanAmount) %></strong>
+        sur <strong><%= r.years %> ans</strong>
+        (<%= fmt.number(r.months) %> échéances) —
+        taux nominal <strong><%= fmt.percent(r.interestRate) %></strong>,
+        assurance <strong><%= fmt.percent(r.insuranceRate) %></strong>.
+      </p>
+      <p class="financing-amortization-dialog__ref">
+        Mensualité totale estimée :
+        <strong><%= fmt.euro(r.totalMonthly) %> / mois</strong>
+        <span class="financing-amortization-dialog__tag">hors frais annexes</span>
+      </p>
+    </header>
+    <div class="financing-amortization-dialog__table-wrap" tabindex="0">
+      <table class="financing-amortization-table">
+        <thead>
+          <tr>
+            <th scope="col">Mois</th>
+            <th scope="col">Capital amorti</th>
+            <th scope="col">Intérêts</th>
+            <th scope="col">Assurance</th>
+            <th scope="col">Mensualité</th>
+            <th scope="col">Capital restant dû</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.forEach(function (row) { %>
+            <tr>
+              <td><%= row.month %></td>
+              <td><%= fmt.euro(row.principal) %></td>
+              <td><%= fmt.euro(row.interest) %></td>
+              <td><%= fmt.euro(row.insurance) %></td>
+              <td><%= fmt.euro(row.total) %></td>
+              <td><%= fmt.euro(row.balance) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total</th>
+            <td><%= fmt.euro(schedule.totals.principal) %></td>
+            <td><%= fmt.euro(schedule.totals.interest) %></td>
+            <td><%= fmt.euro(schedule.totals.insurance) %></td>
+            <td><%= fmt.euro(schedule.totals.total) %></td>
+            <td>—</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <p class="financing-amortization-dialog__footnote">
+      Simulation indicative à partir des paramètres saisis. Les échéances réelles peuvent varier selon l'organisme prêteur.
+    </p>
+  </div>
+</div>

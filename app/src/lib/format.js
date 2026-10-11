@@ -5,6 +5,7 @@
 import { parseUserAddress } from "./user-address.js";
 import { listingDpeSearchCriteria } from "./listing-dpe-criteria.js";
 import { dvfPublicationNotice } from "./dvf-publication.js";
+import { googleMapsListingUrl } from "./google-maps-url.js";
 
 const STATUSES = {
   new: { label: "À étudier", shortLabel: "Étudier", tone: "neutral", pipeline: true },
@@ -250,6 +251,7 @@ export default {
   projectColor,
   listingsUrl,
   parseUserAddress,
+  googleMapsListingUrl,
   listingDpeSearchCriteria,
   dvfPublicationNotice,
 };

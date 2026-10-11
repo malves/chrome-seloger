@@ -1,0 +1,90 @@
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content">
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Enrichissement</p>
+          <h2 class="panel__title">Cache des fiches</h2>
+        </div>
+        <div class="panel__head-aside">
+          <form
+            method="post"
+            action="/admin/enrichment-cache/clear-all"
+            hx-post="/admin/enrichment-cache/clear-all"
+            hx-target="#enrichment-cache-results"
+            hx-swap="outerHTML"
+            data-confirm="Tout le cache enrichissement sera effacé (communal, départemental et par annonce). Les fiches seront ré-enrichies au prochain chargement ou actualisation."
+            data-confirm-title="Vider le cache enrichissement"
+            data-confirm-label="Vider"
+          >
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+            <input type="hidden" name="cache_scope" value="<%= enrichmentCacheBrowse.filters.scope %>" />
+            <input type="hidden" name="cache_provider" value="<%= enrichmentCacheBrowse.filters.provider || '' %>" />
+            <input type="hidden" name="cache_q" value="<%= enrichmentCacheBrowse.filters.q || '' %>" />
+            <input type="hidden" name="cache_page" value="<%= enrichmentCacheBrowse.pagination.page %>" />
+            <button class="btn btn--ghost btn--sm btn--danger" type="submit">Vider tous les caches</button>
+          </form>
+        </div>
+      </div>
+
+      <p class="admin-cache-stats" id="admin-cache-stats">
+        <span><strong><%= fmt.number(enrichmentCacheStats.commune) %></strong> communal<%= enrichmentCacheStats.commune > 1 ? 'es' : '' %></span>
+        ·
+        <span><strong><%= fmt.number(enrichmentCacheStats.department) %></strong> départemental<%= enrichmentCacheStats.department > 1 ? 'es' : '' %></span>
+        ·
+        <span><strong><%= fmt.number(enrichmentCacheStats.listing) %></strong> par annonce</span>
+      </p>
+
+      <form
+        class="admin-cache-filters"
+        method="get"
+        action="/admin/enrichment-cache/browse"
+        hx-get="/admin/enrichment-cache/browse"
+        hx-trigger="change from:select, input changed delay:300ms from:#enrichment-cache-q, submit"
+        hx-target="#enrichment-cache-results"
+        hx-swap="outerHTML"
+      >
+        <div class="admin-cache-filters__row">
+          <div class="field">
+            <label class="field__label" for="enrichment-cache-scope">Portée</label>
+            <select class="input input--sm" id="enrichment-cache-scope" name="cache_scope">
+              <option value="commune" <%= enrichmentCacheBrowse.filters.scope === 'commune' ? 'selected' : '' %>>Communal (INSEE)</option>
+              <option value="department" <%= enrichmentCacheBrowse.filters.scope === 'department' ? 'selected' : '' %>>Départemental</option>
+              <option value="listing" <%= enrichmentCacheBrowse.filters.scope === 'listing' ? 'selected' : '' %>>Par annonce</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field__label" for="enrichment-cache-provider">Provider</label>
+            <select class="input input--sm" id="enrichment-cache-provider" name="cache_provider">
+              <option value="">Tous</option>
+              <% enrichmentCacheProviders.forEach(function (key) { %>
+                <option value="<%= key %>" <%= enrichmentCacheBrowse.filters.provider === key ? 'selected' : '' %>><%= key %></option>
+              <% }); %>
+            </select>
+          </div>
+          <div class="field admin-cache-filters__search">
+            <label class="field__label" for="enrichment-cache-q">Rechercher</label>
+            <input
+              class="input input--sm"
+              type="search"
+              id="enrichment-cache-q"
+              name="cache_q"
+              value="<%= enrichmentCacheBrowse.filters.q || '' %>"
+              placeholder="<%= enrichmentCacheBrowse.filters.scope === 'commune' ? 'Code INSEE…' : enrichmentCacheBrowse.filters.scope === 'department' ? 'Code département…' : 'N° annonce, titre, e-mail…' %>"
+              autocomplete="off"
+            />
+          </div>
+        </div>
+      </form>
+
+      <%- include("../partials/admin/enrichment-cache-table", {
+        records: enrichmentCacheBrowse.records,
+        filters: enrichmentCacheBrowse.filters,
+        pagination: enrichmentCacheBrowse.pagination,
+        cacheRevokeNotice: null,
+      }) %>
+    </section>
+  </div>
+</div>
+<%- include("../partials/admin/modals") %>

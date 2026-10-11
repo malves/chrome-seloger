@@ -1,0 +1,49 @@
+<div class="modal modal--admin-user" id="admin-user-modal" hidden>
+  <div class="modal__overlay" data-admin-user-dismiss></div>
+  <div
+    class="modal__dialog modal__dialog--wide admin-user-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="admin-user-modal-title"
+  >
+    <button
+      type="button"
+      class="modal__close admin-user-dialog__close"
+      data-admin-user-dismiss
+      aria-label="Fermer"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+    <div class="admin-user-dialog__content" data-admin-user-content>
+      <p class="admin-user-dialog__loading">Chargement…</p>
+    </div>
+  </div>
+</div>
+
+<div class="modal modal--cache-json" id="admin-cache-modal" hidden>
+  <div class="modal__overlay" data-admin-cache-dismiss></div>
+  <div
+    class="modal__dialog modal__dialog--wide admin-cache-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="admin-cache-modal-title"
+  >
+    <button
+      type="button"
+      class="modal__close admin-cache-dialog__close"
+      data-admin-cache-dismiss
+      aria-label="Fermer"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+    <div class="admin-cache-dialog__content" data-admin-cache-content>
+      <p class="admin-cache-dialog__loading">Chargement…</p>
+    </div>
+  </div>
+</div>

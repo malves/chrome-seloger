@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import createAddressAiService, {
+  compareDpeDateDesc,
+  enrichAddressAiCandidateMaps,
   needsDepartmentFallback,
   periodContainsYear,
 } from "../src/services/address-ai.service.js";
+import { googleMapsSearchUrl } from "../src/lib/google-maps-url.js";
 
 /** Repo factice : capture les filtres reçus et renvoie des DPE prédéfinis. */
 function stubRepositories(records, capture) {
@@ -131,6 +134,109 @@ test("search : regroupement par adresse, meilleur score retenu, tri décroissant
   assert.ok(second.confidence < first.confidence);
 });
 
+test("compareDpeDateDesc : plus récent d'abord, dates absentes en dernier", () => {
+  assert.ok(compareDpeDateDesc("2024-06-01", "2023-01-01") > 0);
+  assert.ok(compareDpeDateDesc("2023-01-01", "2024-06-01") < 0);
+  assert.equal(compareDpeDateDesc("2024-01-01", "2024-01-01"), 0);
+  assert.ok(compareDpeDateDesc(null, "2024-01-01") < 0);
+  assert.ok(compareDpeDateDesc("2024-01-01", null) > 0);
+});
+
+test("search : à confiance égale, adresse la plus récente (DPE) en premier", () => {
+  const match = {
+    surface_habitable_logement: 50,
+    etiquette_dpe: "D",
+    etiquette_ges: "C",
+    annee_construction: 1970,
+    raw: { complement_adresse_logement: "3ème étage" },
+  };
+  const service = createAddressAiService({
+    repositories: stubRepositories([
+      dpeRecord({
+        adresse_ban: "10 Rue Ancienne 75011 Paris",
+        nom_commune_ban: "Paris",
+        date_derniere_modification_dpe: "2023-01-01",
+        ...match,
+      }),
+      dpeRecord({
+        adresse_ban: "20 Rue Récente 75011 Paris",
+        nom_commune_ban: "Paris",
+        date_derniere_modification_dpe: "2024-06-01",
+        ...match,
+      }),
+    ]),
+  });
+
+  const { candidates } = service.search(APARTMENT);
+  assert.equal(candidates.length, 2);
+  assert.equal(candidates[0].confidence, candidates[1].confidence);
+  assert.equal(candidates[0].street, "20 Rue Récente");
+  assert.equal(candidates[0].dpeDateModif, "2024-06-01");
+});
+
+test("search : même adresse, confiance égale → DPE modifié le plus récemment retenu", () => {
+  const shared = {
+    adresse_ban: "10 Rue A 75011 Paris",
+    nom_commune_ban: "Paris",
+    surface_habitable_logement: 50,
+    etiquette_dpe: "D",
+    etiquette_ges: "C",
+    annee_construction: 1970,
+    raw: { complement_adresse_logement: "3ème étage" },
+  };
+  const service = createAddressAiService({
+    repositories: stubRepositories([
+      dpeRecord({
+        numero_dpe: "DPE-OLD",
+        date_derniere_modification_dpe: "2023-01-01",
+        ...shared,
+      }),
+      dpeRecord({
+        numero_dpe: "DPE-NEW",
+        date_derniere_modification_dpe: "2024-06-01",
+        ...shared,
+      }),
+    ]),
+  });
+
+  const { candidates } = service.search(APARTMENT);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].numeroDpe, "DPE-NEW");
+  assert.equal(candidates[0].dpeCount, 2);
+});
+
+test("search : dates DPE exposées dans source.dates (debug console)", () => {
+  const service = createAddressAiService({
+    repositories: stubRepositories([
+      dpeRecord({
+        adresse_ban: "10 Rue A 75011 Paris",
+        nom_commune_ban: "Paris",
+        surface_habitable_logement: 50,
+        etiquette_dpe: "D",
+        etiquette_ges: "C",
+        date_etablissement_dpe: "2023-01-15",
+        date_derniere_modification_dpe: "2024-02-01",
+        raw: {
+          complement_adresse_logement: "3ème étage",
+          date_fin_validite_dpe: "2033-01-15",
+          date_reception_dpe: "2023-01-16",
+          date_visite_diagnostiqueur: "2023-01-10",
+        },
+      }),
+    ]),
+  });
+
+  const { candidates } = service.search(APARTMENT);
+  assert.equal(candidates.length, 1);
+  assert.deepEqual(candidates[0].source.dates, {
+    date_derniere_modification_dpe: "2024-02-01",
+    date_etablissement_dpe: "2023-01-15",
+    date_fin_validite_dpe: "2033-01-15",
+    date_reception_dpe: "2023-01-16",
+    date_visite_diagnostiqueur: "2023-01-10",
+  });
+});
+
 test("periodContainsYear : plages et bornes avant/après", () => {
   assert.equal(periodContainsYear("1948-1974", 1960), true);
   assert.equal(periodContainsYear("1948-1974", 1948), true);
@@ -198,6 +304,182 @@ test("search : l'étage parsé depuis le complément d'adresse booste le score",
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].matched.floor, true);
   assert.equal(candidates[0].confidence, 95);
+});
+
+test("search : la source d'énergie départage deux DPE identiques par ailleurs", () => {
+  const base = {
+    type_batiment: "maison",
+    nom_commune_ban: "Saint-Cloud",
+    code_postal_ban: "92210",
+    surface_habitable_logement: 135,
+    etiquette_dpe: "E",
+    etiquette_ges: "E",
+  };
+  const service = createAddressAiService({
+    repositories: stubRepositories([
+      dpeRecord({
+        ...base,
+        adresse_ban: "1 Rue Electrique 92210 Saint-Cloud",
+        raw: { type_energie_principale_chauffage: "Électricité" },
+      }),
+      dpeRecord({
+        ...base,
+        adresse_ban: "2 Rue du Gaz 92210 Saint-Cloud",
+        raw: { type_energie_principale_chauffage: "Gaz naturel" },
+      }),
+    ]),
+  });
+
+  const { criteria, candidates } = service.search({
+    id: 7,
+    property_type: "house",
+    postal_code: "92210",
+    surface: 135,
+    dpe: "E",
+    ges: "E",
+    energy_source: "Gaz",
+  });
+
+  assert.deepEqual(criteria.famillesEnergie, ["gaz"]);
+  assert.equal(candidates[0].street, "2 Rue du Gaz");
+  assert.equal(candidates[0].matched.energy, true);
+  assert.equal(candidates[0].source.energie, "Gaz naturel");
+  assert.equal(candidates[1].matched.energy, false);
+  assert.ok(candidates[0].confidence > candidates[1].confidence);
+});
+
+test("search : sans source d'énergie dans l'annonce, le critère est ignoré", () => {
+  const service = createAddressAiService({
+    repositories: stubRepositories([
+      dpeRecord({
+        adresse_ban: "1 Rue A 75011 Paris",
+        surface_habitable_logement: 50,
+        raw: { type_energie_principale_chauffage: "Gaz naturel" },
+      }),
+    ]),
+  });
+  const { candidates } = service.search({ ...APARTMENT, energy_source: undefined });
+  assert.equal(candidates[0].matched.energy, undefined);
+});
+
+test("search : consommation et émissions départagent des DPE aux mêmes étiquettes", () => {
+  const base = {
+    nom_commune_ban: "Suresnes",
+    code_postal_ban: "92150",
+    surface_habitable_logement: 31,
+    etiquette_dpe: "G",
+    etiquette_ges: "C",
+  };
+  const service = createAddressAiService({
+    repositories: stubRepositories([
+      dpeRecord({
+        ...base,
+        adresse_ban: "31 Boulevard Henri Sellier 92150 Suresnes",
+        raw: { conso_5_usages_par_m2_ep: 544.6, emission_ges_5_usages_par_m2: 21 },
+      }),
+      dpeRecord({
+        ...base,
+        adresse_ban: "42 Rue Claude Burgod 92150 Suresnes",
+        raw: { conso_5_usages_par_m2_ep: 572, emission_ges_5_usages_par_m2: 23 },
+      }),
+      dpeRecord({
+        ...base,
+        adresse_ban: "1 Rue Proche 92150 Suresnes",
+        raw: { conso_5_usages_par_m2_ep: "568.4", emission_ges_5_usages_par_m2: "22.6" },
+      }),
+      dpeRecord({ ...base, adresse_ban: "2 Rue Sans Valeurs 92150 Suresnes" }),
+    ]),
+  });
+
+  const { criteria, candidates } = service.search({
+    id: 38,
+    property_type: "apartment",
+    postal_code: "92150",
+    surface: 31,
+    dpe: "G",
+    ges: "C",
+    dpe_value: 572,
+    ges_value: 23,
+  });
+
+  assert.equal(criteria.consoM2, 572);
+  assert.equal(criteria.emissionsM2, 23);
+
+  const byStreet = Object.fromEntries(candidates.map((c) => [c.street, c]));
+  const exact = byStreet["42 Rue Claude Burgod"];
+  const close = byStreet["1 Rue Proche"];
+  const far = byStreet["31 Boulevard Henri Sellier"];
+  const missing = byStreet["2 Rue Sans Valeurs"];
+
+  assert.equal(candidates[0].street, "42 Rue Claude Burgod");
+  assert.equal(exact.confidence, 95);
+  assert.equal(exact.matched.conso, true);
+  assert.equal(exact.matched.emissions, true);
+  assert.equal(exact.source.conso, 572);
+  assert.equal(exact.source.emissions, 23);
+
+  assert.equal(close.matched.conso, true);
+  assert.equal(close.matched.emissions, true);
+  assert.ok(close.confidence < exact.confidence);
+
+  assert.equal(far.matched.conso, false);
+  assert.ok(far.confidence < close.confidence);
+
+  assert.equal(missing.matched.conso, false);
+  assert.equal(missing.matched.emissions, false);
+  assert.equal(missing.source.conso, null);
+});
+
+test("search : numéro repris depuis numero_voie_brut si numero_voie_ban vide", () => {
+  const service = createAddressAiService({
+    repositories: stubRepositories([
+      dpeRecord({
+        adresse_ban: "Rue Gérhard 92800 Puteaux",
+        adresse_brut: "118 Rue Guerard",
+        nom_commune_ban: "Puteaux",
+        code_postal_ban: "92800",
+        surface_habitable_logement: 61,
+        etiquette_dpe: "E",
+        raw: {
+          nom_rue_ban: "Rue Gérhard",
+          numero_voie_ban: "",
+          numero_voie_brut: "118",
+        },
+      }),
+    ]),
+  });
+  const listing = {
+    ...APARTMENT,
+    postal_code: "92800",
+    surface: 61,
+    dpe: "E",
+  };
+  const [candidate] = service.search(listing).candidates;
+  assert.equal(candidate.street, "118 Rue Gérhard");
+  assert.equal(candidate.mapsQuery, "118 Rue Gérhard, 92800, Puteaux");
+});
+
+test("search : sans valeurs chiffrées dans l'annonce, conso/émissions ignorées", () => {
+  const service = createAddressAiService({
+    repositories: stubRepositories([
+      dpeRecord({
+        adresse_ban: "10 Rue A 75011 Paris",
+        surface_habitable_logement: 50,
+        etiquette_dpe: "D",
+        etiquette_ges: "C",
+        annee_construction: 1970,
+        raw: {
+          complement_adresse_logement: "3ème étage",
+          conso_5_usages_par_m2_ep: 999,
+          emission_ges_5_usages_par_m2: 99,
+        },
+      }),
+    ]),
+  });
+  const [candidate] = service.search(APARTMENT).candidates;
+  assert.equal(candidate.confidence, 95);
+  assert.equal("conso" in candidate.matched, false);
+  assert.equal("emissions" in candidate.matched, false);
 });
 
 test("needsDepartmentFallback : vide ou confiances toutes basses", () => {
@@ -312,4 +594,20 @@ test("search : pas de second appel département si le CP suffit", () => {
   const result = service.search({ ...APARTMENT, postal_code: "92210" });
   assert.equal(callCount, 1);
   assert.equal(result.mode, "precise");
+});
+
+test("enrichAddressAiCandidateMaps : lien recherche quand pas de clé Google", async () => {
+  let calls = 0;
+  const enriched = await enrichAddressAiCandidateMaps(
+    [{ street: "5 Rue de Test", mapsQuery: "5 Rue de Test 75011 Paris" }],
+    async () => {
+      calls += 1;
+      return { lat: 48.857832, lon: 2.295226, label: "5 Rue de Test" };
+    }
+  );
+  assert.equal(calls, 1);
+  assert.equal(
+    enriched[0].mapsUrl,
+    googleMapsSearchUrl("5 Rue de Test 75011 Paris")
+  );
 });

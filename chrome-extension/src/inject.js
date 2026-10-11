@@ -156,6 +156,13 @@
     return /^[A-G]$/.test(letter) ? letter : null;
   }
 
+  /** `energy.features[].type` SeLoger → champ du payload. @see app/src/lib/seloger-ufrn.js */
+  const SELOGER_ENERGY_FIELDS = {
+    energySource: "energy_source",
+    heatingSystem: "heating_system",
+    state: "property_condition",
+  };
+
   /** Numéro d'étage depuis hardFacts SeLoger (`numberOfFloors`). */
   function floorFromHardFacts(sections) {
     const facts =
@@ -191,7 +198,9 @@
    *  - description : classified.sections.description.description (texte complet) ;
    *  - DPE : échelle de type « FR_ENERGY_* » → note + consommation (kWhEP/m².an) ;
    *  - GES : échelle de type « FR_GHG_* » → note + émissions (kg CO₂/m².an) ;
-   *  - année : energy.features[type = "yearOfConstruction"].
+   *  - année : energy.features[type = "yearOfConstruction"] ;
+   *  - énergie, chauffage, état : energy.features[type = "energySource" |
+   *    "heatingSystem" | "state"].
    */
   function extractSeLogerDetails() {
     try {
@@ -256,6 +265,12 @@
           if (year && year >= 800 && year <= new Date().getFullYear() + 10) {
             details.year_built = Math.round(year);
           }
+        }
+
+        for (const feature of features) {
+          const key = SELOGER_ENERGY_FIELDS[feature && feature.type];
+          const value = feature && feature.value != null ? String(feature.value).trim() : "";
+          if (key && value && !details[key]) details[key] = value;
         }
       }
 

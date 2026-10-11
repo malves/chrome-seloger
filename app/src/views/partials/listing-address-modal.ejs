@@ -23,10 +23,12 @@
       </svg>
     </button>
 
-    <h2 class="modal__title" id="listing-address-modal-title">Adresse réelle du bien</h2>
+    <h2 class="modal__title" id="listing-address-modal-title" data-listing-address-title>Adresse réelle du bien</h2>
+
+    <div class="listing-address-step" data-listing-address-step="form">
     <p class="listing-address-dialog__lead">
-      Indiquez l'adresse la plus précise possible. Elle sera géocodée pour
-      afficher le bien sur la carte.
+      Indiquez le numéro et la rue. Cette adresse affine le prix au&nbsp;m&#8288;² autour
+      du bien et permet de retrouver son DPE.
     </p>
 
     <form
@@ -34,11 +36,8 @@
       class="listing-address-form"
       method="post"
       action="/listings/<%= listing.id %>/address"
-      hx-post="/listings/<%= listing.id %>/address"
-      hx-target="#listing-location-block"
-      hx-swap="outerHTML"
-      hx-indicator="#listing-address-modal .listing-address-dialog__overlay"
       data-listing-address-form
+      data-listing-id="<%= listing.id %>"
     >
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
 
@@ -129,10 +128,36 @@
           </button>
         </form>
       <% } %>
-      <button type="submit" class="btn btn--green" form="listing-address-form">
+      <button type="submit" class="btn btn--green" form="listing-address-form" data-listing-address-submit>
         <span class="btn__spinner" aria-hidden="true"></span>
         <span class="btn__label">Enregistrer</span>
       </button>
+    </div>
+    </div>
+
+    <div class="listing-address-step listing-address-dpe" data-listing-address-step="dpe" hidden>
+      <p class="listing-address-dpe__lead" data-listing-address-dpe-lead></p>
+      <ul
+        class="listing-address-dpe__list"
+        role="listbox"
+        aria-label="DPE possibles pour cette adresse"
+        data-listing-address-dpe-list
+      ></ul>
+
+      <div class="listing-address-dpe__actions">
+        <button type="button" class="listing-address-dpe__back" data-listing-address-dpe-back>
+          ← Modifier l'adresse
+        </button>
+        <div class="listing-address-dpe__buttons">
+          <button type="button" class="btn btn--ghost" data-listing-address-dpe-skip>
+            <span class="btn__label" data-listing-address-dpe-skip-label>Aucun</span>
+          </button>
+          <button type="button" class="btn btn--green" data-listing-address-dpe-confirm>
+            <span class="btn__spinner" aria-hidden="true"></span>
+            <span class="btn__label" data-listing-address-dpe-confirm-label>Associer ce DPE</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </div>

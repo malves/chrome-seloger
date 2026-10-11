@@ -1,0 +1,64 @@
+<%
+  // Modale « Pièces et état » : coque statique, contenu rendu par works-planner.js.
+  function icon(name) {
+    return '<svg class="wi" aria-hidden="true"><use href="#wi-' + name + '"></use></svg>';
+  }
+%>
+<div
+  class="modal works-modal"
+  id="works-modal"
+  hidden
+  data-works-modal
+  data-plan-url="/listings/<%= listing.id %>/works/plan"
+>
+  <div class="modal__overlay" data-works-dismiss></div>
+  <div
+    class="modal__dialog works-modal__dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="works-modal-title"
+    aria-describedby="works-modal-lead"
+  >
+    <header class="works-modal__header">
+      <div class="works-modal__heading">
+        <div>
+          <h2 class="works-modal__title" id="works-modal-title">Pièces et état</h2>
+          <div class="works-modal__intro works-banner works-banner--ai" id="works-modal-lead">
+            <p><strong>Proposition de l'IA.</strong> Vérifiez chaque pièce : vos corrections sont enregistrées automatiquement.</p>
+          </div>
+        </div>
+      </div>
+      <div class="works-modal__header-aside">
+        <span class="works-save" data-works-save-status data-state="idle" aria-live="polite">
+          <span class="works-save__dot" aria-hidden="true"></span>
+          <span class="works-save__label">Prêt</span>
+        </span>
+        <button type="button" class="modal__close" data-works-dismiss aria-label="Fermer">
+          <%- icon("close") %>
+        </button>
+      </div>
+    </header>
+
+    <div class="works-modal__body" data-works-body>
+      <div class="works-modal__loading" data-works-loading>
+        <span class="spinner" aria-hidden="true"></span>
+        <p>Préparation des pièces…</p>
+      </div>
+    </div>
+
+    <footer class="works-modal__footer">
+      <button type="button" class="btn btn--ghost btn--sm works-modal__reset" data-works-reset>
+        <%- icon("reset") %>
+        <span class="works-modal__reset-long">Repartir du diagnostic initial</span>
+        <span class="works-modal__reset-short">Diagnostic initial</span>
+      </button>
+      <button type="button" class="btn btn--green works-modal__done" data-works-done>
+        <%- icon("check") %>
+        Terminer
+      </button>
+    </footer>
+
+    <div class="works-toast" data-works-toast hidden role="status"></div>
+    <p class="visually-hidden" data-works-announcer aria-live="assertive"></p>
+  </div>
+</div>

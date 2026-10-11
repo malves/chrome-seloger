@@ -51,7 +51,7 @@
         </thead>
         <tbody>
           <% records.forEach(function (u) {
-            var isAccountAdmin = u.email && u.email.toLowerCase() === adminEmail;
+            var isAccountAdmin = u.email && adminEmails.indexOf(u.email.toLowerCase()) !== -1;
             var isSelf = u.id === currentUserId;
           %>
             <tr

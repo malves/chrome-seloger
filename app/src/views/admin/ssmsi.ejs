@@ -1,0 +1,84 @@
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content">
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Open data SSMSI</p>
+          <h2 class="panel__title">Import délinquance enregistrée</h2>
+        </div>
+      </div>
+
+      <p class="field__hint">
+        Télécharge automatiquement les fichiers officiels
+        <a href="https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales" target="_blank" rel="noopener noreferrer">SSMSI sur data.gouv</a>
+        (COM ~40 Mo + DEP ~2 Mo, comptez 3 à 8 min). Aucune URL à copier-coller : cliquez sur le bouton ci-dessous et attendez le badge <strong>Terminé</strong> dans le statut.
+      </p>
+
+      <form
+        class="dpe-import-form"
+        method="post"
+        action="/admin/ssmsi/import"
+        hx-post="/admin/ssmsi/import"
+        hx-target="#ssmsi-import-status"
+        hx-swap="outerHTML"
+        <% if (ssmsiDashboard && ssmsiDashboard.running) { %>data-import-blocked="true"<% } %>
+        style="margin-top: var(--space-4)"
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input type="hidden" name="commune_url" value="<%= ssmsiDefaultCommuneUrl %>" />
+        <input type="hidden" name="dep_url" value="<%= ssmsiDefaultDepUrl %>" />
+        <button class="btn btn--green" type="submit" <%= ssmsiDashboard && ssmsiDashboard.running ? 'disabled' : '' %>>
+          Télécharger et importer depuis data.gouv
+        </button>
+      </form>
+
+      <details class="field" style="margin-top: var(--space-3)">
+        <summary class="field__label" style="cursor: pointer">URL personnalisées (nouveau millésime SSMSI)</summary>
+        <p class="field__hint">Laisser vide pour garder les sources par défaut du serveur.</p>
+        <form
+          class="dpe-import-form"
+          method="post"
+          action="/admin/ssmsi/import"
+          hx-post="/admin/ssmsi/import"
+          hx-target="#ssmsi-import-status"
+          hx-swap="outerHTML"
+          style="margin-top: var(--space-2)"
+        >
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <div class="field">
+            <label class="field__label" for="ssmsi-commune-url">Fichier communal (COM, csv.gz)</label>
+            <input
+              class="field__input"
+              type="url"
+              id="ssmsi-commune-url"
+              name="commune_url"
+              placeholder="<%= ssmsiDefaultCommuneUrl %>"
+            />
+          </div>
+          <div class="field">
+            <label class="field__label" for="ssmsi-dep-url">Fichier départemental (DEP, csv)</label>
+            <input
+              class="field__input"
+              type="url"
+              id="ssmsi-dep-url"
+              name="dep_url"
+              placeholder="<%= ssmsiDefaultDepUrl %>"
+            />
+          </div>
+          <button class="btn btn--ghost btn--sm" type="submit" <%= ssmsiDashboard && ssmsiDashboard.running ? 'disabled' : '' %>>
+            Importer avec ces URL
+          </button>
+        </form>
+      </details>
+
+      <div style="margin-top: var(--space-4)">
+        <%- include("../partials/admin/ssmsi-import-status", {
+          ssmsiDashboard: ssmsiDashboard,
+          ssmsiImportError: null,
+          ssmsiImportNotice: null,
+        }) %>
+      </div>
+    </section>
+  </div>
+</div>

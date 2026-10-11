@@ -79,6 +79,8 @@ withFixtureApp("un nouveau provider est découvert sans inscription", async (ctx
   // Les providers cache-only départementaux / portée annonce sont inclus.
   assert.deepEqual(keys, [
     "commune",
+    "probable-location",
+    "photo-analysis",
     "financing",
     "delinquance",
     "delinquance-dept",
@@ -130,10 +132,10 @@ withFixtureApp("un provider en erreur n'empêche pas l'affichage", async (ctx) =
 
 withFixtureApp("le bouton Réessayer relance le provider ciblé (admin)", async (ctx) => {
   const { app, repositories, listingsService } = ctx;
-  await createUser(repositories, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
   const user = await createUser(repositories, "a@example.com");
   const { id } = listingsService.save(user, listingPayload());
-  const agent = await loginAgent(app, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmails[0]);
 
   const page = await agent.get(`/listings/${id}`).expect(200);
   const csrf = /name="_csrf" value="([^"]+)"/.exec(page.text)[1];
@@ -151,7 +153,7 @@ withFixtureApp("le bouton Réessayer relance le provider ciblé (admin)", async 
 
 withFixtureApp("Actualiser le territoire recharge tous les providers communaux (admin)", async (ctx) => {
   const { app, repositories, listingsService, enrichment } = ctx;
-  await createUser(repositories, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
   const user = await createUser(repositories, "a@example.com");
   const { id } = listingsService.save(user, listingPayload({ city: "Versailles", postal_code: "78000" }));
   await enrichment.runForListing(user.id, id, { only: "commune" });
@@ -163,7 +165,7 @@ withFixtureApp("Actualiser le territoire recharge tous les providers communaux (
     department: { code: "78", name: "Yvelines" },
   });
 
-  const agent = await loginAgent(app, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmails[0]);
   const page = await agent.get(`/listings/${id}`).expect(200);
   const csrf = /name="_csrf" value="([^"]+)"/.exec(page.text)[1];
 
@@ -185,12 +187,12 @@ withFixtureApp("Actualiser le territoire recharge tous les providers communaux (
 
 withFixtureApp("Actualiser l'analyse de marché recharge tous les providers marché (admin)", async (ctx) => {
   const { app, repositories, listingsService, enrichment } = ctx;
-  await createUser(repositories, config.adminEmail);
+  await createUser(repositories, config.adminEmails[0]);
   const user = await createUser(repositories, "a@example.com");
   const { id } = listingsService.save(user, listingPayload({ city: "Versailles", postal_code: "78000" }));
   await enrichment.runForListing(user.id, id, { only: "immo-data" });
 
-  const agent = await loginAgent(app, config.adminEmail);
+  const agent = await loginAgent(app, config.adminEmails[0]);
   const page = await agent.get(`/listings/${id}`).expect(200);
   const csrf = /name="_csrf" value="([^"]+)"/.exec(page.text)[1];
 

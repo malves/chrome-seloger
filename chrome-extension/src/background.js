@@ -14,15 +14,12 @@
  */
 
 // Adresse du carnet et client d'API (authentification, projets, trajet, annonces).
+// `config.local.js` doit exister : Chrome journalise une erreur sur tout
+// importScripts manquant, même intercepté. Le zip embarque une version vide.
 try {
   importScripts("config.local.js");
 } catch {
-  // Pas de surcharge : config.js utilise l'URL de production.
-}
-try {
-  importScripts("build.version.js");
-} catch {
-  // Développement : la version vient du manifest Chrome.
+  // Copiez config.local.example.js vers config.local.js.
 }
 importScripts("config.js", "carnet.js");
 

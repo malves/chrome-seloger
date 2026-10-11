@@ -1,5 +1,5 @@
 <%
-  var isAccountAdmin = user.email && user.email.toLowerCase() === adminEmail;
+  var isAccountAdmin = user.email && adminEmails.indexOf(user.email.toLowerCase()) !== -1;
   var isSelf = user.id === currentUserId;
   var canDelete = !isSelf && !isAccountAdmin;
 %>

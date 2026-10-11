@@ -12,9 +12,24 @@ import {
   dpeBuildingTypesFor,
 } from "../lib/listing-dpe-criteria.js";
 import { floorFromDpeRaw } from "../lib/dpe-floor.js";
+import { dpeHeatingEnergy, energyFamily } from "../lib/energy-source.js";
+import {
+  fetchStreetViewMetadata,
+  resolveGoogleMapsListingUrl,
+} from "../lib/google-maps-url.js";
+import { dpeAddressKey, dpeMapsQuery, dpeStreetLine } from "../lib/dpe-address.js";
 
 /** Demi-largeur de la fenêtre de surface (±3%). */
-const SURFACE_MARGIN = 0.03;
+export const SURFACE_MARGIN = 0.03;
+
+/**
+ * Fenêtres de tolérance des valeurs chiffrées DPE/GES : l'annonce affiche des
+ * entiers arrondis, la base ADEME des décimales (ex. 564,5 kWhEP/m².an).
+ */
+const CONSO_MARGIN = 0.03;
+const CONSO_MIN_WINDOW = 5;
+const EMISSIONS_MARGIN = 0.1;
+const EMISSIONS_MIN_WINDOW = 2;
 
 /** Nombre maximum d'adresses candidates renvoyées. */
 const MAX_CANDIDATES = 6;
@@ -33,12 +48,40 @@ const WEIGHTS = {
   surface: 25,
   dpe: 20,
   ges: 15,
+  conso: 30,
+  emissions: 20,
   floor: 25,
   year: 15,
+  energy: 15,
 };
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Proximité 0..1 d'une valeur DPE par rapport à celle de l'annonce : 1 si
+ * identique, 0 au-delà de la fenêtre (max(cible × marge, plancher)).
+ */
+function closenessTo(actual, target, margin, minWindow) {
+  const value = Number(actual);
+  if (actual == null || actual === "" || !Number.isFinite(value)) return 0;
+  const window = Math.max(target * margin, minWindow);
+  return clamp(1 - Math.abs(value - target) / window, 0, 1);
+}
+
+function consoFromRecord(record) {
+  return toFiniteNumber(record.raw?.conso_5_usages_par_m2_ep);
+}
+
+function emissionsFromRecord(record) {
+  return toFiniteNumber(record.raw?.emission_ges_5_usages_par_m2);
+}
+
+function toFiniteNumber(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
@@ -74,6 +117,63 @@ function floorFromRecord(record) {
   return floorFromDpeRaw(record.raw || {});
 }
 
+/** Colonnes date DPE exposées dans le tableau de debug (console navigateur). */
+export const DPE_DEBUG_DATE_KEYS = [
+  "date_derniere_modification_dpe",
+  "date_etablissement_dpe",
+  "date_fin_validite_dpe",
+  "date_reception_dpe",
+  "date_visite_diagnostiqueur",
+];
+
+function dpeDateField(record, key) {
+  const raw = record.raw || {};
+  const column = record[key];
+  if (column != null && column !== "") return column;
+  const fromRaw = raw[key];
+  if (fromRaw != null && fromRaw !== "") return fromRaw;
+  return null;
+}
+
+function dpeDebugDates(record) {
+  const dates = {};
+  for (const key of DPE_DEBUG_DATE_KEYS) {
+    dates[key] = dpeDateField(record, key);
+  }
+  return dates;
+}
+
+function dpeDateModification(record) {
+  return dpeDateField(record, "date_derniere_modification_dpe");
+}
+
+/**
+ * Compare deux dates DPE (YYYY-MM-DD).
+ * Retour positif si `left` est plus récente que `right` (les absentes passent après).
+ */
+export function compareDpeDateDesc(left, right) {
+  const a = left != null && left !== "" ? String(left) : null;
+  const b = right != null && right !== "" ? String(right) : null;
+  if (a === b) return 0;
+  if (!a) return -1;
+  if (!b) return 1;
+  return a.localeCompare(b);
+}
+
+function shouldPreferDpeRecord({ confidence, dateModif }, existing) {
+  if (confidence > existing.confidence) return true;
+  if (confidence < existing.confidence) return false;
+  return compareDpeDateDesc(dateModif, existing.dpeDateModif) > 0;
+}
+
+function applyRepresentativeDpe(target, record, { confidence, matched }) {
+  target.confidence = confidence;
+  target.matched = matched;
+  target.numeroDpe = record.numero_dpe;
+  target.dpeDateModif = dpeDateModification(record);
+  target.source = recordDebug(record);
+}
+
 /** Valeurs brutes du DPE utilisées pour le matching (debug console client). */
 function recordDebug(record) {
   const raw = record.raw || {};
@@ -82,6 +182,8 @@ function recordDebug(record) {
     surface: record.surface_habitable_logement ?? null,
     dpe: record.etiquette_dpe ?? null,
     ges: record.etiquette_ges ?? null,
+    conso: consoFromRecord(record),
+    emissions: emissionsFromRecord(record),
     annee: record.annee_construction ?? null,
     periode: raw.periode_construction ?? null,
     etage: floorFromRecord(record),
@@ -89,20 +191,9 @@ function recordDebug(record) {
     etageStructure: raw.numero_etage_appartement ?? null,
     etageTexte: raw.complement_adresse_logement ?? null,
     typeBatiment: record.type_batiment ?? null,
+    energie: dpeHeatingEnergy(raw),
+    dates: dpeDebugDates(record),
   };
-}
-
-/** Retire la localité (CP + commune) de l'adresse BAN pour isoler la voie. */
-function streetFromBan(ban, postalCode, city) {
-  if (!ban) return null;
-  let street = String(ban);
-  if (postalCode) {
-    street = street.replace(new RegExp(`\\s*${postalCode}.*$`), "");
-  } else if (city) {
-    street = street.replace(new RegExp(`\\s*${city}\\s*$`, "i"), "");
-  }
-  street = street.replace(/[\s,]+$/, "").trim();
-  return street || String(ban);
 }
 
 /**
@@ -110,7 +201,7 @@ function streetFromBan(ban, postalCode, city) {
  * Chaque critère disponible dans l'annonce compte dans le « possible » ; les
  * points réellement gagnés dépendent de la concordance avec le DPE.
  */
-function scoreRecord(record, criteria) {
+export function scoreRecord(record, criteria) {
   let earned = 0;
   let possible = 0;
   const matched = {};
@@ -147,6 +238,33 @@ function scoreRecord(record, criteria) {
     matched.ges = ok;
   }
 
+  // Consommation en énergie primaire (kWhEP/m².an) : bien plus discriminante
+  // que l'étiquette, qui couvre une large plage (G = plus de 420).
+  if (criteria.consoM2 != null) {
+    possible += WEIGHTS.conso;
+    const closeness = closenessTo(
+      consoFromRecord(record),
+      criteria.consoM2,
+      CONSO_MARGIN,
+      CONSO_MIN_WINDOW
+    );
+    earned += WEIGHTS.conso * closeness;
+    matched.conso = closeness >= 0.5;
+  }
+
+  // Émissions de gaz à effet de serre (kg CO₂/m².an).
+  if (criteria.emissionsM2 != null) {
+    possible += WEIGHTS.emissions;
+    const closeness = closenessTo(
+      emissionsFromRecord(record),
+      criteria.emissionsM2,
+      EMISSIONS_MARGIN,
+      EMISSIONS_MIN_WINDOW
+    );
+    earned += WEIGHTS.emissions * closeness;
+    matched.emissions = closeness >= 0.5;
+  }
+
   // Étage (appartements uniquement : `criteria.etage` n'est renseigné que
   // lorsque l'annonce porte un étage).
   if (criteria.etage != null) {
@@ -180,6 +298,15 @@ function scoreRecord(record, criteria) {
     matched.year = yearPts > 0;
   }
 
+  // Énergie de chauffage, comparée par famille (« Gaz » ↔ « Gaz naturel »).
+  if (criteria.famillesEnergie?.length) {
+    possible += WEIGHTS.energy;
+    const family = energyFamily(dpeHeatingEnergy(record.raw));
+    const ok = family != null && criteria.famillesEnergie.includes(family);
+    if (ok) earned += WEIGHTS.energy;
+    matched.energy = ok;
+  }
+
   const confidence = clamp(
     Math.round(((WEIGHTS.base + earned) / (WEIGHTS.base + possible)) * 100),
     30,
@@ -189,31 +316,18 @@ function scoreRecord(record, criteria) {
   return { confidence, matched };
 }
 
-/** Clé de regroupement : une adresse (BAN sinon brute). */
-function addressKey(record) {
-  return (
-    record.adresse_ban ||
-    record.adresse_brut ||
-    `${record.code_postal_ban || ""}-${record.numero_dpe}`
-  ).trim();
-}
-
 function buildCandidates(records, criteria) {
   const byAddress = new Map();
   for (const record of records) {
     const { confidence, matched } = scoreRecord(record, criteria);
-    const key = addressKey(record);
+    const key = dpeAddressKey(record);
     const postalCode = record.code_postal_ban || criteria.codePostal;
     const city = record.nom_commune_ban || null;
-    const street =
-      streetFromBan(record.adresse_ban, postalCode, city) ||
-      record.adresse_brut ||
-      null;
+    const street = dpeStreetLine(record);
     const locality = [postalCode, city].filter(Boolean).join(" ");
-    const mapsQuery =
-      record.adresse_ban ||
-      [street, postalCode, city].filter(Boolean).join(", ");
+    const mapsQuery = dpeMapsQuery(record);
 
+    const dateModif = dpeDateModification(record);
     const existing = byAddress.get(key);
     if (!existing) {
       byAddress.set(key, {
@@ -226,28 +340,105 @@ function buildCandidates(records, criteria) {
         mapsQuery,
         matched,
         numeroDpe: record.numero_dpe,
+        dpeDateModif: dateModif,
         source: recordDebug(record),
       });
     } else {
       existing.dpeCount += 1;
-      if (confidence > existing.confidence) {
-        existing.confidence = confidence;
-        existing.matched = matched;
-        existing.numeroDpe = record.numero_dpe;
-        existing.source = recordDebug(record);
+      if (shouldPreferDpeRecord({ confidence, dateModif }, existing)) {
+        applyRepresentativeDpe(existing, record, { confidence, matched });
       }
     }
   }
 
   return Array.from(byAddress.values())
-    .sort((a, b) => b.confidence - a.confidence || b.dpeCount - a.dpeCount)
+    .sort(
+      (a, b) =>
+        b.confidence - a.confidence ||
+        compareDpeDateDesc(b.dpeDateModif, a.dpeDateModif) ||
+        b.dpeCount - a.dpeCount
+    )
     .slice(0, MAX_CANDIDATES);
+}
+
+/**
+ * Géocode chaque adresse candidate (cache par requête) et ajoute `mapsUrl`
+ * (Street View si le point est connu, sinon recherche texte).
+ */
+export async function enrichAddressAiCandidateMaps(
+  candidates,
+  geocodeAddress,
+  { mapsApiKey } = {}
+) {
+  if (!candidates?.length || !geocodeAddress) return candidates ?? [];
+
+  const coordsByQuery = new Map();
+  const metadataByLocation = new Map();
+  const enriched = [];
+
+  for (const candidate of candidates) {
+    const query = String(candidate.mapsQuery || candidate.street || "").trim();
+    let lat = null;
+    let lng = null;
+
+    if (query) {
+      if (!coordsByQuery.has(query)) {
+        try {
+          const geo = await geocodeAddress(query);
+          coordsByQuery.set(
+            query,
+            geo && geo.lat != null && geo.lon != null
+              ? { lat: geo.lat, lng: geo.lon }
+              : null
+          );
+        } catch {
+          coordsByQuery.set(query, null);
+        }
+      }
+      const coords = coordsByQuery.get(query);
+      if (coords) {
+        lat = coords.lat;
+        lng = coords.lng;
+      }
+    }
+
+    const mapsUrl = await resolveGoogleMapsListingUrl(
+      { lat, lng, query },
+      {
+        apiKey: mapsApiKey,
+        metadataFetcher: mapsApiKey
+          ? async (loc) => {
+              if (!metadataByLocation.has(loc)) {
+                metadataByLocation.set(
+                  loc,
+                  await fetchStreetViewMetadata(loc, mapsApiKey)
+                );
+              }
+              return metadataByLocation.get(loc);
+            }
+          : undefined,
+      }
+    );
+
+    enriched.push({
+      ...candidate,
+      mapsUrl,
+    });
+  }
+
+  return enriched;
 }
 
 export default function createAddressAiService({ repositories, logger } = {}) {
   const repo = repositories.dpe;
 
-  function runTerritorySearch({ criteria, typeBatiments, territory, listingId }) {
+  function runTerritorySearch({
+    criteria,
+    typeBatiments,
+    territory,
+    listingId,
+    userId,
+  }) {
     const surfaceMin = criteria.surfaceM2 * (1 - SURFACE_MARGIN);
     const surfaceMax = criteria.surfaceM2 * (1 + SURFACE_MARGIN);
     const filters = {
@@ -262,6 +453,7 @@ export default function createAddressAiService({ repositories, logger } = {}) {
     const candidates = buildCandidates(records, criteria);
     logger?.info?.(
       {
+        ...(userId != null ? { userId } : {}),
         listingId,
         mode: territory,
         records: records.length,
@@ -281,7 +473,7 @@ export default function createAddressAiService({ repositories, logger } = {}) {
    * Recherche des adresses candidates pour une annonce (CP puis repli département).
    * @returns {{ mode: string, criteria: object, champsRequisManquants: string[], candidates: object[], fallbackFrom?: string }}
    */
-  function search(listing) {
+  function search(listing, { userId } = {}) {
     const payload = listingDpeSearchCriteria(listing);
     const criteria = payload.criteres;
     const typeBatiments = dpeBuildingTypesFor(listing.property_type);
@@ -301,6 +493,7 @@ export default function createAddressAiService({ repositories, logger } = {}) {
       typeBatiments,
       territory: "precise",
       listingId: listing.id,
+      userId,
     });
 
     if (
@@ -320,6 +513,7 @@ export default function createAddressAiService({ repositories, logger } = {}) {
       typeBatiments,
       territory: "departement",
       listingId: listing.id,
+      userId,
     });
 
     return {

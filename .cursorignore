@@ -1,0 +1,46 @@
+# --- Données locales & bases (priorité : ~47 Go sous app/data/) ---
+app/data/
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.sqlite
+**/*.sqlite3
+
+# --- Secrets & config machine ---
+.env
+.env.*
+!.env.example
+app/.env
+chrome-extension/src/config.local.js
+chrome-extension/src/build.version.js
+
+# --- Dépendances & builds ---
+node_modules/
+**/node_modules/
+chrome-extension/dist/
+app/package-lock.json
+
+# --- Assets tiers (Leaflet, HTMX minifié, etc.) ---
+app/public/vendor/
+app/public/js/htmx.min.js
+
+# --- Données statiques volumineuses (générées ; retirer ces lignes si tu édites l’extension) ---
+chrome-extension/src/data/communes-data.js
+chrome-extension/src/data/prices-data.js
+
+# --- Binaires & cartes sources (inutiles pour le code métier) ---
+**/*.map
+**/*.min.js
+**/*.node
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.webp
+**/*.ico
+chrome-extension/icons/
+
+# --- Logs & OS ---
+*.log
+.DS_Store
+Thumbs.db

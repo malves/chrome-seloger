@@ -21,6 +21,7 @@ import {
   latestCard,
   listingRealtyType,
 } from "../../lib/immo-data-market.js";
+import config from "../../config.js";
 import ProviderSkipped from "./skipped.js";
 
 const SOURCE_URL = "https://developer.immo-data.fr";
@@ -57,7 +58,7 @@ export default {
   group: "market",
   display: false,
   order: 29,
-  ttlDays: 14,
+  ttlDays: config.immoData.cacheTtlDays,
   label: "Prix de marché (grand quartier)",
   source: "Immo Data",
   sourceUrl: SOURCE_URL,

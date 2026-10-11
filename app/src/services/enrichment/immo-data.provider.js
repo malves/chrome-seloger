@@ -8,6 +8,7 @@
  * l'orchestrateur : ce provider ne produit que la partie commune.
  */
 
+import config from "../../config.js";
 import ProviderSkipped from "./skipped.js";
 import {
   buildMonthlyEvolution,
@@ -28,7 +29,7 @@ export default {
   scope: "commune",
   group: "market",
   order: 26,
-  ttlDays: 14,
+  ttlDays: config.immoData.cacheTtlDays,
   label: "Prix de marché",
   source: "Immo Data",
   sourceUrl: SOURCE_URL,

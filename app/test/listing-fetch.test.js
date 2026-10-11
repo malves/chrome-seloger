@@ -109,6 +109,14 @@ test("parseListingHtml lit l'étage SeLoger dans le JSON embarqué UFRN", () => 
   assert.equal(payload.floor, 7);
 });
 
+test("parseListingHtml n'extrait pas les badges SeLoger (features.preview)", () => {
+  const inner =
+    '{\\"app_cldp\\":{\\"data\\":{\\"classified\\":{\\"sections\\":{\\"features\\":{\\"preview\\":[{\\"value\\":\\"Ascenseur\\"},{\\"value\\":\\"Cave (Total 5,3 m²)\\"}]}}}}}}';
+  const html = `${SELOGER_HTML}<script>window["__UFRN_LIFECYCLE_SERVERREQUEST__"]=JSON.parse("${inner}");</script>`;
+  const payload = parseListingHtml(html, SELOGER_URL);
+  assert.equal(payload.features, undefined);
+});
+
 test("parseListingHtml lit __NEXT_DATA__ d'une annonce Leboncoin", () => {
   const payload = parseListingHtml(LBC_HTML, LBC_URL);
   assert.ok(payload);

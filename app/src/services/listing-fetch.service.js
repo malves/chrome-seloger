@@ -15,6 +15,10 @@
 
 import config from "../config.js";
 import { parseFloorFromText } from "../lib/dpe-floor.js";
+import {
+  energyDetailsFromSeLogerSections,
+  ufrnClassifiedSectionsFromHtml,
+} from "../lib/seloger-ufrn.js";
 
 /* ------------------------------ Sources ------------------------------- */
 
@@ -413,8 +417,32 @@ function floorFromSeLogerHtml(html) {
 }
 
 function fromSeLoger(html) {
-  const floor = floorFromSeLogerHtml(html);
-  return floor == null ? {} : { floor };
+  const sections = ufrnClassifiedSectionsFromHtml(html);
+  const out = {};
+
+  const floor =
+    (sections && floorFromSeLogerSections(sections)) ??
+    floorFromSeLogerHtml(html);
+  if (floor != null) out.floor = floor;
+
+  if (sections) {
+    Object.assign(out, energyDetailsFromSeLogerSections(sections));
+  }
+
+  return out;
+}
+
+/** Étage depuis `sections.hardFacts` (UFRN déjà parsé). */
+function floorFromSeLogerSections(sections) {
+  const facts =
+    sections?.hardFacts && Array.isArray(sections.hardFacts.facts)
+      ? sections.hardFacts.facts
+      : [];
+  const fact = facts.find((entry) => entry && entry.type === "numberOfFloors");
+  if (!fact) return null;
+  const label = String(fact.label || "").trim();
+  const value = String(fact.value || "").trim();
+  return parseFloorFromText(label) ?? parseFloorFromText(value) ?? null;
 }
 
 /* --------------------------- Secours : texte -------------------------- */

@@ -1,5 +1,5 @@
 /**
- * Espace d'administration, réservé au compte `config.adminEmail`.
+ * Espace d'administration, réservé aux comptes `config.adminEmails`.
  *
  * Première section : base DPE open data (ADEME). Elle permet de lancer un
  * import jour par jour (une journée ou une plage) et de rechercher dans les
@@ -168,6 +168,10 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
   const dvfImport = createDvfImportService({ repositories, logger });
   const hexasmalImport = createHexasmalImportService({ repositories });
   router.use("/admin", requireAdmin);
+  router.use("/admin", (req, res, next) => {
+    res.locals.adminEmails = config.adminEmails;
+    next();
+  });
 
   /** Résultats de recherche paginés pour les filtres donnés. */
   function searchResults(filters) {
@@ -307,7 +311,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
   function renderUsersTable(res, filters, extra = {}) {
     return res.render("partials/admin/users-table", {
       layout: false,
-      adminEmail: config.adminEmail,
+      adminEmails: config.adminEmails,
       currentUserId: res.locals.user?.id,
       ...userListResults(filters),
       ...extra,
@@ -366,43 +370,105 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     };
   }
 
-  router.get("/admin", async (req, res) => {
+  function adminSidebarLocals() {
+    return {
+      recordCount: repositories.dpe.count(),
+      userCount: repositories.users.count(),
+      enrichmentCacheStats: repositories.enrichments.cacheStats(),
+    };
+  }
+
+  function readDpeTab(query) {
+    return query.tab === "search" ? "search" : "import";
+  }
+
+  function redirectAdmin(res, section) {
+    return res.redirect(`/admin/${section}`);
+  }
+
+  router.get("/admin", (req, res) => res.redirect("/admin/dpe"));
+
+  router.get("/admin/dpe", (req, res) => {
     const filters = readSearchFilters(req.query);
-    const userFilters = readUserFilters(req.query);
     const status = importStatusView();
-    const ssmsiStatus = ssmsiStatusView();
-    const dvfStatus = dvfStatusView();
-    const hexasmalStatus = hexasmalStatusView();
-    const hexasmalBrowse = hexasmalBrowseResults(readHexasmalBrowseFilters(req.query));
-    const enrichmentCacheStats = repositories.enrichments.cacheStats();
-    const enrichmentCacheProviders = repositories.enrichments.listCacheProviders();
-    const enrichmentCacheBrowse = await enrichmentCacheBrowseResults(
-      readCacheBrowseFilters(req.query)
-    );
-    res.render("admin", {
-      title: "Administration",
+    res.render("admin/dpe", {
+      title: "Administration — DPE",
+      adminSection: "dpe",
+      dpeTab: readDpeTab(req.query),
+      ...adminSidebarLocals(),
       activeJobs: status.activeJobs,
       importDashboard: status.importDashboard,
       jobView: status.importDashboard,
       recentJobs: status.recentJobs,
-      ...ssmsiStatus,
-      ...dvfStatus,
-      ...hexasmalStatus,
-      hexasmalBrowse,
-      enrichmentCacheStats,
-      enrichmentCacheProviders,
-      enrichmentCacheBrowse,
-      ssmsiDefaultCommuneUrl: config.ssmsi.communeUrl,
-      ssmsiDefaultDepUrl: config.ssmsi.depUrl,
-      recordCount: repositories.dpe.count(),
       dpeImportedDays: repositories.dpe.listImportedDays(),
-      userCount: repositories.users.count(),
       labels: DPE_LABELS,
       buildingTypes: DPE_BUILDING_TYPES,
       search: searchResults(filters),
+    });
+  });
+
+  router.get("/admin/ssmsi", (req, res) => {
+    res.render("admin/ssmsi", {
+      title: "Administration — SSMSI",
+      adminSection: "ssmsi",
+      ...adminSidebarLocals(),
+      ...ssmsiStatusView(),
+      ssmsiDefaultCommuneUrl: config.ssmsi.communeUrl,
+      ssmsiDefaultDepUrl: config.ssmsi.depUrl,
+    });
+  });
+
+  router.get("/admin/hexasmal", (req, res) => {
+    const hexasmalBrowse = hexasmalBrowseResults(readHexasmalBrowseFilters(req.query));
+    res.render("admin/hexasmal", {
+      title: "Administration — HexaSmal",
+      adminSection: "hexasmal",
+      ...adminSidebarLocals(),
+      ...hexasmalStatusView(),
+      hexasmalBrowse,
+    });
+  });
+
+  router.get("/admin/dvf", (req, res) => {
+    res.render("admin/dvf", {
+      title: "Administration — DVF",
+      adminSection: "dvf",
+      ...adminSidebarLocals(),
+      ...dvfStatusView(),
+    });
+  });
+
+  router.get("/admin/users", (req, res) => {
+    const userFilters = readUserFilters(req.query);
+    res.render("admin/users", {
+      title: "Administration — Utilisateurs",
+      adminSection: "users",
+      ...adminSidebarLocals(),
       users: userListResults(userFilters),
-      adminEmail: config.adminEmail,
+      adminEmails: config.adminEmails,
       currentUserId: req.user.id,
+    });
+  });
+
+  router.get("/admin/enrichment-cache", async (req, res) => {
+    const enrichmentCacheProviders = repositories.enrichments.listCacheProviders();
+    const enrichmentCacheBrowse = await enrichmentCacheBrowseResults(
+      readCacheBrowseFilters(req.query)
+    );
+    res.render("admin/enrichment-cache", {
+      title: "Administration — Cache enrichissements",
+      adminSection: "enrichment-cache",
+      ...adminSidebarLocals(),
+      enrichmentCacheProviders,
+      enrichmentCacheBrowse,
+    });
+  });
+
+  router.get("/admin/financing", (req, res) => {
+    res.render("admin/financing", {
+      title: "Administration — Financement",
+      adminSection: "financing",
+      ...adminSidebarLocals(),
       financing: financingRatesSnapshot(),
     });
   });
@@ -418,7 +484,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       type: "success",
       message: "Paramètres de financement enregistrés.",
     };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "financing");
   });
 
   /* ------------------------------- Import ------------------------------ */
@@ -467,7 +533,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     req.session.flash = result.error
       ? { type: "error", message: result.error }
       : { type: "success", message: "Import DPE lancé." };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "dpe");
   });
 
   router.get("/admin/dpe/import/status", (req, res) => {
@@ -500,7 +566,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     req.session.flash = result.error
       ? { type: "error", message: result.error }
       : { type: "success", message: "Import SSMSI lancé." };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "ssmsi");
   });
 
   router.get("/admin/ssmsi/import/status", (req, res) => {
@@ -531,7 +597,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     req.session.flash = result.error
       ? { type: "error", message: result.error }
       : { type: "success", message: "Import DVF lancé." };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "dvf");
   });
 
   router.get("/admin/dvf/import/status", (req, res) => {
@@ -628,7 +694,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       type: "success",
       message: "Cache enrichissement vidé.",
     };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "enrichment-cache");
   });
 
   router.post("/admin/enrichment-cache/revoke", async (req, res) => {
@@ -639,7 +705,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
         return res.status(400).type("text").send("Provider invalide.");
       }
       req.session.flash = { type: "error", message: "Provider invalide." };
-      return res.redirect("/admin");
+      return redirectAdmin(res, "enrichment-cache");
     }
 
     if (scope === "commune") {
@@ -649,7 +715,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
           return res.status(400).type("text").send("Code INSEE invalide.");
         }
         req.session.flash = { type: "error", message: "Code INSEE invalide." };
-        return res.redirect("/admin");
+        return redirectAdmin(res, "enrichment-cache");
       }
       const result = repositories.enrichments.revokeCommune(inseeCode, provider);
       logActivity(logger, req, "cache enrichissement révoqué (commune)", {
@@ -664,7 +730,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
           return res.status(400).type("text").send("Code département invalide.");
         }
         req.session.flash = { type: "error", message: "Code département invalide." };
-        return res.redirect("/admin");
+        return redirectAdmin(res, "enrichment-cache");
       }
       const result = repositories.enrichments.revokeDepartment(deptCode, provider);
       logActivity(logger, req, "cache enrichissement révoqué (département)", {
@@ -679,7 +745,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
           return res.status(400).type("text").send("Annonce invalide.");
         }
         req.session.flash = { type: "error", message: "Annonce invalide." };
-        return res.redirect("/admin");
+        return redirectAdmin(res, "enrichment-cache");
       }
       repositories.enrichments.revokeListing(listingId, provider);
       logActivity(logger, req, "cache enrichissement révoqué (annonce)", {
@@ -707,7 +773,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       type: "success",
       message: "Entrée de cache révoquée.",
     };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "enrichment-cache");
   });
 
   router.post("/admin/hexasmal/import", (req, res) => {
@@ -736,7 +802,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
           type: "success",
           message: view.hexasmalImportNotice,
         };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "hexasmal");
   });
 
   router.post("/admin/dpe/import/cancel", (req, res) => {
@@ -762,7 +828,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     req.session.flash = result.error
       ? { type: "error", message: result.error }
       : { type: "success", message: "Import DPE interrompu." };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "dpe");
   });
 
   router.post("/admin/dpe/import/retry", (req, res) => {
@@ -798,7 +864,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     req.session.flash = result.error
       ? { type: "error", message: result.error }
       : { type: "success", message: "Import DPE relancé." };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "dpe");
   });
 
   /* ------------------------------ Recherche ---------------------------- */
@@ -844,7 +910,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       listingCount,
       projectCount,
       extensionSessions,
-      adminEmail: config.adminEmail,
+      adminEmails: config.adminEmails,
       currentUserId: req.user.id,
       errors: [],
       notice: null,
@@ -881,7 +947,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
           listingCount,
           projectCount,
           extensionSessions,
-          adminEmail: config.adminEmail,
+          adminEmails: config.adminEmails,
           currentUserId: req.user.id,
           errors,
           notice: null,
@@ -901,7 +967,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
           listingCount,
           projectCount,
           extensionSessions: [],
-          adminEmail: config.adminEmail,
+          adminEmails: config.adminEmails,
           currentUserId: req.user.id,
           errors: [],
           notice:
@@ -912,7 +978,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
         type: "success",
         message: "Mot de passe mis à jour.",
       };
-      return res.redirect("/admin");
+      return redirectAdmin(res, "users");
     } catch (err) {
       return next(err);
     }
@@ -930,7 +996,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
         });
       }
       req.session.flash = { type: "error", message: "Compte introuvable." };
-      return res.redirect("/admin");
+      return redirectAdmin(res, "users");
     }
 
     if (user.id === req.user.id) {
@@ -939,7 +1005,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
         return renderUsersTable(res, filters, { listError: message });
       }
       req.session.flash = { type: "error", message };
-      return res.redirect("/admin");
+      return redirectAdmin(res, "users");
     }
 
     if (isAdmin(user)) {
@@ -948,7 +1014,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
         return renderUsersTable(res, filters, { listError: message });
       }
       req.session.flash = { type: "error", message };
-      return res.redirect("/admin");
+      return redirectAdmin(res, "users");
     }
 
     repositories.users.remove(user.id);
@@ -970,7 +1036,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       type: "success",
       message: `Compte ${user.email} supprimé.`,
     };
-    return res.redirect("/admin");
+    return redirectAdmin(res, "users");
   });
 
   return router;

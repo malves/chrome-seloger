@@ -2,6 +2,8 @@
  * Présentation structurée d'un enregistrement DPE pour la modale admin.
  */
 
+import { dpeStreetLine } from "./dpe-address.js";
+
 const INTERNAL_KEYS = new Set(["_id", "_i", "_rand", "_score", "_geopoint"]);
 
 const SECTIONS = [
@@ -418,7 +420,7 @@ export function buildDetailView(record, fmt) {
     numero: data.numero_dpe || record.numero_dpe || "—",
     date: data.date_etablissement_dpe || record.date_etablissement_dpe || null,
     commune: [data.nom_commune_ban, data.code_postal_ban].filter(Boolean).join(" "),
-    adresse: data.adresse_ban || data.adresse_brut || null,
+    adresse: dpeStreetLine(record) || data.adresse_ban || data.adresse_brut || null,
     etiquetteDpe: data.etiquette_dpe || record.etiquette_dpe || null,
     etiquetteGes: data.etiquette_ges || record.etiquette_ges || null,
     importedAt: record.imported_at || null,

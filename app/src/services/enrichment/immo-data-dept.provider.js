@@ -7,6 +7,7 @@
  * dans le bloc « Analyse de marché » de la facade `immo-data`.
  */
 
+import config from "../../config.js";
 import ProviderSkipped from "./skipped.js";
 import {
   buildMonthlyEvolution,
@@ -20,7 +21,7 @@ export default {
   group: "market",
   display: false,
   order: 27,
-  ttlDays: 14,
+  ttlDays: config.immoData.cacheTtlDays,
   label: "Prix de marché (département)",
   source: "Immo Data",
   sourceUrl: "https://developer.immo-data.fr",

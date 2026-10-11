@@ -1,0 +1,36 @@
+<div
+  class="modal listing-location-map-modal"
+  id="listing-location-map-modal"
+  data-listing-location-map-modal
+  hidden
+>
+  <div class="modal__overlay" data-listing-location-map-dismiss tabindex="-1"></div>
+  <div
+    class="modal__dialog modal__dialog--wide listing-location-map-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="listing-location-map-modal-title"
+  >
+    <button
+      type="button"
+      class="modal__close"
+      data-listing-location-map-dismiss
+      aria-label="Fermer"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+    <h2 id="listing-location-map-modal-title" class="listing-location-map-dialog__title">Carte</h2>
+    <div class="listing-location-map-dialog__map" data-listing-map-modal-host>
+      <div
+        class="listing-location__map-view listing-location-map-dialog__map-view"
+        data-listing-map-modal-view
+        role="application"
+        aria-label="Carte agrandie du bien"
+        tabindex="0"
+      ></div>
+    </div>
+  </div>
+</div>

@@ -137,19 +137,6 @@ const projectRefsSchema = z
       .slice(0, 20)
   );
 
-const featuresSchema = z
-  .preprocess(
-    (value) => (Array.isArray(value) ? value : undefined),
-    z.array(z.unknown()).optional()
-  )
-  .catch(undefined)
-  .transform((list) =>
-    (list || [])
-      .filter((item) => typeof item === "string" && item.trim())
-      .map((item) => item.trim().slice(0, 60))
-      .slice(0, 60)
-  );
-
 export const listingPayloadSchema = z.object({
   schema_version: z.coerce
     .number({ error: "schema_version est obligatoire." })
@@ -220,6 +207,10 @@ export const listingPayloadSchema = z.object({
   // (kg CO₂/m².an). Facultatives, elles enrichissent l'affichage réglementaire.
   dpe_value: positiveNumber(100_000),
   ges_value: positiveNumber(100_000),
+  // Valeurs brutes du site (ex. SeLoger « Gaz », « Rénovation nécessaire »).
+  energy_source: text(80),
+  heating_system: text(120),
+  property_condition: text(80),
   is_new_build: flexibleBoolean,
 
   // Trois écritures acceptées pour le même besoin : l'extension envoie
@@ -231,7 +222,6 @@ export const listingPayloadSchema = z.object({
   location: locationSchema,
   photos: photosSchema,
   agency: agencySchema,
-  features: featuresSchema,
   extension_data: plainObject,
   raw: plainObject,
 });

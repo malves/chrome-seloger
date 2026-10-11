@@ -96,8 +96,8 @@ export function recencyWeight(ageDays, halfLifeDays) {
 }
 
 /**
- * Écarte les ventes dont le €/m² est très en dessous du marché local (erreurs DVF).
- * Seuil : strictement sous `ratio` × médiane brute de l'échantillon (défaut 50 %).
+ * Écarte les ventes dont le €/m² s'écarte fortement de la médiane brute du rayon.
+ * Bande retenue : [`ratio` × M ; M / `ratio`] (défaut ratio 0,5 → 50 % à 200 % de M).
  */
 export function filterLowOutlierSales(sales, { lowRatio = 0.5 } = {}) {
   const list = sales || [];
@@ -109,6 +109,7 @@ export function filterLowOutlierSales(sales, { lowRatio = 0.5 } = {}) {
       countReference: 0,
       excluded: 0,
       outlier_floor_m2: null,
+      outlier_ceiling_m2: null,
     };
   }
   const ratio = Number.isFinite(lowRatio) && lowRatio > 0 && lowRatio < 1 ? lowRatio : 0.5;
@@ -120,10 +121,15 @@ export function filterLowOutlierSales(sales, { lowRatio = 0.5 } = {}) {
       countReference: countTotal,
       excluded: 0,
       outlier_floor_m2: null,
+      outlier_ceiling_m2: null,
     };
   }
   const floor = Math.round(baseMedian * ratio * 100) / 100;
-  const kept = list.filter((s) => Number.isFinite(s.price_per_m2) && s.price_per_m2 >= floor);
+  const ceiling = Math.round((baseMedian / ratio) * 100) / 100;
+  const kept = list.filter(
+    (s) =>
+      Number.isFinite(s.price_per_m2) && s.price_per_m2 >= floor && s.price_per_m2 <= ceiling
+  );
   if (!kept.length) {
     return {
       kept: list,
@@ -131,6 +137,7 @@ export function filterLowOutlierSales(sales, { lowRatio = 0.5 } = {}) {
       countReference: countTotal,
       excluded: 0,
       outlier_floor_m2: null,
+      outlier_ceiling_m2: null,
     };
   }
   const countReference = kept.length;
@@ -140,6 +147,7 @@ export function filterLowOutlierSales(sales, { lowRatio = 0.5 } = {}) {
     countReference,
     excluded: countTotal - countReference,
     outlier_floor_m2: floor,
+    outlier_ceiling_m2: ceiling,
   };
 }
 
@@ -154,7 +162,8 @@ export function buildDvfRadiusReference(
   const medianPrice = recencyWeightedMedian(filtered.kept, { now, halfLifeDays });
   const ref = now.getTime();
   const floor = filtered.outlier_floor_m2;
-  const applyFloor = filtered.excluded > 0 && floor != null;
+  const ceiling = filtered.outlier_ceiling_m2;
+  const applyBand = filtered.excluded > 0 && floor != null && ceiling != null;
 
   const detail = (sales || []).map((sale) => {
     const mutDate = parseMutationDate(sale);
@@ -163,8 +172,10 @@ export function buildDvfRadiusReference(
       ? recencyWeight((ref - mutDate.getTime()) / 86_400_000, halfLifeDays)
       : 1;
     const usedInReference =
-      !applyFloor ||
-      (Number.isFinite(sale.price_per_m2) && sale.price_per_m2 >= floor);
+      !applyBand ||
+      (Number.isFinite(sale.price_per_m2) &&
+        sale.price_per_m2 >= floor &&
+        sale.price_per_m2 <= ceiling);
     return {
       price: sale.price,
       surface: sale.surface,
@@ -190,6 +201,7 @@ export function buildDvfRadiusReference(
     outliers_excluded: filtered.excluded,
     median: medianPrice,
     outlier_floor_m2: floor,
+    outlier_ceiling_m2: ceiling,
     sales: detail,
   };
 }

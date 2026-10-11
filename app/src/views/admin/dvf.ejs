@@ -1,0 +1,95 @@
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content">
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Open data DVF</p>
+          <h2 class="panel__title">Import prix au m² (ventes réelles)</h2>
+        </div>
+      </div>
+
+      <p class="field__hint">
+        Télécharge automatiquement les fichiers géolocalisés
+        <a href="https://files.data.gouv.fr/geo-dvf/latest/csv/" target="_blank" rel="noopener noreferrer">geo-dvf (Etalab)</a>,
+        un par année (<%= dvfDashboard.yearFrom %> à <%= dvfDashboard.yearTo %>). Import national : plusieurs Go téléchargés,
+        comptez un temps conséquent. Les ventes alimentent le prix médian commune, le rayon de 500 m et l'évolution sur ~10 ans.
+        <strong>L'Alsace-Moselle (57, 67, 68) et Mayotte ne sont pas couvertes</strong> (livre foncier).
+      </p>
+
+      <form
+        class="dpe-import-form"
+        method="post"
+        action="/admin/dvf/import"
+        hx-post="/admin/dvf/import"
+        hx-target="#dvf-import-status"
+        hx-swap="outerHTML"
+        <% if (dvfDashboard && dvfDashboard.running) { %>data-import-blocked="true"<% } %>
+        style="margin-top: var(--space-4)"
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <div class="dvf-year-fields">
+          <div class="field dvf-year-fields__field">
+            <label class="field__label" for="dvf-year-from">Année de début</label>
+            <div class="amount-stepper">
+              <input
+                id="dvf-year-from"
+                class="input input--sm"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                name="year_from"
+                data-step="1"
+                data-min="2000"
+                data-max="2100"
+                data-decimals="0"
+                value="<%= dvfDashboard.yearFrom %>"
+                required
+              />
+              <span class="amount-stepper__controls">
+                <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter l'année de début"></button>
+                <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer l'année de début"></button>
+              </span>
+            </div>
+          </div>
+
+          <div class="field dvf-year-fields__field">
+            <label class="field__label" for="dvf-year-to">Année de fin</label>
+            <div class="amount-stepper">
+              <input
+                id="dvf-year-to"
+                class="input input--sm"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                name="year_to"
+                data-step="1"
+                data-min="2000"
+                data-max="2100"
+                data-decimals="0"
+                value="<%= dvfDashboard.yearTo %>"
+                required
+              />
+              <span class="amount-stepper__controls">
+                <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter l'année de fin"></button>
+                <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer l'année de fin"></button>
+              </span>
+            </div>
+          </div>
+
+          <button class="btn btn--green dvf-year-fields__submit" type="submit" <%= dvfDashboard && dvfDashboard.running ? 'disabled' : '' %>>
+            Télécharger et importer
+          </button>
+        </div>
+      </form>
+
+      <div style="margin-top: var(--space-4)">
+        <%- include("../partials/admin/dvf-import-status", {
+          dvfDashboard: dvfDashboard,
+          dvfImportError: null,
+          dvfImportNotice: null,
+        }) %>
+      </div>
+    </section>
+  </div>
+</div>

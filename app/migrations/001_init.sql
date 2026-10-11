@@ -48,7 +48,7 @@ CREATE TABLE listings (
   lat              REAL,
   lng              REAL,
   agency           TEXT,                      -- JSON : { name, phone, fees_included, fees_percent }
-  features         TEXT,                      -- JSON : tableau de chaînes ("garage", "cave", ...)
+  features         TEXT,                      -- obsolète : supprimée par migration 028
   extension_data   TEXT,                      -- JSON : données calculées par l'extension
   raw              TEXT,                      -- JSON : payload brut tel que reçu
   status           TEXT NOT NULL DEFAULT 'new',

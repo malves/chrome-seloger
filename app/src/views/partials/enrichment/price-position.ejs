@@ -1,0 +1,190 @@
+<%
+  const pp = position;
+  const ref = pp.primary;
+  const eur = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    return fmt.euro(v);
+  };
+  const signedEur = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    if (Math.round(v) === 0) return fmt.euro(0);
+    return (v < 0 ? '−\u00a0' : '+\u00a0') + fmt.euro(Math.abs(v));
+  };
+  const signedPct = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    const abs = (Math.round(Math.abs(v) * 10) / 10).toLocaleString('fr-FR');
+    if (v === 0) return '0\u00a0%';
+    return (v < 0 ? '−\u00a0' : '+\u00a0') + abs + '\u00a0%';
+  };
+  const basisCompare = ref.basis_compare || ref.basis || '';
+  const basisAdvice = ref.basis_advice || 'cette référence';
+  // Échelle de la jauge : 100 (prix du marché) au centre, bornée à 50–150.
+  const gaugePos = function (index) {
+    if (index == null) return null;
+    return Math.max(0, Math.min(100, index - 50));
+  };
+  const absDelta = Math.abs(ref.delta_amount);
+  const absPct = (Math.round(Math.abs(ref.delta_pct) * 10) / 10).toLocaleString('fr-FR') + '\u00a0%';
+  const radiusRef = pp.references.find(function (r) { return r.key === 'radius'; });
+  const radiusDetail = radiusRef && radiusRef.adjusted_radius ? radiusRef.adjusted_radius : dvfRadius;
+
+  let deltaTone = 'near';
+  if (ref.delta_pct != null && isFinite(ref.delta_pct)) {
+    if (ref.delta_pct <= -2.5) deltaTone = 'below';
+    else if (ref.delta_pct >= 2.5) deltaTone = 'above';
+  }
+
+  const caveats = [];
+  if (listing.dpe === 'F' || listing.dpe === 'G') caveats.push('DPE ' + listing.dpe);
+  if (listing.property_condition && /r[ée]nov|travaux/i.test(listing.property_condition)) {
+    caveats.push(listing.property_condition);
+  }
+%>
+<div class="pricepos pricepos--<%= ref.tone %>">
+  <div class="pricepos__head">
+    <div class="pricepos__intro">
+      <p class="pricepos__eyebrow">Positionnement du prix</p>
+      <h3 class="pricepos__title"><%= ref.label %></h3>
+      <p class="pricepos__basis">
+        Comparé aux <strong><%= basisCompare %></strong><% if (ref.adjustment) { %>, prix ramenés au marché de <%= ref.adjustment.reference_period %><% } %><% if (ref.key === 'radius' || ref.key === 'quartier') { %>
+          <span class="pricepos__address">
+            <%= ref.address %><% if (ref.address_source) { %> <span class="pricepos__address-source">(<%= ref.address_source %>)</span><% } %>
+          </span>
+        <% } %>
+      </p>
+    </div>
+    <div class="pricepos__score"
+      title="Indice = prix au m² du bien ÷ prix de référence × 100. Sous 100, le bien est moins cher que le marché.">
+      <span class="pricepos__score-value"><%= ref.index %></span><span class="pricepos__score-unit">/ 100</span>
+      <span class="pricepos__score-hint">100 = prix du marché</span>
+    </div>
+  </div>
+
+  <dl class="pricepos__figures">
+    <div class="pricepos__figure">
+      <dt>Prix affiché</dt>
+      <dd>
+        <strong><%= eur(pp.listing_price) %></strong>
+        <span><%= eur(pp.listing_price_m2) %>/m² · <%= fmt.number(pp.surface) %> m²</span>
+      </dd>
+    </div>
+    <div class="pricepos__figure">
+      <dt>Estimation marché</dt>
+      <dd>
+        <strong>≈ <%= eur(ref.estimate) %></strong>
+        <span><%= eur(ref.price_m2) %>/m² × <%= fmt.number(pp.surface) %> m²</span>
+        <% if (ref.estimate_p25 != null && ref.estimate_p75 != null && ref.estimate_p25 !== ref.estimate_p75) { %>
+          <span class="pricepos__estimate-range">Fourchette P25–P75 : <%= eur(ref.estimate_p25) %> – <%= eur(ref.estimate_p75) %></span>
+        <% } %>
+      </dd>
+    </div>
+    <div class="pricepos__figure">
+      <dt>Écart au marché</dt>
+      <dd class="pricepos__delta pricepos__delta--<%= deltaTone %>">
+        <strong><%= signedEur(ref.delta_amount) %></strong>
+        <span><%= signedPct(ref.delta_pct) %> par rapport à l'estimation</span>
+      </dd>
+    </div>
+  </dl>
+
+  <div class="pricepos__gauge">
+    <div class="pricem2__gauge-bar" role="img"
+      aria-label="Ce bien <%= eur(pp.listing_price_m2) %>/m², estimation marché <%= eur(ref.price_m2) %>/m²">
+      <span class="pricem2__gauge-ref" style="left: 50%"
+        data-tooltip="Estimation marché · <%= eur(ref.price_m2) %>/m²" tabindex="0"
+        aria-label="Estimation marché, <%= eur(ref.price_m2) %> par m²"></span>
+      <% if (ref.index != null) { %>
+        <span class="pricem2__gauge-marker" style="left: <%= gaugePos(ref.index) %>%"
+          data-tooltip="Ce bien · <%= eur(pp.listing_price_m2) %>/m²" tabindex="0"
+          aria-label="Ce bien, <%= eur(pp.listing_price_m2) %> par m²"></span>
+      <% } %>
+    </div>
+    <div class="pricepos__gauge-scale" aria-hidden="true">
+      <span>−50 %</span><span>Prix du marché</span><span>+50 %</span>
+    </div>
+  </div>
+
+  <% if (ref.index > 103) { %>
+    <p class="pricem2__advice pricem2__advice--negotiate">
+      <strong>Négociation conseillée.</strong>
+      D'après <%= basisAdvice %>, ce bien vaudrait environ
+      <strong class="pricem2__advice-amount"><%= eur(ref.estimate) %></strong>,
+      soit <strong class="pricem2__advice-amount"><%= eur(absDelta) %></strong> (<%= absPct %>) de moins que le prix affiché.
+    </p>
+  <% } else if (ref.index <= 97) { %>
+    <p class="pricem2__advice pricem2__advice--good">
+      <strong>Prix attractif.</strong>
+      Ce bien est affiché <strong><%= eur(absDelta) %></strong> (<%= absPct %>) sous l'estimation
+      par rapport à <%= basisAdvice %>.
+    </p>
+  <% } else { %>
+    <p class="pricem2__advice">
+      <strong>Prix aligné.</strong>
+      Le prix affiché est aligné sur <%= basisAdvice %> (écart de <%= eur(absDelta) %>).
+    </p>
+  <% } %>
+
+  <% if (caveats.length) { %>
+    <p class="pricepos__caveat">
+      <strong>À pondérer :</strong> <%= caveats.join(' · ') %>.
+      Les références mélangent des biens de tous états ; un bien énergivore ou à rénover
+      se vend généralement en dessous.
+    </p>
+  <% } %>
+
+  <div class="pricepos__refs">
+    <p class="pricepos__refs-title"><%= pp.references.length > 1 ? 'Références comparées' : 'Référence utilisée' %></p>
+    <ul class="pricepos__ref-list">
+      <% pp.references.forEach(function (r) { %>
+        <li class="pricepos__ref<%= r.primary ? ' is-primary' : '' %>">
+          <div class="pricepos__ref-main">
+            <span class="pricepos__ref-scope">
+              <%= r.scope_label %>
+              <% if (r.primary) { %><span class="pricepos__ref-badge">Retenue</span><% } %>
+            </span>
+            <span class="pricepos__ref-meta">
+              <% if (r.key === 'radius' && radiusDetail) { %>
+                <% if (radiusDetail.sales && radiusDetail.sales.length) { %>
+                  <%- include('./dvf-radius-meta', { radius: radiusDetail, dvfTypeLabel: pp.type_plural, modalId: dvfModalId }) %>
+                <% } else { %>
+                  <%= fmt.number(r.count) %> vente<%= r.count > 1 ? 's' : '' %><% if (r.widened) { %> (rayon élargi)<% } %>
+                <% } %>
+                · DVF, <%= r.years %> dernières années
+                <% if (r.surface_comparable && r.surface_comparable.surface_filtered) { %>
+                  · <strong><%= fmt.number(r.surface_comparable.count_in_band) %></strong> vente<%= r.surface_comparable.count_in_band > 1 ? 's' : '' %> en surface comparable (±<%= r.surface_comparable.tolerance_pct %> %)
+                <% } else if (r.surface_comparable && !r.surface_comparable.surface_filtered) { %>
+                  · <em>peu de ventes en surface comparable (±<%= r.surface_comparable.tolerance_pct %> %) : médiane sur toutes les surfaces du rayon</em>
+                <% } %>
+                <% if (!r.reliable) { %>· <em>échantillon trop faible</em><% } %>
+                <% if (r.adjustment) { %>
+                  <span class="pricepos__adjust">
+                    Corrigé de l'évolution des prix à <%= r.adjustment.label %> :
+                    <% r.adjustment.year_factors.forEach(function (f, i) { %><%= i ? ' · ' : '' %><%= f.year %> <span class="pricepos__adjust-pct<%= f.pct < 0 ? ' is-down' : f.pct > 0 ? ' is-up' : '' %>"><%= signedPct(f.pct) %></span><% }); %>.
+                  </span>
+                <% } %>
+              <% } else { %>
+                Prix de marché<% if (r.period) { %> · <%= r.period %><% } %>
+              <% } %>
+            </span>
+          </div>
+        </li>
+      <% }); %>
+    </ul>
+
+    <% if (!pp.has_address) { %>
+      <p class="pricepos__hint">
+        Estimation à l'échelle de la commune. Renseignez ou validez l'adresse exacte
+        dans « Aide à la localisation » pour la comparer aux ventes autour du bien.
+      </p>
+    <% } else if (!radiusRef) { %>
+      <p class="pricepos__hint">
+        Ventes DVF autour de l'adresse pas encore disponibles : la commune sert de référence en attendant.
+      </p>
+    <% } else if (!radiusRef.reliable) { %>
+      <p class="pricepos__hint">
+        Trop peu de ventes autour de l'adresse (<%= fmt.number(radiusRef.count) %>) pour servir de référence fiable :
+        l'estimation retenue est celle « <%= ref.scope_label %> ».
+      </p>
+    <% } %>
+  </div>
+</div>

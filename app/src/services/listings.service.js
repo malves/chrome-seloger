@@ -9,6 +9,8 @@ import crypto from "node:crypto";
 import { nowIso } from "../lib/time.js";
 import { projectReferences } from "../schemas/listing.payload.js";
 import createProjectsService from "./projects.service.js";
+import { PROBABLE_LOCATION_PROVIDER } from "../lib/probable-location-cache.js";
+import { PHOTO_ANALYSIS_PROVIDER } from "../lib/photo-analysis-cache.js";
 
 /** Paramètres de suivi retirés de l'URL avant comparaison. */
 const TRACKING_PARAMS = new Set([
@@ -149,6 +151,12 @@ export function payloadToFields(payload, canonicalUrl, existing = null) {
     ges: keepOrReplace(payload.ges, prev.ges),
     dpe_value: keepOrReplace(payload.dpe_value, prev.dpe_value),
     ges_value: keepOrReplace(payload.ges_value, prev.ges_value),
+    energy_source: keepOrReplace(payload.energy_source, prev.energy_source),
+    heating_system: keepOrReplace(payload.heating_system, prev.heating_system),
+    property_condition: keepOrReplace(
+      payload.property_condition,
+      prev.property_condition
+    ),
     is_new_build:
       payload.is_new_build === undefined
         ? prev.is_new_build
@@ -163,7 +171,6 @@ export function payloadToFields(payload, canonicalUrl, existing = null) {
     lat: keepOrReplace(location.lat, prev.lat),
     lng: keepOrReplace(location.lng, prev.lng),
     agency: payload.agency === undefined ? undefined : payload.agency,
-    features: payload.features?.length ? payload.features : undefined,
     extension_data:
       payload.extension_data === undefined ? undefined : payload.extension_data,
     raw: payload.raw === undefined ? undefined : payload.raw,
@@ -194,7 +201,7 @@ export default function createListingsService({ repositories }) {
       const fields = payloadToFields(enriched, canonicalUrl, existing);
 
       // Les colonnes JSON déjà renseignées sont conservées si rien n'arrive.
-      for (const column of ["agency", "features", "extension_data", "raw"]) {
+      for (const column of ["agency", "extension_data", "raw"]) {
         if (fields[column] === undefined && existing) {
           fields[column] = existing[column]
             ? JSON.parse(existing[column])
@@ -218,8 +225,32 @@ export default function createListingsService({ repositories }) {
 
       repositories.listings.update(user.id, existing.id, fields, observedAt);
 
+      const locationTextChanged =
+        (fields.description != null &&
+          String(fields.description) !== String(existing.description || "")) ||
+        (fields.city != null && String(fields.city) !== String(existing.city || "")) ||
+        (fields.postal_code != null &&
+          String(fields.postal_code) !== String(existing.postal_code || ""));
+      if (locationTextChanged) {
+        repositories.enrichments.removeOne(
+          existing.id,
+          PROBABLE_LOCATION_PROVIDER
+        );
+      }
+
+      // L'analyse des photos dépend des images et du contexte textuel : on
+      // l'invalide si l'un ou l'autre change (l'empreinte ferait de même à la
+      // lecture, mais une ligne obsolète bloquerait le statut « en cours »).
+      let photosChanged = false;
       if (payload.photos?.length) {
+        const previous = repositories.listings.listPhotos(existing.id);
+        photosChanged =
+          previous.length !== payload.photos.length ||
+          previous.some((url, i) => url !== payload.photos[i]);
         repositories.listings.replacePhotos(existing.id, payload.photos);
+      }
+      if (photosChanged || locationTextChanged) {
+        repositories.enrichments.removeOne(existing.id, PHOTO_ANALYSIS_PROVIDER);
       }
 
       const priceChanged =

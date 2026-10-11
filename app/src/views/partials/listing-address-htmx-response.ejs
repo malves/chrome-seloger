@@ -1,0 +1,17 @@
+<%- include("listing-location-block", { listing: listing, userAddressMapsHref: userAddressMapsHref }) %>
+<div id="listing-linked-dpe-block" hx-swap-oob="true">
+  <%- include("listing-linked-dpe", {
+    linkedDpeInsights: typeof linkedDpeInsights !== "undefined" ? linkedDpeInsights : null,
+  }) %>
+</div>
+<% if (typeof photos !== "undefined" && photos && photos.length && typeof photoAnalysis !== "undefined" && photoAnalysis) { %>
+<%- include("listing-photo-analysis", {
+  listing: listing,
+  photos: photos,
+  photoAnalysis: photoAnalysis,
+  photoLabels: photoLabels,
+  worksHasPhotos: photos.length > 0,
+  refreshWorksHeadAside: true,
+  hxSwapOob: true,
+}) %>
+<% } %>

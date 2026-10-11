@@ -28,6 +28,9 @@ const DESCRIPTIVE_COLUMNS = [
   "ges",
   "dpe_value",
   "ges_value",
+  "energy_source",
+  "heating_system",
+  "property_condition",
   "is_new_build",
   "city",
   "postal_code",
@@ -35,12 +38,11 @@ const DESCRIPTIVE_COLUMNS = [
   "lat",
   "lng",
   "agency",
-  "features",
   "extension_data",
   "raw",
 ];
 
-const JSON_COLUMNS = new Set(["agency", "features", "extension_data", "raw"]);
+const JSON_COLUMNS = new Set(["agency", "extension_data", "raw"]);
 
 /** Tris proposés dans l'interface ; aucune valeur libre n'atteint le SQL. */
 export const SORTS = {
@@ -93,7 +95,6 @@ export function hydrateListing(row) {
   if (!row) return null;
   const listing = { ...row };
   listing.agency = fromJson(row.agency, null);
-  listing.features = fromJson(row.features, []);
   listing.extension_data = fromJson(row.extension_data, null);
   listing.raw = fromJson(row.raw, null);
   listing.is_new_build = Boolean(row.is_new_build);

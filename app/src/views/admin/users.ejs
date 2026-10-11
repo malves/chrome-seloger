@@ -1,0 +1,55 @@
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content">
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Comptes</p>
+          <h2 class="panel__title">Utilisateurs</h2>
+        </div>
+      </div>
+
+      <p class="field__hint" style="margin-bottom: var(--space-4)">
+        Réinitialisez un mot de passe ou supprimez un utilisateur.
+        Cliquez sur une ligne ou sur « Gérer » pour ouvrir la fiche du compte.
+      </p>
+
+      <form
+        class="admin-users-search"
+        role="search"
+        hx-get="/admin/users/list"
+        hx-trigger="input changed delay:300ms, submit"
+        hx-target="#admin-users-results"
+        hx-swap="outerHTML"
+      >
+        <div class="field admin-users-search__field">
+          <label class="field__label" for="admin-users-q">Rechercher par e-mail</label>
+          <div class="admin-users-search__wrap">
+            <svg class="admin-users-search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              class="input admin-users-search__input"
+              type="search"
+              id="admin-users-q"
+              name="user_q"
+              value="<%= users.filters.q || '' %>"
+              placeholder="ex. nom@domaine.fr"
+              autocomplete="off"
+            />
+          </div>
+        </div>
+      </form>
+
+      <%- include("../partials/admin/users-table", {
+        records: users.records,
+        filters: users.filters,
+        pagination: users.pagination,
+        adminEmails: typeof adminEmails !== "undefined" ? adminEmails : [],
+        currentUserId: typeof currentUserId !== "undefined" ? currentUserId : (user && user.id),
+      }) %>
+    </section>
+  </div>
+</div>
+<%- include("../partials/admin/modals") %>

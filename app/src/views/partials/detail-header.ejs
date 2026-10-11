@@ -1,5 +1,8 @@
+<%
+  const isRejected = listing.status === "rejected";
+%>
 <div class="detail-head" id="detail-header">
-  <div class="detail-head__main">
+  <div class="detail-head__intro">
     <h1 class="detail-title">
       <%= listing.title || (fmt.propertyTypeLabel(listing.property_type) || 'Annonce') %>
     </h1>
@@ -24,34 +27,6 @@
         Origine : <%= fmt.sourceLabel(listing.source) %>
       </span>
     </div>
-
-    <div class="btn-row" style="margin-top: var(--space-4)">
-      <%- include("project-dropdown", { listing: listing, projects: projects }) %>
-      <%- include("status-dropdown", { listing: listing }) %>
-
-      <form
-        hx-post="/listings/<%= listing.id %>"
-        hx-target="#listing-lead"
-        hx-swap="outerHTML"
-      >
-        <input type="hidden" name="view" value="header" />
-        <input type="hidden" name="is_favorite" value="<%= listing.is_favorite ? '0' : '1' %>" />
-        <button
-          class="btn btn--sm <%= listing.is_favorite ? 'btn--gold' : 'btn--ghost btn--fav-add' %>"
-          type="submit"
-        >
-          <%= listing.is_favorite ? '★ Favori' : '☆ Ajouter aux favoris' %>
-        </button>
-      </form>
-
-      <a
-        class="btn btn--ghost btn--sm"
-        href="<%= listing.url %>"
-        target="_blank"
-        rel="noreferrer noopener"
-        >Voir l'annonce d'origine ↗</a
-      >
-    </div>
   </div>
 
   <div class="detail-head__price">
@@ -62,5 +37,115 @@
     <span class="detail-price__unit">
       Enregistrée <%= fmt.relative(listing.first_saved_at) %>
     </span>
+  </div>
+
+  <div class="btn-row detail-head__toolbar">
+    <%- include("project-dropdown", { listing: listing, projects: projects }) %>
+
+    <a
+      class="btn btn--ghost btn--sm"
+      href="<%= listing.url %>"
+      target="_blank"
+      rel="noreferrer noopener"
+      >Voir l'annonce d'origine ↗</a
+    >
+
+    <div class="detail-head__icon-actions">
+      <form
+        hx-post="/listings/<%= listing.id %>"
+        hx-target="#listing-lead"
+        hx-swap="outerHTML"
+      >
+        <input type="hidden" name="view" value="header" />
+        <input type="hidden" name="is_favorite" value="<%= listing.is_favorite ? '0' : '1' %>" />
+        <button
+          class="btn btn--sm btn--icon-only <%= listing.is_favorite ? 'btn--gold' : 'btn--ghost btn--fav-add' %>"
+          type="submit"
+          title="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"
+          aria-label="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"
+          aria-pressed="<%= listing.is_favorite ? 'true' : 'false' %>"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="<%= listing.is_favorite ? 'currentColor' : 'none' %>"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        </button>
+      </form>
+
+      <form
+        method="post"
+        action="/listings/<%= listing.id %>/delete"
+        data-confirm="Supprimer cette annonce ? Cette action est irréversible."
+        data-confirm-title="Supprimer l'annonce"
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button
+          class="btn btn--sm btn--ghost btn--danger-ghost btn--icon-only detail-head__delete-btn"
+          type="submit"
+          title="Supprimer l'annonce"
+          aria-label="Supprimer l'annonce"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 6h18" />
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+          </svg>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="detail-head__reject">
+    <form
+      method="post"
+      action="/listings/<%= listing.id %>"
+      hx-post="/listings/<%= listing.id %>"
+      hx-target="#listing-lead"
+      hx-swap="outerHTML"
+    >
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <input type="hidden" name="view" value="header" />
+      <button
+        class="btn btn--sm status-pipe__reject<%= isRejected ? ' is-active' : ' btn--danger' %>"
+        type="submit"
+        name="status"
+        value="rejected"
+        aria-pressed="<%= isRejected ? 'true' : 'false' %>"
+        title="<%= isRejected ? 'Cliquer pour réactiver le parcours' : 'Cliquer pour écarter cette annonce' %>"
+        aria-label="<%= isRejected ? 'Réactiver le parcours à l\'étape précédente' : 'Écarter cette annonce' %>"
+      >
+        <span class="status-pipe__reject-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8"/><path d="m9 9 6 6M15 9l-6 6"/>
+          </svg>
+        </span>
+        <% if (isRejected) { %>
+          <span class="status-pipe__reject-label-full">Réactiver cette annonce</span>
+          <span class="status-pipe__reject-label-short">Réactiver</span>
+        <% } else { %>
+          <span class="status-pipe__reject-label-full">Écarter cette annonce</span>
+          <span class="status-pipe__reject-label-short">Écarter</span>
+        <% } %>
+      </button>
+    </form>
   </div>
 </div>

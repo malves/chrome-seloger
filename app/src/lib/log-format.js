@@ -71,12 +71,34 @@ function formatIp(raw) {
   return String(raw).replace(/^::ffff:/, "");
 }
 
+/** Ordre d'affichage pour aligner les lignes d'activité (userId en tête). */
+const FIELD_ORDER = [
+  "userId",
+  "extensionVersion",
+  "page",
+  "id",
+  "listingId",
+];
+
+function orderedFieldKeys(record) {
+  const seen = new Set();
+  const keys = [];
+  const consider = (key) => {
+    if (seen.has(key) || SKIP_KEYS.has(key)) return;
+    const value = record[key];
+    if (value == null || typeof value === "object") return;
+    seen.add(key);
+    keys.push(key);
+  };
+  for (const key of FIELD_ORDER) consider(key);
+  for (const key of Object.keys(record)) consider(key);
+  return keys;
+}
+
 function formatFields(record, color) {
   const parts = [];
-  for (const [key, value] of Object.entries(record)) {
-    if (SKIP_KEYS.has(key) || value == null) continue;
-    if (typeof value === "object") continue;
-    parts.push(`${key}=${value}`);
+  for (const key of orderedFieldKeys(record)) {
+    parts.push(`${key}=${record[key]}`);
   }
   if (!parts.length) return "";
   return c(YELLOW, pad(parts.join("  "), 28), color);

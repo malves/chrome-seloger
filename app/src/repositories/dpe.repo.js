@@ -80,6 +80,10 @@ const SECONDARY_INDEXES = [
     name: "idx_dpe_records_date_mod_numero",
     sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_date_mod_numero ON dpe_records(date_derniere_modification_dpe, numero_dpe)",
   },
+  {
+    name: "idx_dpe_records_address_lookup",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_address_lookup ON dpe_records(code_postal_ban, adresse_ban, adresse_brut, type_batiment, numero_dpe)",
+  },
 ];
 
 /** Transforme une ligne de l'API en jeu de valeurs pour l'upsert. */
@@ -361,6 +365,90 @@ export default function createDpeRepository(db) {
         LIMIT @limit`;
 
       return db.prepare(sql).all(params).map(hydrate);
+    },
+
+    /**
+     * Adresses des DPE d'un code postal, sans la ligne brute JSON (un code
+     * postal peut compter ~70 000 DPE). Avec `digits`, on ne garde que les
+     * adresses commençant par ce numéro, plus celles dont l'adresse BAN n'a pas
+     * de numéro (le numéro est alors repris de la saisie brute).
+     */
+    addressLookupRows({ codePostal, digits = null, limit = 120_000 } = {}) {
+      if (!codePostal) return [];
+      const params = { code_postal: String(codePostal), limit };
+      let numberClause = "";
+      if (digits) {
+        params.number_glob = `${digits}[^0-9]*`;
+        numberClause = `AND (
+          adresse_ban GLOB @number_glob
+          OR adresse_brut GLOB @number_glob
+          OR adresse_ban IS NULL
+          OR adresse_ban NOT GLOB '[0-9]*'
+        )`;
+      }
+      return db
+        .prepare(
+          `SELECT numero_dpe, adresse_ban, adresse_brut, code_postal_ban, type_batiment
+           FROM dpe_records
+           WHERE code_postal_ban = @code_postal ${numberClause}
+           LIMIT @limit`
+        )
+        .all(params);
+    },
+
+    /**
+     * Mêmes filtres que `searchAddressCandidates` (types, fenêtre de surface,
+     * immeubles tolérés hors fenêtre), restreints à une liste de DPE — ceux
+     * d'une voie saisie à la main.
+     */
+    findAddressCandidates(numeros, { typeBatiments, surfaceMin, surfaceMax } = {}) {
+      const list = [...new Set((numeros || []).filter(Boolean))];
+      const types = Array.isArray(typeBatiments)
+        ? typeBatiments.filter((t) => DPE_BUILDING_TYPES.some((b) => b.value === t))
+        : [];
+      if (!list.length || !types.length) return [];
+
+      const params = Object.fromEntries(types.map((t, i) => [`type_${i}`, t]));
+      const where = [`type_batiment IN (${types.map((_, i) => `@type_${i}`).join(", ")})`];
+      if (surfaceMin != null && surfaceMax != null) {
+        const surfaceClause = "surface_habitable_logement BETWEEN @surface_min AND @surface_max";
+        where.push(
+          types.includes("immeuble") ? `(${surfaceClause} OR type_batiment = 'immeuble')` : surfaceClause
+        );
+        params.surface_min = surfaceMin;
+        params.surface_max = surfaceMax;
+      }
+
+      const rows = [];
+      const CHUNK = 500;
+      for (let start = 0; start < list.length; start += CHUNK) {
+        const chunk = list.slice(start, start + CHUNK);
+        const chunkParams = { ...params };
+        const keys = chunk.map((n, i) => {
+          chunkParams[`n${i}`] = n;
+          return `@n${i}`;
+        });
+        rows.push(
+          ...db
+            .prepare(
+              `SELECT * FROM dpe_records
+               WHERE numero_dpe IN (${keys.join(", ")}) AND ${where.join(" AND ")}`
+            )
+            .all(chunkParams)
+        );
+      }
+      return rows.map(hydrate);
+    },
+
+    findManyByNumero(numeros) {
+      const list = [...new Set((numeros || []).filter(Boolean))];
+      if (!list.length) return [];
+      const keys = list.map((_, i) => `@n${i}`);
+      const params = Object.fromEntries(list.map((n, i) => [`n${i}`, n]));
+      return db
+        .prepare(`SELECT * FROM dpe_records WHERE numero_dpe IN (${keys.join(", ")})`)
+        .all(params)
+        .map(hydrate);
     },
 
     /* --------------------------- Jobs d'import --------------------------- */

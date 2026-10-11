@@ -1,0 +1,139 @@
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content">
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">La Poste</p>
+          <h2 class="panel__title">Correspondance codes postaux / INSEE</h2>
+        </div>
+      </div>
+
+      <div
+        class="pricem2__type-tabs hexasmal-section-tabs"
+        role="tablist"
+        aria-label="Sections HexaSmal"
+        data-hexasmal-section-tabs
+      >
+        <button
+          type="button"
+          class="pricem2__type-tab is-active"
+          role="tab"
+          id="hexasmal-tab-import"
+          aria-selected="true"
+          aria-controls="hexasmal-panel-import"
+          data-hexasmal-section="import"
+        >
+          Import
+        </button>
+        <button
+          type="button"
+          class="pricem2__type-tab"
+          role="tab"
+          id="hexasmal-tab-browse"
+          aria-selected="false"
+          aria-controls="hexasmal-panel-browse"
+          data-hexasmal-section="browse"
+        >
+          Explorer la base
+        </button>
+      </div>
+
+      <div
+        class="hexasmal-section-panel is-active"
+        id="hexasmal-panel-import"
+        role="tabpanel"
+        aria-labelledby="hexasmal-tab-import"
+        data-hexasmal-section-panel="import"
+      >
+        <p class="field__hint" style="margin-top: var(--space-4)">
+          Téléchargez le fichier officiel
+          <a href="https://data.laposte.fr/datasets/laposte-hexasmal" target="_blank" rel="noopener noreferrer">Base officielle des codes postaux (HexaSmal)</a>
+          puis importez <strong>019HexaSmal.csv</strong> (~1,6&nbsp;Mo). L'import remplace l'ensemble des associations en base.
+        </p>
+
+        <form
+          class="dpe-import-form"
+          method="post"
+          action="/admin/hexasmal/import"
+          enctype="multipart/form-data"
+          hx-post="/admin/hexasmal/import"
+          hx-encoding="multipart/form-data"
+          hx-target="#hexasmal-import-status"
+          hx-swap="outerHTML"
+          style="margin-top: var(--space-4)"
+        >
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <div class="field">
+            <label class="field__label" for="hexasmal-file">Fichier CSV</label>
+            <input
+              class="field__input"
+              type="file"
+              id="hexasmal-file"
+              name="file"
+              accept=".csv,text/csv"
+              required
+            />
+          </div>
+          <button class="btn btn--green" type="submit" style="margin-top: var(--space-3)">
+            Importer
+          </button>
+        </form>
+
+        <%- include("../partials/admin/hexasmal-import-status", {
+          hexasmalMeta: hexasmalMeta,
+          hexasmalImportError: null,
+          hexasmalImportNotice: null,
+        }) %>
+      </div>
+
+      <div
+        class="hexasmal-section-panel"
+        id="hexasmal-panel-browse"
+        role="tabpanel"
+        aria-labelledby="hexasmal-tab-browse"
+        data-hexasmal-section-panel="browse"
+        hidden
+      >
+        <p class="field__hint" style="margin-top: var(--space-4)">
+          Parcourez les associations importées. Filtrez par code postal ou code INSEE (correspondance partielle).
+        </p>
+
+        <form
+          class="admin-users-search"
+          role="search"
+          hx-get="/admin/hexasmal/browse"
+          hx-trigger="input changed delay:300ms from:#hexasmal-browse-q, submit"
+          hx-target="#hexasmal-browse-results"
+          hx-swap="outerHTML"
+        >
+          <div class="field admin-users-search__field">
+            <label class="field__label" for="hexasmal-browse-q">Rechercher</label>
+            <div class="admin-users-search__wrap">
+              <svg class="admin-users-search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                class="input admin-users-search__input"
+                type="search"
+                id="hexasmal-browse-q"
+                name="hexasmal_q"
+                value="<%= hexasmalBrowse.filters.q || '' %>"
+                placeholder="ex. 78120 ou 78517"
+                autocomplete="off"
+                inputmode="search"
+              />
+            </div>
+          </div>
+        </form>
+
+        <%- include("../partials/admin/hexasmal-table", {
+          records: hexasmalBrowse.records,
+          filters: hexasmalBrowse.filters,
+          pagination: hexasmalBrowse.pagination,
+        }) %>
+      </div>
+    </section>
+  </div>
+</div>

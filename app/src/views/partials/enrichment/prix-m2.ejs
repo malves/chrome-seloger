@@ -9,7 +9,6 @@
     return (v > 0 ? '+' : '') + s + '\u00a0%';
   };
 
-  const verdict = data.verdict;
   const radius = data.radius;
   const commune = data.commune || {};
   let evo = null;
@@ -117,14 +116,6 @@
     return null;
   };
 
-  // Position sur l'échelle de la jauge (100 = prix du marché, au centre).
-  const gaugePos = function (index) {
-    if (index == null) return null;
-    return Math.max(0, Math.min(100, (Math.min(index, 200) / 200) * 100));
-  };
-  const markerPos = verdict ? gaugePos(verdict.index) : null;
-  const gaugeTone = verdict ? verdict.tone : 'neutral';
-
   const deptLabel = evo && evo.department && (evo.department.name || evo.department.code);
   const cityLabel = (evo && evo.commune_name) || commune.name || listing.city || 'la commune';
   const idPrefix = typeof chartId === 'string' && chartId ? chartId : 'pricem2';
@@ -225,63 +216,13 @@
     (!data.hide_radius && data.property_type && !data.has_coordinates);
 %>
 <div class="pricem2">
-  <% if (verdict) { %>
-    <div class="pricem2__verdict pricem2__verdict--<%= gaugeTone %>">
-      <div class="pricem2__verdict-head">
-        <div class="pricem2__verdict-intro">
-          <p class="pricem2__verdict-label">
-            Positionnement du prix<% if (data.reference_caption) { %><span class="pricem2__year"> · <%= data.reference_caption %></span><% } else if (data.reference_year) { %><span class="pricem2__year"> · Sur la base des ventes réelles : référence <%= data.reference_year %></span><% } %>
-          </p>
-          <span class="pricem2__verdict-title"><%= verdict.label %></span>
-        </div>
-        <div class="pricem2__verdict-figure">
-          <span class="pricem2__verdict-index"><%= verdict.index %></span>
-          <span class="pricem2__verdict-unit">/ 100</span>
-        </div>
-      </div>
-
-      <div class="pricem2__gauge-track">
-        <div class="pricem2__gauge-bar" role="img"
-          aria-label="Prix du bien <%= eur(verdict.listing_price_m2) %>/m² pour une référence locale de <%= eur(verdict.reference_price_m2) %>/m²">
-          <span class="pricem2__gauge-ref" style="left: 50%"
-            data-tooltip="Prix du marché · <%= eur(verdict.reference_price_m2) %>/m²" tabindex="0"
-            aria-label="Prix du marché, <%= eur(verdict.reference_price_m2) %> par m²"></span>
-          <% if (markerPos != null) { %>
-            <span class="pricem2__gauge-marker" style="left: <%= markerPos %>%"
-              data-tooltip="Ce bien · <%= eur(verdict.listing_price_m2) %>/m²" tabindex="0"
-              aria-label="Ce bien, <%= eur(verdict.listing_price_m2) %> par m²"></span>
-          <% } %>
-        </div>
-      </div>
-
-      <div class="pricem2__gauge-legend">
-        <span><span class="pricem2__dot pricem2__dot--bien"></span>Ce bien se positionne à <strong><%= eur(verdict.listing_price_m2) %>/m²</strong></span>
-        <span>
-          <span class="pricem2__dot pricem2__dot--ref"></span>
-          Référence du prix sur les ventes effectuées dans les <%= verdict.reference_scope === 'radius' ? (radius ? radius.meters + ' m' : 'locale') : 'commune' %>
-          : <strong><%= eur(verdict.reference_price_m2) %>/m²</strong>
-        </span>
-      </div>
-
-      <% if (verdict.negotiation_amount && verdict.negotiation_amount > 0) { %>
-        <p class="pricem2__advice pricem2__advice--negotiate">
-          <strong>Négociation conseillée.</strong>
-          Au prix médian local, ce bien se situerait autour de
-          <strong class="pricem2__advice-amount"><%= eur(verdict.reference_price_m2 * listing.surface) %></strong>,
-          soit environ <strong class="pricem2__advice-amount"><%= eur(verdict.negotiation_amount) %></strong> au-dessus du marché.
-        </p>
-      <% } else if (verdict.index <= 97) { %>
-        <p class="pricem2__advice pricem2__advice--good">
-          <strong>Prix attractif.</strong>
-          Ce bien est affiché sous la médiane locale
-          (écart d'environ <strong><%= eur(Math.abs(verdict.delta_amount)) %></strong>).
-        </p>
-      <% } else { %>
-        <p class="pricem2__advice">
-          Ce bien est aligné sur le prix médian du secteur.
-        </p>
-      <% } %>
-    </div>
+  <% if (data.price_position) { %>
+    <%- include('./price-position', {
+      position: data.price_position,
+      listing: listing,
+      dvfRadius: dvfCmp && dvfCmp.radius ? dvfCmp.radius : null,
+      dvfModalId: dvfModalId
+    }) %>
   <% } %>
 
   <% if (!typeBlocks.length && hasSidebarCards) { %>
@@ -503,10 +444,28 @@
             <script type="application/json" class="pricem2__chart-config"><%- seriesJson %></script>
           </div>
 
-          <ul class="pricem2__legend">
-            <li><span class="pricem2__legend-swatch pricem2__legend-swatch--city"></span><%= cityLabel %></li>
+          <ul class="pricem2__legend" aria-label="Séries du graphique">
+            <li>
+              <button
+                type="button"
+                class="pricem2__legend-item is-on"
+                data-pricem2-legend-series="city"
+                aria-pressed="true">
+                <span class="pricem2__legend-swatch pricem2__legend-swatch--city" aria-hidden="true"></span>
+                <%= cityLabel %>
+              </button>
+            </li>
             <% if (deptLabel && series.deptIndex.some(function (v) { return v != null; })) { %>
-              <li><span class="pricem2__legend-swatch pricem2__legend-swatch--dept"></span><%= deptLabel %></li>
+              <li>
+                <button
+                  type="button"
+                  class="pricem2__legend-item is-on"
+                  data-pricem2-legend-series="dept"
+                  aria-pressed="true">
+                  <span class="pricem2__legend-swatch pricem2__legend-swatch--dept" aria-hidden="true"></span>
+                  <%= deptLabel %>
+                </button>
+              </li>
             <% } %>
           </ul>
         </div>
@@ -517,9 +476,11 @@
     </details>
   <% } %>
 
-  <% if (dvfCmp && dvfCmp.radius && dvfCmp.radius.sales && dvfCmp.radius.sales.length) { %>
+  <% if (dvfCmp && dvfCmp.radius && dvfCmp.radius.sales && dvfCmp.radius.sales.length) {
+    const ppRadius = data.price_position && data.price_position.references.find(function (r) { return r.key === 'radius'; });
+  %>
     <%- include('./dvf-sales-modal', {
-      radius: dvfCmp.radius,
+      radius: ppRadius && ppRadius.adjusted_radius ? ppRadius.adjusted_radius : dvfCmp.radius,
       dvfTypeLabel: dvfTypeLabel,
       modalId: dvfModalId
     }) %>
