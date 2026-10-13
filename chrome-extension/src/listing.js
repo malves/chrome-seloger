@@ -4,7 +4,8 @@
  * Trois sources, de la plus fiable à la plus approximative :
  *  1. `__NEXT_DATA__` pour Leboncoin, qui contient l'annonce complète ;
  *  2. les données structurées JSON-LD et les balises Open Graph ;
- *  3. le DOM et le texte du titre pour les chiffres manquants.
+ *  3. le texte du titre pour les chiffres manquants ; sur SeLoger, le prix
+ *     passe par JSON-LD puis le script UFRN (`seloger-ufrn.js`).
  *
  * Rien n'est obligatoire hormis la source et l'URL : le serveur accepte un
  * payload partiel et conserve ce qu'il connaît déjà. Mieux vaut un champ absent
@@ -193,6 +194,25 @@
     return null;
   }
 
+  function pickScalar(nodes, path) {
+    for (const node of nodes) {
+      let value = node;
+      for (const key of path) {
+        if (Array.isArray(value)) value = value[0];
+        if (!value || typeof value !== "object") {
+          value = null;
+          break;
+        }
+        value = value[key];
+      }
+      if (Array.isArray(value)) value = value[0];
+      if (value === null || value === undefined) continue;
+      if (typeof value === "object") continue;
+      return value;
+    }
+    return undefined;
+  }
+
   function fromJsonLd() {
     const nodes = jsonLdNodes();
     if (!nodes.length) return {};
@@ -323,26 +343,20 @@
     };
   }
 
-  /* --------------------------- Secours : le DOM ------------------------ */
+  function isSeLogerHost() {
+    return /(^|\.)seloger\.com$/i.test(location.hostname) ||
+      /(^|\.)bellesdemeures\.com$/i.test(location.hostname);
+  }
 
-  /**
-   * Prix affiché, quand aucune donnée structurée ne le porte. On ne retient
-   * que les montants d'un bloc « prix », en écartant les prix au m².
-   */
-  function priceFromDom() {
-    const candidates = document.querySelectorAll(
-      '[data-testid*="price" i], [data-test*="price" i], [class*="price" i], [class*="Price"]'
-    );
-
-    let best = null;
-    for (const element of candidates) {
-      const text = (element.textContent || "").slice(0, 120);
-      if (!/€/.test(text)) continue;
-      if (/\/\s*m|m²|mois\s*\/|au m/i.test(text)) continue;
-      const value = integerFrom(text);
-      if (value && value >= 100 && (best === null || value > best)) best = value;
-    }
-    return best;
+  function priceCaptureRaw(resolved) {
+    return {
+      price_capture: {
+        status: resolved.status,
+        source: resolved.source,
+        formatted: resolved.formatted,
+        price_per_m2_formatted: resolved.pricePerM2Formatted,
+      },
+    };
   }
 
   /** Surface, pièces et chambres se lisent presque toujours dans le titre. */
@@ -386,6 +400,10 @@
 
   function fromPage() {
     const structured = fromJsonLd();
+    const nodes = jsonLdNodes();
+    const jsonLdPrice =
+      pickScalar(nodes, ["offers", "price"]) ??
+      pickScalar(nodes, ["offers", "priceSpecification", "price"]);
     const title =
       structured.title ||
       meta("og:title", "twitter:title") ||
@@ -398,11 +416,29 @@
     const haystack = `${location.pathname} ${title || ""}`;
     const text = fromText(title, description);
 
+    let price = null;
+    let raw = null;
+    if (isSeLogerHost() && self.CarnetSeLogerUfrn) {
+      const sections = self.CarnetSeLogerUfrn.ufrnClassifiedSectionsFromDocument(
+        document
+      );
+      const resolved = self.CarnetSeLogerUfrn.resolveSeLogerSalePrice({
+        jsonLdPrice,
+        sections,
+      });
+      price = resolved.price;
+      raw = priceCaptureRaw(resolved);
+    } else {
+      price =
+        structured.price ?? integerFrom(meta("product:price:amount"));
+    }
+
     return {
       ...structured,
       title: title ? title.trim().slice(0, 300) : null,
       description: description ? description.trim() : null,
-      price: structured.price ?? integerFrom(meta("product:price:amount")) ?? priceFromDom(),
+      price,
+      raw,
       surface: structured.surface ?? text.surface,
       land_surface: structured.land_surface ?? text.land_surface,
       rooms: structured.rooms ?? text.rooms,
@@ -441,6 +477,7 @@
       ...page,
       ...specific,
       location: { ...(page.location || {}), ...(specific.location || {}) },
+      raw: { ...(page.raw || {}), ...(specific.raw || {}) },
       schema_version: 1,
       source,
       url,

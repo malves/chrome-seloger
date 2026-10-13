@@ -52,6 +52,7 @@
       ],
       "js": [
         "src/listing-page.js",
+        "src/seloger-ufrn.js",
         "src/listing.js",
         "src/content.js"
       ],

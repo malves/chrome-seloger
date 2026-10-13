@@ -17,6 +17,7 @@ import config from "../config.js";
 import { parseFloorFromText } from "../lib/dpe-floor.js";
 import {
   energyDetailsFromSeLogerSections,
+  resolveSeLogerSalePrice,
   ufrnClassifiedSectionsFromHtml,
 } from "../lib/seloger-ufrn.js";
 
@@ -267,6 +268,37 @@ function pick(nodes, path) {
   return null;
 }
 
+/** Comme `pick`, mais conserve les chaînes vides (offers.price SeLoger). */
+function pickScalar(nodes, path) {
+  for (const node of nodes) {
+    let value = node;
+    for (const key of path) {
+      if (Array.isArray(value)) value = value[0];
+      if (!value || typeof value !== "object") {
+        value = null;
+        break;
+      }
+      value = value[key];
+    }
+    if (Array.isArray(value)) value = value[0];
+    if (value === null || value === undefined) continue;
+    if (typeof value === "object") continue;
+    return value;
+  }
+  return undefined;
+}
+
+function priceCaptureRaw(resolved) {
+  return {
+    price_capture: {
+      status: resolved.status,
+      source: resolved.source,
+      formatted: resolved.formatted,
+      price_per_m2_formatted: resolved.pricePerM2Formatted,
+    },
+  };
+}
+
 function fromJsonLd(nodes) {
   if (!nodes.length) return {};
 
@@ -416,9 +448,13 @@ function floorFromSeLogerHtml(html) {
   return parseFloorFromText(label) ?? parseFloorFromText(value) ?? null;
 }
 
-function fromSeLoger(html) {
+function fromSeLoger(html, jsonLdPrice) {
   const sections = ufrnClassifiedSectionsFromHtml(html);
   const out = {};
+
+  const resolved = resolveSeLogerSalePrice({ jsonLdPrice, sections });
+  if (resolved.price != null) out.price = resolved.price;
+  out.raw = priceCaptureRaw(resolved);
 
   const floor =
     (sections && floorFromSeLogerSections(sections)) ??
@@ -565,12 +601,15 @@ export function parseListingHtml(html, url) {
 
   const map = metaMap(html);
   const nodes = jsonLdNodes(html);
+  const jsonLdPrice =
+    pickScalar(nodes, ["offers", "price"]) ??
+    pickScalar(nodes, ["offers", "priceSpecification", "price"]);
   const page = fromPage(html, map, nodes);
   const specific =
     source === "leboncoin"
       ? fromLeboncoin(html, url)
       : source === "seloger" || source === "bellesdemeures"
-        ? fromSeLoger(html)
+        ? fromSeLoger(html, jsonLdPrice)
         : {};
 
   const haystack = `${safePathname(url)} ${page.title || ""}`;
@@ -578,6 +617,7 @@ export function parseListingHtml(html, url) {
   const merged = compact({
     ...page,
     ...specific,
+    raw: { ...(page.raw || {}), ...(specific.raw || {}) },
     property_type:
       specific.property_type || page.property_type || propertyTypeFrom(haystack),
     transaction_type:
