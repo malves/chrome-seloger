@@ -16,6 +16,7 @@ import {
   filterPotentialWorks,
   usableForWorks,
 } from "../../lib/photo-analysis/works.js";
+import { ROOM_ISSUE_KEYS } from "../../lib/works/works-issues.js";
 
 const { coerceEnum, clampConfidence, clampScore, cleanText, cleanTextList } = E;
 
@@ -65,6 +66,18 @@ function compactRecord(record) {
   };
 }
 
+/** Points à refaire d'une pièce, filtrés sur le vocabulaire de la modale. */
+export function normalizeRoomIssues(rawIssues, rawReasons) {
+  const issues = [...new Set(arr(rawIssues).filter((k) => ROOM_ISSUE_KEYS.includes(k)))];
+  const reasons = {};
+  const source = obj(rawReasons) || {};
+  for (const key of issues) {
+    const reason = cleanText(source[key], 160);
+    if (reason) reasons[key] = reason;
+  }
+  return { issues, issue_reasons: reasons };
+}
+
 function normalizeRoom(raw, index) {
   const r = obj(raw);
   if (!r) return null;
@@ -88,6 +101,7 @@ function normalizeRoom(raw, index) {
     condition_confidence: clampConfidence(r.condition_confidence),
     size_class: coerceEnum(r.size_class, E.SIZE_CLASSES),
     summary: cleanText(r.summary, 500),
+    ...normalizeRoomIssues(r.issues, r.issue_reasons),
     floor: floor
       ? {
           material: coerceEnum(floor.material, E.FLOOR_MATERIALS),

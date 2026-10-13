@@ -7,23 +7,6 @@
   var pending = !pa.ready;
 
   function lbl(map, key, fallback) { return L.label(map, key, fallback); }
-  function pct(c) { var p = L.percent(c); return p === null ? "" : p + " %"; }
-  function esc(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-  function photoRefs(refs, opts) {
-    opts = opts || {};
-    if (!refs || !refs.length) return "";
-    var html = '<span class="pa-refs">';
-    refs.slice(0, opts.max || 4).forEach(function (ref) {
-      if (!ref) return;
-      html += '<button type="button" class="pa-ref" data-photo-jump="' + Number(ref.index) + '" title="Agrandir la photo ' + Number(ref.position) + '">' +
-        '<img src="' + esc(ref.url) + '" alt="" loading="lazy" referrerpolicy="no-referrer" />' +
-        '<span class="pa-ref__num">' + Number(ref.position) + '</span></button>';
-    });
-    html += '</span>';
-    return html;
-  }
 %>
 <section
   class="works__part photo-analysis"
@@ -74,44 +57,26 @@
     </p>
   <% } else { %>
     <%
-      var renoTone = lbl(L.RENOVATION_LEVEL_TONES, pa.renovation.level, "unknown");
-      var condTone = lbl(L.CONDITION_TONES, pa.condition.label, "unknown");
+      var ws = typeof worksSummary !== "undefined" ? worksSummary : null;
+      var condTone = ws && ws.health ? ws.health.tone : lbl(L.CONDITION_TONES, pa.condition.label, "unknown");
     %>
 
     <!-- 1. Verdict -->
-    <div class="pa-hero pa-hero--<%= renoTone %>">
-      <% var hasCondScore = pa.condition.score !== null && pa.condition.score !== undefined;
-         var condScore = hasCondScore ? Math.max(0, Math.min(100, Number(pa.condition.score))) : null;
-         var condConfPct = pa.condition.confidence != null ? Math.round(Number(pa.condition.confidence) * 100) : null;
-         var hasCondConf = condConfPct !== null && !Number.isNaN(condConfPct);
-      %>
+    <div class="pa-hero">
       <div class="pa-hero__head">
-        <div class="pa-hero__intro">
-          <p class="pa-hero__eyebrow">Ce que les photos nous apprennent</p>
-          <p class="pa-hero__verdict"><%= lbl(L.RENOVATION_LEVEL_LABELS, pa.renovation.level) %></p>
-        </div>
+        <%- include("listing-works-verdict", { worksSummary: ws, photoAnalysis: pa, photoLabels: L, hxSwapOob: false }) %>
         <div class="pa-hero__side">
         <div class="pa-hero__stats" aria-label="Indicateurs issus des photos exploitables">
           <div class="pa-hero__stat pa-hero__stat--metrics pa-hero__stat--<%= condTone %>">
             <div class="pa-hero__stat-row">
-              <% if (hasCondConf) { %>
-                <div class="pa-hero__stat-col">
-                  <span class="pa-hero__stat-name">Confiance</span>
-                  <span class="pa-hero__stat-value"><%= condConfPct %><span class="pa-hero__stat-unit">%</span></span>
-                  <div class="pa-hero__stat-track pa-hero__stat-track--muted" role="presentation" aria-hidden="true">
-                    <span class="pa-hero__stat-fill" style="width: <%= condConfPct %>%;"></span>
-                  </div>
-                </div>
-              <% } %>
-              <% if (hasCondScore) { %>
-                <div class="pa-hero__stat-col pa-hero__stat-col--divider">
-                  <span class="pa-hero__stat-name">État général</span>
-                  <span class="pa-hero__stat-value"><%= condScore %><span class="pa-hero__stat-unit">/100</span></span>
-                  <div class="pa-hero__stat-track pa-hero__stat-track--score" role="presentation" aria-hidden="true">
-                    <span class="pa-hero__stat-fill" style="width: <%= condScore %>%;"></span>
-                  </div>
-                </div>
-              <% } %>
+              <%- include("listing-works-budget", {
+                worksSummary: typeof worksSummary !== "undefined" ? worksSummary : null,
+                hxSwapOob: false,
+              }) %>
+              <%- include("listing-works-health", {
+                worksSummary: typeof worksSummary !== "undefined" ? worksSummary : null,
+                hxSwapOob: false,
+              }) %>
               <div class="pa-hero__stat-col pa-hero__stat-col--divider pa-hero__stat-col--quality">
                 <span class="pa-hero__stat-name">Fiabilité de l'analyse</span>
                 <span class="pa-hero__stat-value"><%= lbl(L.QUALITY_CONFIDENCE_LABELS, pa.quality.confidence) %> : <%= pa.quality.score %><span class="pa-hero__stat-unit">%</span></span>
@@ -141,221 +106,21 @@
       <% } %>
     </div>
 
-    <details class="delinquance__details pricem2__evolution-details photo-analysis__expand">
-      <summary class="delinquance__summary">
-        <span class="delinquance__summary-text">
-          <span class="delinquance__summary-label">Détail de l'analyse</span>
-          <span class="delinquance__summary-hint">
-            <span class="delinquance__summary-hint--closed">Travaux, anomalies, cohérence et points à vérifier en visite.</span>
-            <span class="delinquance__summary-hint--open">Replier le détail</span>
-          </span>
-        </span>
-        <span class="delinquance__summary-aside" aria-hidden="true">
-          <span class="delinquance__summary-chevron"></span>
-        </span>
-      </summary>
+    <div
+      id="listing-works-metrics-sync"
+      hx-get="/listings/<%= listing.id %>/works/summary"
+      hx-trigger="works-plan-saved from:body"
+      hx-swap="none"
+      hidden
+      aria-hidden="true"
+    ></div>
 
-      <div class="delinquance__details-body photo-analysis__details-body">
-    <div class="pa-grid">
-      <!-- 2. Travaux -->
-      <section class="pa-block" aria-labelledby="pa-works-title">
-        <h3 class="pa-block__title" id="pa-works-title">Principaux travaux détectés</h3>
-        <% if (!pa.topWorks.length) { %>
-          <p class="field__hint">Aucun travail notable détecté sur les photos exploitables.</p>
-        <% } else { %>
-          <ul class="pa-list">
-            <% pa.topWorks.forEach(function (w) { var room = w.room_id ? pa.roomById.get(w.room_id) : null; %>
-              <li class="pa-item pa-item--<%= lbl(L.NECESSITY_TONES, w.necessity, "unknown") %>">
-                <div class="pa-item__head">
-                  <span class="pa-item__label"><%= w.label || lbl(L.WORK_TYPE_LABELS, w.work_type) %></span>
-                  <span class="pa-item__badges">
-                    <span class="badge pa-badge pa-badge--<%= lbl(L.NECESSITY_TONES, w.necessity, "unknown") %>"><%= lbl(L.NECESSITY_LABELS, w.necessity) %></span>
-                    <span class="badge badge--muted"><%= lbl(L.WORK_CATEGORY_LABELS, w.category) %></span>
-                  </span>
-                </div>
-                <p class="pa-item__meta">
-                  <% if (room) { %><%= room.label || lbl(L.ROOM_LABELS, room.room_type) %> · <% } %>
-                  <%= lbl(L.SCOPE_LABELS, w.scope) %><%= w.confidence ? " · confiance " + pct(w.confidence) : "" %>
-                </p>
-                <% if (w.rationale) { %><p class="pa-item__text"><%= w.rationale %></p><% } %>
-                <%- photoRefs(w.refs) %>
-              </li>
-            <% }); %>
-          </ul>
-          <% if (pa.works.length > pa.topWorks.length) { %>
-            <p class="field__hint"><%= pa.works.length - pa.topWorks.length %> autre<%= pa.works.length - pa.topWorks.length > 1 ? "s" : "" %> travaux dans le détail pièce par pièce.</p>
-          <% } %>
-        <% } %>
-      </section>
-
-      <!-- 3. Anomalies -->
-      <section class="pa-block" aria-labelledby="pa-anomalies-title">
-        <h3 class="pa-block__title" id="pa-anomalies-title">Anomalies visibles</h3>
-        <% if (!pa.anomalies.length) { %>
-          <p class="field__hint">Aucune anomalie visible relevée. Cela ne garantit pas l'absence de défaut : seules les zones photographiées ont été examinées.</p>
-        <% } else { %>
-          <ul class="pa-list">
-            <% pa.anomalies.forEach(function (an) { var room = an.room_id ? pa.roomById.get(an.room_id) : null; %>
-              <li class="pa-item pa-item--<%= lbl(L.SEVERITY_TONES, an.severity, "average") %>">
-                <div class="pa-item__head">
-                  <span class="pa-item__label"><%= lbl(L.ANOMALY_LABELS, an.type) %><% if (room) { %> — <%= room.label || lbl(L.ROOM_LABELS, room.room_type) %><% } %></span>
-                  <span class="pa-item__badges">
-                    <span class="badge pa-badge pa-badge--<%= lbl(L.SEVERITY_TONES, an.severity, "average") %>">Gravité <%= lbl(L.SEVERITY_LABELS, an.severity).toLowerCase() %></span>
-                    <% if (an.confidence) { %><span class="badge badge--muted">confiance <%= pct(an.confidence) %></span><% } %>
-                  </span>
-                </div>
-                <p class="pa-item__text"><strong>Observation :</strong> <%= an.observation %></p>
-                <% if (an.interpretation) { %><p class="pa-item__text"><strong>Interprétation :</strong> <%= an.interpretation %></p><% } %>
-                <p class="pa-item__meta">À vérifier en visite — l'origine ne peut pas être déterminée sur photo.</p>
-                <%- photoRefs(an.refs) %>
-              </li>
-            <% }); %>
-          </ul>
-        <% } %>
-      </section>
-
-      <!-- 4. Points positifs / vigilance -->
-      <section class="pa-block" aria-labelledby="pa-strengths-title">
-        <h3 class="pa-block__title" id="pa-strengths-title">Points positifs</h3>
-        <% if (!pa.strengths.length) { %>
-          <p class="field__hint">Aucun point fort particulier relevé.</p>
-        <% } else { %>
-          <ul class="pa-bullets pa-bullets--good">
-            <% pa.strengths.forEach(function (s) { %>
-              <li><span><%= s.label %></span><%- photoRefs(s.refs, { max: 2 }) %></li>
-            <% }); %>
-          </ul>
-        <% } %>
-        <% if (pa.architecturalCharacter) { %>
-          <p class="pa-item__text pa-character"><%= pa.architecturalCharacter %></p>
-        <% } %>
-      </section>
-
-      <section class="pa-block" aria-labelledby="pa-warnings-title">
-        <h3 class="pa-block__title" id="pa-warnings-title">Points de vigilance</h3>
-        <%
-          var vigilance = pa.warnings.slice();
-          pa.missingRooms.filter(function (m) { return m.importance !== "low"; }).forEach(function (m) {
-            var missingLabel = (m.missing_count > 1 ? m.missing_count + " × " : "") + m.label;
-            vigilance.push({ label: m.reason === "declared_but_not_shown" ? "Aucune photo : " + missingLabel + " (pourtant dans l'annonce)" : "Aucune photo : " + missingLabel, severity: m.importance === "high" ? "medium" : "low", synthetic: true });
-          });
-        %>
-        <% if (!vigilance.length) { %>
-          <p class="field__hint">Aucun point de vigilance particulier.</p>
-        <% } else { %>
-          <ul class="pa-bullets pa-bullets--warn">
-            <% vigilance.forEach(function (w) { %>
-              <li>
-                <span><%= w.label %></span>
-                <% if (!w.synthetic && w.confidence) { %><span class="pa-bullets__meta">confiance <%= pct(w.confidence) %></span><% } %>
-                <%- photoRefs(w.refs, { max: 2 }) %>
-              </li>
-            <% }); %>
-          </ul>
-        <% } %>
-        <% if (pa.distributionWarning.status) { %>
-          <p class="pa-item__meta"><%= pa.distributionWarning.observation %></p>
-        <% } %>
-      </section>
-    </div>
-
-    <!-- 5. Cohérence -->
-    <%
-      var hasCoherence = pa.contradictions.length || pa.dpeCorrelations.length || pa.wideAngle.likely || pa.photoInconsistency.status || pa.structuredDataNotes.length || pa.relationships.length;
-    %>
-    <% if (hasCoherence) { %>
-      <section class="pa-block pa-block--wide" aria-labelledby="pa-coherence-title">
-        <h3 class="pa-block__title" id="pa-coherence-title">Cohérence</h3>
-        <ul class="pa-list pa-list--compact">
-          <% pa.contradictions.forEach(function (c) { %>
-            <li class="pa-item pa-item--<%= lbl(L.CLAIM_STATUS_TONES, c.status, "unknown") %>">
-              <div class="pa-item__head">
-                <span class="pa-item__label">« <%= c.claim %> »</span>
-                <span class="pa-item__badges">
-                  <% if (c.subject === "building" || c.subject === "surroundings") { %><span class="badge badge--muted"><%= lbl(L.CLAIM_SUBJECT_LABELS, c.subject) %></span><% } %>
-                  <span class="badge pa-badge pa-badge--<%= lbl(L.CLAIM_STATUS_TONES, c.status, "unknown") %>"><%= lbl(L.CLAIM_STATUS_LABELS, c.status) %></span>
-                </span>
-              </div>
-              <% if (c.reason) { %><p class="pa-item__text"><%= c.reason %></p><% } %>
-              <%- photoRefs(c.refs, { max: 3 }) %>
-            </li>
-          <% }); %>
-          <% pa.dpeCorrelations.forEach(function (c) { %>
-            <li class="pa-item pa-item--<%= lbl(L.DPE_CORRELATION_TONES, c.status, "unknown") %>">
-              <div class="pa-item__head">
-                <span class="pa-item__label"><%= lbl(L.DPE_TOPIC_LABELS, c.topic) %> et DPE</span>
-                <span class="badge pa-badge pa-badge--<%= lbl(L.DPE_CORRELATION_TONES, c.status, "unknown") %>"><%= lbl(L.DPE_CORRELATION_STATUS_LABELS, c.status) %></span>
-              </div>
-              <p class="pa-item__text"><%= c.text %></p>
-            </li>
-          <% }); %>
-          <% pa.structuredDataNotes.forEach(function (n) { %>
-            <li class="pa-item pa-item--unknown"><p class="pa-item__text"><%= n %></p></li>
-          <% }); %>
-          <% pa.relationships.forEach(function (r) { %>
-            <li class="pa-item pa-item--unknown">
-              <div class="pa-item__head"><span class="pa-item__label">État actuel et projection de l'agence</span></div>
-              <p class="pa-item__text">La photo <%= r.current.position %> montre l'état actuel ; la photo <%= r.projected.position %> est une projection après travaux, utile pour le potentiel mais exclue de l'évaluation.</p>
-              <%- photoRefs([r.current, r.projected]) %>
-            </li>
-          <% }); %>
-          <% if (pa.wideAngle.likely) { %>
-            <li class="pa-item pa-item--average">
-              <div class="pa-item__head"><span class="pa-item__label">Grand-angle probable</span></div>
-              <p class="pa-item__text">Certaines photos semblent prises au grand-angle : la perception des volumes peut être amplifiée.</p>
-              <%- photoRefs(pa.wideAngle.refs, { max: 3 }) %>
-            </li>
-          <% } %>
-          <% if (pa.photoInconsistency.status) { %>
-            <li class="pa-item pa-item--average">
-              <div class="pa-item__head"><span class="pa-item__label">Photos difficilement compatibles entre elles</span></div>
-              <p class="pa-item__text"><%= pa.photoInconsistency.note || "Certaines photos semblent difficilement compatibles entre elles." %> À vérifier avec l'agence.</p>
-            </li>
-          <% } %>
-        </ul>
-      </section>
-    <% } %>
-
-    <!-- 6. Visite -->
-    <% if (pa.visitQuestions.length || pa.visitChecks.length || pa.negotiationPoints.length) { %>
-      <section class="pa-block pa-block--wide pa-visit" aria-labelledby="pa-visit-title">
-        <h3 class="pa-block__title" id="pa-visit-title">À vérifier en visite</h3>
-        <div class="pa-visit__grid">
-          <% if (pa.visitQuestions.length) { %>
-            <div>
-              <p class="pa-visit__caption">Questions à poser</p>
-              <ol class="pa-visit__list">
-                <% pa.visitQuestions.forEach(function (q) { %><li><%= q %></li><% }); %>
-              </ol>
-            </div>
-          <% } %>
-          <% if (pa.visitChecks.length) { %>
-            <div>
-              <p class="pa-visit__caption">Contrôles recommandés</p>
-              <ul class="pa-visit__list pa-visit__list--checks">
-                <% pa.visitChecks.forEach(function (c) { %><li><%= c %></li><% }); %>
-              </ul>
-            </div>
-          <% } %>
-          <% if (pa.negotiationPoints.length) { %>
-            <div>
-              <p class="pa-visit__caption">Arguments de négociation possibles</p>
-              <ul class="pa-visit__list">
-                <% pa.negotiationPoints.forEach(function (n) { %><li><%= n.label %></li><% }); %>
-              </ul>
-              <p class="field__hint">Fondés uniquement sur des éléments visibles avec une confiance suffisante.</p>
-            </div>
-          <% } %>
-        </div>
-      </section>
-    <% } %>
-
-    <p class="panel__note">
-      Lecture automatique de l'état <strong>visible</strong> sur les photos : elle ne remplace ni une visite ni un diagnostic technique. Les photos peuvent être retouchées, éclaircies ou prises au grand-angle.
+    <p class="panel__note photo-analysis__note">
+      Anomalies, cohérence de l'annonce et points à vérifier en visite : voir le
+      <button type="button" class="works-link" data-works-open>dossier technique</button>.
+      Lecture automatique de l'état <strong>visible</strong> sur les photos : elle ne remplace ni une visite ni un diagnostic technique.
       <% if (pa.analyzedAt) { %>Analyse du <%= fmt.date(pa.analyzedAt) %>.<% } %>
     </p>
-      </div>
-    </details>
   <% } %>
 </section>
 <% if (typeof refreshWorksHeadAside !== "undefined" && refreshWorksHeadAside) { %>

@@ -1,9 +1,10 @@
 <%- include("listing-location-block", { listing: listing, userAddressMapsHref: userAddressMapsHref }) %>
-<div id="listing-linked-dpe-block" hx-swap-oob="true">
-  <%- include("listing-linked-dpe", {
-    linkedDpeInsights: typeof linkedDpeInsights !== "undefined" ? linkedDpeInsights : null,
-  }) %>
-</div>
+<% if (typeof photos !== "undefined" && photos && photos.length) { %>
+<%- include("listing-works-dpe-template", {
+  linkedDpeInsights: typeof linkedDpeInsights !== "undefined" ? linkedDpeInsights : null,
+  hxSwapOob: true,
+}) %>
+<% } %>
 <% if (typeof photos !== "undefined" && photos && photos.length && typeof photoAnalysis !== "undefined" && photoAnalysis) { %>
 <%- include("listing-photo-analysis", {
   listing: listing,

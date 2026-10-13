@@ -352,22 +352,26 @@ export const QUALITY_CONFIDENCE_LABELS = {
   medium: "Moyenne",
 };
 
+/** Statuts de `dpeCoherence` (works-coherence.js). */
 export const DPE_CORRELATION_STATUS_LABELS = {
   consistent: "Cohérent avec le DPE",
   possible_post_dpe_renovation: "Rénovation possible après le DPE",
-  inconclusive: "Non concluant",
+  to_check: "À vérifier",
 };
-
-export const DPE_CORRELATION_TONES = {
-  consistent: "good",
-  possible_post_dpe_renovation: "average",
-  inconclusive: "unknown",
-};
-
-export const DPE_TOPIC_LABELS = { windows: "Fenêtres", heating: "Chauffage" };
 
 export function label(map, key, fallback = null) {
   return map[key] ?? fallback ?? key ?? "";
+}
+
+const WORKS_STATEMENT_RE =
+  /travaux|r[ée]nov|refaire|refait|remplac|rafra[iî]ch|repeindre|peinture|pon[çc]|moderni|v[ée]tust|à changer|\bdatée?s?\b/i;
+
+/**
+ * Énoncé de l'IA qui porte sur des travaux : sur la fiche, les travaux ne
+ * viennent que du plan des pièces, ces énoncés ne sont donc pas repris tels quels.
+ */
+export function isWorksStatement(text) {
+  return WORKS_STATEMENT_RE.test(String(text || ""));
 }
 
 export function percent(confidence) {

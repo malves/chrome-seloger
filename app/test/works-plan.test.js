@@ -112,6 +112,49 @@ test("rénovation lourde : pires tags par catégorie", () => {
   assert.deepEqual(reverted, ["paint"]);
 });
 
+test("rénovation lourde : cuisine et salle d'eau seulement dans leurs pièces", () => {
+  const kitchen = applyHeavyRenovationIssues([], "kitchen").issues;
+  assert.ok(kitchen.includes("kitchen_redo"));
+  assert.ok(!kitchen.includes("bathroom_redo"));
+  const bath = applyHeavyRenovationIssues([], "bathroom").issues;
+  assert.ok(bath.includes("bathroom_redo"));
+  assert.ok(!bath.includes("kitchen_redo"));
+  const living = applyHeavyRenovationIssues([], "living_room").issues;
+  assert.ok(!living.includes("kitchen_redo"), "un séjour n'a pas forcément de cuisine");
+  assert.ok(living.includes("floor_redo"));
+});
+
+test("points de cuisine ou de salle d'eau retirés d'une pièce qui n'en a pas", () => {
+  const room = { ...emptyRoom("u_1", "bedroom", "Chambre"), issues: ["paint", "kitchen_redo", "bathroom_refresh"] };
+  const base = { rooms: [room], groups: { unassigned: [], exterior: [], excluded: [] }, captions: {} };
+  const parsed = parseWorksPlan(base);
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.plan.rooms[0].issues, ["paint"]);
+  const options = plannerOptions();
+  assert.ok(options.issueCategories.some((c) => c.value === "fixtures"));
+  assert.deepEqual(options.exclusiveIssues.find((p) => p.includes("kitchen_redo")), ["kitchen_refresh", "kitchen_redo"]);
+});
+
+test("schéma : résumé IA séparé de la note, raisons et pièce à préciser", () => {
+  const legacy = { ...emptyRoom("room_01", "bathroom", "Salle de bain"), source: "ai", summary: "Résumé de l'IA", condition: "average" };
+  delete legacy.ai_summary;
+  delete legacy.issue_reasons;
+  delete legacy.needs_review;
+  const out = reconcileWorksPlan({ rooms: [legacy], groups: {}, captions: {} }, []);
+  assert.equal(out.rooms[0].ai_summary, "Résumé de l'IA");
+  assert.equal(out.rooms[0].summary, "");
+  assert.equal(out.rooms[0].needs_review, true);
+
+  const mine = reconcileWorksPlan({ rooms: [{ ...legacy, source: "user", summary: "Ma note" }], groups: {}, captions: {} }, []);
+  assert.equal(mine.rooms[0].summary, "Ma note");
+
+  const room = { ...emptyRoom("r", "bathroom"), issues: ["paint"], issues_ai: ["paint"], issue_reasons: { paint: "Murs tachés", mold: "hors IA" } };
+  const parsed = parseWorksPlan({ rooms: [room], groups: { unassigned: [], exterior: [], excluded: [] }, captions: {} });
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.plan.rooms[0].issue_reasons, { paint: "Murs tachés" });
+  assert.equal(parsed.plan.rooms[0].needs_review, false);
+});
+
 test("normalisation planner : non évaluable et valeurs inconnues ne deviennent pas « Moyen »", () => {
   assert.equal(normalizePlannerRoomCondition("not_assessable"), "not_assessable");
   assert.equal(normalizePlannerRoomCondition("n_importe_quoi"), "not_assessable");
@@ -239,7 +282,9 @@ test("validation : plan valide accepté, enums et textes invalides rejetés", ()
 });
 
 test("résumé du widget : ton, libellé, vignette et photos à classer", () => {
-  const plan = seedWorksPlan(analysis(), PHOTOS);
+  const stored = analysis();
+  stored.rooms[1].kitchen = { condition: "full_replacement_likely", notes: "Meubles très datés" };
+  const plan = seedWorksPlan(stored, PHOTOS);
   const summary = worksRoomsSummary({ plan, stored: false, aiStatus: "ok" });
   assert.equal(summary.rooms[0].label, "Séjour");
   assert.equal(summary.rooms[0].tone, "average");
@@ -273,10 +318,10 @@ async function setup(t, { email = "a@example.com", withAnalysis = true } = {}) {
 
 test("fiche : section Travaux, bouton visible pour un utilisateur standard, modale et script chargés", async (t) => {
   const { page } = await setup(t);
-  assert.match(page.text, /Analyse du bien/);
-  assert.match(page.text, /État général &amp; Analyse du bien/);
+  assert.match(page.text, /Analyse technique du bien/);
+  assert.match(page.text, /id="listing-works-title"[\s\S]*État général/);
   assert.match(page.text, /data-works-open/);
-  assert.match(page.text, /Paramétrer les pièces/);
+  assert.match(page.text, /Dossier technique/);
   assert.match(page.text, /id="works-modal"/);
   assert.match(page.text, /works-planner\.js/);
   assert.doesNotMatch(page.text, /works-room-chip/);
@@ -293,6 +338,9 @@ test("GET plan : proposition IA non enregistrée, avec options", async (t) => {
   assert.equal(res.body.plan.rooms.length, 2);
   assert.deepEqual(res.body.photos, PHOTOS);
   assert.ok(res.body.options.roomTypes.some((o) => o.value === "toilet" && o.icon === "toilet"));
+  assert.ok(res.body.options.costs.issueIntensity.paint);
+  assert.equal(res.body.overview.analysisReady, true);
+  assert.ok(res.body.overview.propertyLabel);
   assert.equal(repositories.worksPlans.find(listing.id), null, "rien n'est stocké avant une correction");
 });
 

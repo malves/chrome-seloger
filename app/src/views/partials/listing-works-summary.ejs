@@ -1,0 +1,8 @@
+<%
+  // Fragment HTMX : met à jour verdict et score après enregistrement du plan
+  // (déclenché par #listing-works-metrics-sync sur la fiche).
+  var ws = typeof worksSummary !== "undefined" ? worksSummary : null;
+%>
+<%- include("listing-works-health", { worksSummary: ws, hxSwapOob: true }) %>
+<%- include("listing-works-budget", { worksSummary: ws, hxSwapOob: true }) %>
+<%- include("listing-works-verdict", { worksSummary: ws, hxSwapOob: true }) %>

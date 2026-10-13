@@ -10,6 +10,7 @@
   hidden
   data-works-modal
   data-plan-url="/listings/<%= listing.id %>/works/plan"
+  data-property-type="<%= listing.property_type || '' %>"
 >
   <div class="modal__overlay" data-works-dismiss></div>
   <div
@@ -22,7 +23,7 @@
     <header class="works-modal__header">
       <div class="works-modal__heading">
         <div>
-          <h2 class="works-modal__title" id="works-modal-title">Pièces et état</h2>
+          <h2 class="works-modal__title" id="works-modal-title">Dossier technique</h2>
           <div class="works-modal__intro works-banner works-banner--ai" id="works-modal-lead">
             <p><strong>Proposition de l'IA.</strong> Vérifiez chaque pièce : vos corrections sont enregistrées automatiquement.</p>
           </div>
@@ -57,6 +58,10 @@
         Terminer
       </button>
     </footer>
+
+    <%- include("listing-works-dpe-template", {
+      linkedDpeInsights: typeof linkedDpeInsights !== "undefined" ? linkedDpeInsights : null,
+    }) %>
 
     <div class="works-toast" data-works-toast hidden role="status"></div>
     <p class="visually-hidden" data-works-announcer aria-live="assertive"></p>

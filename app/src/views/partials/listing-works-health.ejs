@@ -1,0 +1,22 @@
+<%
+  // État général sur 100 : même calcul que la vue d'ensemble de la modale
+  // « Pièces et état » (plan des pièces), mis à jour à sa fermeture.
+  var h = typeof worksSummary !== "undefined" && worksSummary ? worksSummary.health : null;
+  var score = h && h.score != null ? Math.max(0, Math.min(100, Number(h.score))) : null;
+%>
+<div
+  class="pa-hero__stat-col pa-hero__stat-col--divider"
+  id="listing-works-health"
+  <% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %>hx-swap-oob="true"<% } %>
+  <% if (h) { %>title="<%= h.verdict %><%= h.fromPlan ? ' — d\'après les pièces et les points à refaire' : '' %>"<% } %>
+>
+  <span class="pa-hero__stat-name">État général</span>
+  <% if (score === null) { %>
+    <span class="pa-hero__stat-value">—</span>
+  <% } else { %>
+    <span class="pa-hero__stat-value"><%= score %><span class="pa-hero__stat-unit">/100</span></span>
+    <div class="pa-hero__stat-track pa-hero__stat-track--score" role="presentation" aria-hidden="true">
+      <span class="pa-hero__stat-fill" style="width: <%= score %>%;"></span>
+    </div>
+  <% } %>
+</div>

@@ -239,6 +239,7 @@ export function worksForUnassignedPhotos(records, assigned, works, propertyType 
     scope: w.scope,
     category: w.category,
     area: "private",
+    outdoor: w.outdoor,
     quantity: null,
     confidence: Math.round(w.confidence * FALLBACK_CONFIDENCE_FACTOR * 100) / 100,
     image_ids: w.image_ids,

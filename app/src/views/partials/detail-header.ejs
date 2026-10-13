@@ -43,11 +43,11 @@
     <%- include("project-dropdown", { listing: listing, projects: projects }) %>
 
     <a
-      class="btn btn--ghost btn--sm"
+      class="btn btn--ghost btn--sm detail-head__origin-link"
       href="<%= listing.url %>"
       target="_blank"
       rel="noreferrer noopener"
-      >Voir l'annonce d'origine ↗</a
+      >Voir l'annonce d'origine <span class="link-exit-arrow" aria-hidden="true">↗</span></a
     >
 
     <div class="detail-head__icon-actions">
@@ -59,7 +59,7 @@
         <input type="hidden" name="view" value="header" />
         <input type="hidden" name="is_favorite" value="<%= listing.is_favorite ? '0' : '1' %>" />
         <button
-          class="btn btn--sm btn--icon-only <%= listing.is_favorite ? 'btn--gold' : 'btn--ghost btn--fav-add' %>"
+          class="btn btn--sm btn--icon-only detail-head__fav-btn <%= listing.is_favorite ? 'btn--gold' : 'btn--ghost btn--fav-add' %>"
           type="submit"
           title="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"
           aria-label="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"
@@ -69,7 +69,6 @@
             viewBox="0 0 24 24"
             width="18"
             height="18"
-            fill="<%= listing.is_favorite ? 'currentColor' : 'none' %>"
             stroke="currentColor"
             stroke-width="2"
             stroke-linecap="round"

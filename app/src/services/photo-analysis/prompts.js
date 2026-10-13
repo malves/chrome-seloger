@@ -12,6 +12,7 @@
  */
 
 import * as E from "../../lib/photo-analysis/enums.js";
+import { ROOM_ISSUE_KEYS } from "../../lib/works/works-issues.js";
 
 const list = (values) => values.map((v) => `"${v}"`).join("|");
 
@@ -37,9 +38,9 @@ Exemple : un parquet (mosaïque ou lames) dont des éléments se décollent ou s
 Toute surface "damaged" ou "replacement_likely", et toute trace de moisissure ou d'humidité, doit aussi apparaître dans les défauts ("damaged_floor", "possible_mold", "possible_water_damage", "possible_humidity", "ceiling_damage"…) avec une sévérité cohérente : "high" si étendu.`;
 
 const CONDITION_GRID = `GRILLE D'ÉTAT D'UNE PIÈCE (selon ce qui est VISIBLE) :
-- "new_or_recently_renovated" / "very_good" / "good" : aucun travaux apparent, finitions récentes ou soignées.
-- "average" : usure normale, propre, habitable en l'état.
-- "dated" : équipements ou finitions anciens mais en bon état d'usage.
+- "new_or_recently_renovated" / "very_good" / "good" : rien à refaire, au plus des finitions sans importance.
+- "average" : habitable, mais au moins un poste à reprendre (peinture, sol, équipement de cuisine ou de salle d'eau…). Si rien n'est à reprendre, la pièce est "good".
+- "dated" : équipements ou finitions anciens mais en bon état d'usage ; liste ce qu'il faudrait moderniser.
 - "refresh_needed" : peintures ou revêtements à reprendre, sans dégradation du support.
 - "renovation_needed" : au moins un support dégradé (une surface "damaged" ou "replacement_likely" : sol décollé, murs moisis ou tachés d'humidité, plafond taché ou cloqué).
 - "heavy_renovation_likely" : plusieurs supports dégradés dans la pièce, traces de dégât des eaux ou moisissures étendues, pièce difficilement habitable en l'état.
@@ -120,6 +121,13 @@ ${CONDITION_GRID}
 
 TÂCHES :
 1. PIÈCES LOGIQUES : regroupe les images montrant la MÊME pièce (géométrie, fenêtres, sol, portes, mobilier fixe, point de vue). Trois photos du salon = UN salon. Attribue un état global par pièce.
+   POINTS À REFAIRE PAR PIÈCE ("issues") : liste précisément ce qui est à refaire dans la pièce, avec pour chaque point un constat court dans "issue_reasons" (ex. { "bathroom_refresh": "faïence et sanitaires datés, joints noircis" }).
+   - Valeurs autorisées : ${list(ROOM_ISSUE_KEYS)}.
+   - "kitchen_refresh" / "kitchen_redo" : cuisine uniquement ; "bathroom_refresh" / "bathroom_redo" : salle de bain, salle d'eau ou WC uniquement. "_refresh" = rafraîchir (façades, peinture, joints, robinetterie) ; "_redo" = refaire (équipements, faïence, plomberie apparente).
+   - Un état "average" ou pire impose au moins un point dans "issues". Un état "good", "very_good" ou "new_or_recently_renovated" impose "issues" vide.
+   - "issues" doit être cohérent avec l'état du sol, des murs et du plafond : une surface "worn" ou "dated" donne au moins le point « à repeindre / usé » correspondant, une surface "damaged" ou "replacement_likely" le point « à refaire ».
+   - Le "summary" de la pièce ne doit jamais dire « bon état » pour une surface ou un équipement cité dans "issues".
+   - Chaque travail de "potential_works" situé dans une pièce porte le "room_id" de cette pièce et correspond à un point de ses "issues".
 2. RELATIONS ENTRE IMAGES : couples "état actuel / projection après travaux" (current_vs_projected), quasi-doublons (near_duplicate : même photo recadrée, éclaircie, très similaire).
 3. ANOMALIES : humidité possible, dégât des eaux possible, moisissure possible, fissures (sans origine), plafond dégradé… Toujours observation + interprétation prudente + needs_confirmation=true, avec les images de preuve.
 4. TRAVAUX POTENTIELS : chaque travail a un type, une nécessité, une ampleur, une catégorie (necessary = potentiellement nécessaire ; cosmetic = esthétique ; comfort = confort/valorisation) et des images de preuve.
@@ -135,7 +143,7 @@ TÂCHES :
    - Ne confronte une affirmation qu'aux photos de son sujet : jamais l'état intérieur pour juger l'immeuble, ni la façade pour juger le logement. Sans photo du sujet → status="not_verifiable".
    - Pour une MAISON, la maison est à la fois le logement et le bâtiment : subject="dwelling".
 7. RÉNOVATION : distingue rénovation cosmétique (peinture fraîche + équipements anciens) et technique.
-8. SYNTHÈSE courte et factuelle, puis questions de visite issues de ce qui a été observé, contrôles physiques recommandés (présentés comme contrôles, pas observations), arguments de négociation fondés sur des éléments fiables uniquement.
+8. SYNTHÈSE courte et factuelle, puis questions de visite issues de ce qui a été observé, contrôles physiques recommandés (présentés comme contrôles, pas observations), arguments de négociation fondés sur des éléments fiables uniquement. Les travaux figurent UNIQUEMENT dans potential_works : warnings et negotiation_points ne doivent pas répéter de travaux à faire (rénovation, remplacement, rafraîchissement, peinture…), ils portent sur le reste (vis-à-vis, luminosité, couverture photo, incohérences de l'annonce, etc.).
 
 Renvoie un objet JSON STRICT :
 {
@@ -149,7 +157,9 @@ Renvoie un objet JSON STRICT :
       "condition": ${list(E.ROOM_CONDITIONS)},
       "condition_confidence": number,
       "size_class": ${list(E.SIZE_CLASSES)},
-      "summary": string,                       // 1-2 phrases, observation puis interprétation
+      "summary": string,                       // 1-2 phrases, observation puis interprétation, cohérent avec "issues"
+      "issues": string[],                      // points à refaire (valeurs autorisées ci-dessus)
+      "issue_reasons": { [point]: string },    // constat court par point de "issues"
       "floor": { "material": ${list(E.FLOOR_MATERIALS)}, "condition": ${list(E.SURFACE_CONDITIONS)}, "apparent_age": ${list(E.APPARENT_AGES)}, "potential_work": string|null, "confidence": number } | null,
       "walls": { "condition": ${list(E.SURFACE_CONDITIONS)}, "notes": string|null, "confidence": number } | null,
       "ceiling": { "condition": ${list(E.SURFACE_CONDITIONS)}, "notes": string|null, "confidence": number } | null,

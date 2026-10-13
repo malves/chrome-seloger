@@ -400,7 +400,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       importDashboard: status.importDashboard,
       jobView: status.importDashboard,
       recentJobs: status.recentJobs,
-      dpeImportedDays: repositories.dpe.listImportedDays(),
+      dpeImportCalendar: repositories.dpe.listImportCalendarDays(),
       labels: DPE_LABELS,
       buildingTypes: DPE_BUILDING_TYPES,
       search: searchResults(filters),
@@ -544,7 +544,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
   });
 
   router.get("/admin/dpe/imported-days", (req, res) => {
-    res.json(repositories.dpe.listImportedDays());
+    res.json(repositories.dpe.listImportCalendarDays());
   });
 
   router.post("/admin/ssmsi/import", (req, res) => {

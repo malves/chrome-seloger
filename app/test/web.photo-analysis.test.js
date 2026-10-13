@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import config from "../src/config.js";
 import { createTestApp, createUser, extractCsrf, listingPayload, loginAgent } from "./helpers.js";
 import createListingsService from "../src/services/listings.service.js";
+import { computeHomeHealth } from "../src/lib/works/works-estimate.js";
 import {
   PHOTO_ANALYSIS_PROVIDER,
   photoAnalysisCachePayload,
@@ -19,7 +20,7 @@ const PHOTOS = [
   "https://p.example.com/projection.jpg",
 ];
 
-function storedAnalysis(listing, photos) {
+function storedAnalysis(listing, photos, overrides = {}) {
   return photoAnalysisCachePayload(listing, photos, {
     status: "ok",
     photo_count: 3,
@@ -63,6 +64,7 @@ function storedAnalysis(listing, photos) {
     negotiation_points: [{ label: "Cuisine à remplacer", confidence: 0.85, image_ids: ["img_002"], evidence_missing: false }],
     model: "fake",
     analyzed_at: "2026-10-01T10:00:00.000Z",
+    ...overrides,
   });
 }
 
@@ -128,7 +130,7 @@ test("fiche : annonce sans photo → ni panneau en attente ni polling", async (t
   assert.equal(stored.body.status, "insufficient");
 });
 
-test("fiche : résultat en cache rendu avec verdict, travaux, anomalies, badges galerie", async (t) => {
+test("fiche : résultat en cache rendu avec verdict, synthèse et badges galerie", async (t) => {
   const { agent, repositories, listing } = await setup(t);
   repositories.enrichments.saveListingResult(listing.id, PHOTO_ANALYSIS_PROVIDER, {
     status: "ok",
@@ -138,30 +140,40 @@ test("fiche : résultat en cache rendu avec verdict, travaux, anomalies, badges 
   const page = await agent.get(`/listings/${listing.id}`).expect(200);
   const html = page.text;
   assert.doesNotMatch(html, /Analyse des photos en cours/);
-  assert.match(html, /Rénovation modérée probablement nécessaire/);
-  assert.match(html, /58<span class="pa-hero__stat-unit">\/100/);
+  // État général : calculé depuis le plan des pièces, comme dans la modale (pas le score brut de l'IA).
+  const { body: planState } = await agent.get(`/listings/${listing.id}/works/plan`).expect(200);
+  const health = computeHomeHealth({
+    rooms: planState.plan.rooms,
+    roomTypeFactors: planState.options.costs.roomTypeFactors,
+    issueTones: Object.fromEntries(planState.options.issues.map((o) => [o.value, o.tone])),
+    fallbackScore: planState.overview.condition.score,
+  });
+  assert.ok(health.fromPlan);
+  assert.notEqual(health.score, 58);
+  // Verdict : celui du plan ; la lecture de l'IA n'est que le point de départ.
+  assert.match(html, new RegExp(`id="listing-works-verdict"[\\s\\S]*?pa-hero__verdict">${health.verdict}<`));
+  assert.match(html, /Lecture initiale des photos : rénovation modérée probablement nécessaire/);
+  assert.match(html, new RegExp(`id="listing-works-health"[\\s\\S]*?${health.score}<span class="pa-hero__stat-unit">/100`));
+  assert.match(html, /id="listing-works-budget"[\s\S]*Travaux estimés/);
   assert.doesNotMatch(html, /pa-score/);
   assert.match(html, /Bonne : 61/);
   assert.match(html, /2 photos exploitables sur 3/);
   assert.match(html, /1 projection exclue/);
-  assert.match(html, /Remplacement de la cuisine/);
-  assert.match(html, /Potentiellement nécessaire/);
-  assert.match(html, /Humidité possible — Séjour/);
-  assert.match(html, /Observation :<\/strong> Zone sombre/);
-  assert.match(html, /Parquet ancien en bon état apparent/);
-  assert.match(html, /Aucune photo : Salle de bain \/ d&#39;eau/);
-  assert.match(html, /« entièrement rénové »/);
-  assert.match(html, /Contredit par les photos/);
-  assert.match(html, /Grand-angle probable/);
-  assert.match(html, /De quelle année date la cuisine/);
-  assert.match(html, /Cuisine à remplacer/);
-  // Le détail par pièce vit désormais dans la section Travaux et sa modale.
-  assert.match(html, /État général &amp; Analyse du bien/);
-  assert.match(html, /listing-works-head-aside[\s\S]*Paramétrer les pièces/);
-  assert.doesNotMatch(html, /listing-photo-analysis[\s\S]*Paramétrer les pièces/);
-  assert.match(html, /État actuel et projection de l'agence/);
-  // Traçabilité : bouton « voir la photo » vers la 2e image (index 1).
-  assert.match(html, /data-photo-jump="1"/);
+  assert.doesNotMatch(html, /id="listing-works-summary"/);
+  assert.doesNotMatch(html, /works-summary-card/);
+  assert.match(html, /id="listing-works-metrics-sync"/);
+  assert.doesNotMatch(html, /Principaux travaux détectés/);
+  assert.doesNotMatch(html, /Potentiellement nécessaire/);
+  assert.doesNotMatch(html, /Remplacement de la cuisine/);
+  assert.doesNotMatch(html, /Détail de l'analyse/);
+  assert.doesNotMatch(html, /pa-anomalies-title/);
+  assert.match(html, /photo-analysis__note[\s\S]*dossier technique/);
+  // Vigilance et négociation détaillées : dossier technique, pas la fiche.
+  assert.doesNotMatch(html, /Cuisine à remplacer/);
+  // Le détail travaux / budget vit dans le dossier technique (modale).
+  assert.match(html, /id="listing-works-title"[\s\S]*État général/);
+  assert.match(html, /listing-works-head-aside[\s\S]*works__cta[\s\S]*Dossier technique/);
+  assert.doesNotMatch(html, /id="listing-photo-analysis"[\s\S]*works__cta/);
   // Badge galerie sur la 3e photo (projection).
   assert.match(html, /carousel__flag carousel__flag--architect_projection">Projection</);
   assert.match(html, /carousel__thumb-flag" aria-hidden="true">Projection</);
@@ -169,8 +181,60 @@ test("fiche : résultat en cache rendu avec verdict, travaux, anomalies, badges 
   assert.doesNotMatch(html, /Relancer l'analyse des photos/);
   // Le panneau seul est servi aussi par la route htmx.
   const panel = await agent.get(`/listings/${listing.id}/photo-analysis/panel`).expect(200);
-  assert.match(panel.text, /Rénovation modérée/);
+  assert.match(panel.text, new RegExp(`pa-hero__verdict">${health.verdict}<`));
   assert.doesNotMatch(panel.text, /<html/);
+});
+
+test("fiche : verdict et état général resynchronisés depuis le plan des pièces", async (t) => {
+  const { agent, repositories, listing } = await setup(t);
+  repositories.enrichments.saveListingResult(listing.id, PHOTO_ANALYSIS_PROVIDER, {
+    status: "ok",
+    data: storedAnalysis(listing, PHOTOS),
+  });
+  const page0 = await agent.get(`/listings/${listing.id}`).expect(200);
+  assert.match(page0.text, /hx-trigger="works-plan-saved from:body"/);
+
+  const { body } = await agent.get(`/listings/${listing.id}/works/plan`).expect(200);
+  const kitchen = body.plan.rooms.find((r) => r.id === "room_02");
+  kitchen.issues = [];
+  kitchen.condition = "average";
+  const page = await agent.get(`/listings/${listing.id}`).expect(200);
+  await agent
+    .put(`/listings/${listing.id}/works/plan`)
+    .set("X-CSRF-Token", extractCsrf(page.text))
+    .send({ plan: body.plan })
+    .expect(200);
+
+  const after = await agent.get(`/listings/${listing.id}/works/summary`).expect(200);
+  assert.doesNotMatch(after.text, /<html/);
+  assert.match(after.text, /id="listing-works-health"\s+hx-swap-oob="true"/, "l'état général de la fiche suit le plan");
+  assert.match(after.text, /id="listing-works-budget"\s+hx-swap-oob="true"/, "le budget travaux de la fiche suit le plan");
+  assert.match(after.text, /id="listing-works-verdict"\s+hx-swap-oob="true"/, "le verdict de la fiche suit le plan");
+});
+
+test("plan enregistré puis nouvelle analyse : signalé, et l'enregistrement ne l'efface pas", async (t) => {
+  const { agent, repositories, listing } = await setup(t);
+  repositories.enrichments.saveListingResult(listing.id, PHOTO_ANALYSIS_PROVIDER, {
+    status: "ok",
+    data: storedAnalysis(listing, PHOTOS),
+  });
+  const page = await agent.get(`/listings/${listing.id}`).expect(200);
+  const csrf = extractCsrf(page.text);
+  const { body } = await agent.get(`/listings/${listing.id}/works/plan`).expect(200);
+  assert.equal(body.aiNewer, false);
+  await agent.put(`/listings/${listing.id}/works/plan`).set("X-CSRF-Token", csrf).send({ plan: body.plan }).expect(200);
+
+  repositories.enrichments.saveListingResult(listing.id, PHOTO_ANALYSIS_PROVIDER, {
+    status: "ok",
+    data: storedAnalysis(listing, PHOTOS, { analyzed_at: "2026-10-05T10:00:00.000Z" }),
+  });
+  const stale = await agent.get(`/listings/${listing.id}/works/plan`).expect(200);
+  assert.equal(stale.body.aiNewer, true);
+  await agent.put(`/listings/${listing.id}/works/plan`).set("X-CSRF-Token", csrf).send({ plan: stale.body.plan }).expect(200);
+  const again = await agent.get(`/listings/${listing.id}/works/plan`).expect(200);
+  assert.equal(again.body.aiNewer, true, "corriger le plan ne vaut pas reprise de la nouvelle analyse");
+  const summary = await agent.get(`/listings/${listing.id}/works/summary`).expect(200);
+  assert.match(summary.text, /Une analyse des photos plus récente/);
 });
 
 test("fiche : DPE lié → corrélation fenêtres affichée dans le bloc Cohérence", async (t) => {
@@ -196,8 +260,8 @@ test("fiche : DPE lié → corrélation fenêtres affichée dans le bloc Cohére
   });
 
   const page = await agent.get(`/listings/${listing.id}`).expect(200);
-  assert.match(page.text, /Fenêtres et DPE/);
-  assert.match(page.text, /Cohérent avec le DPE/);
+  assert.match(page.text, /data-dpe-house-stage/);
+  assert.match(page.text, /DPE-PHOTO-1/);
 });
 
 test("effacer l'adresse HTMX retire les corrélations DPE du panneau photo", async (t) => {
@@ -230,7 +294,6 @@ test("effacer l'adresse HTMX retire les corrélations DPE du panneau photo", asy
     .send({ _csrf: csrf, street: "", postal_code: "", city: "" })
     .expect(200);
 
-  assert.doesNotMatch(cleared.text, /Fenêtres et DPE/);
   assert.doesNotMatch(cleared.text, /data-dpe-house-stage/);
   assert.equal(repositories.listings.findById(user.id, listing.id).linked_dpe_numero, null);
 
@@ -248,7 +311,6 @@ test("effacer l'adresse HTMX retire les corrélations DPE du panneau photo", asy
     })
     .expect(200);
 
-  assert.match(restored.text, /Fenêtres et DPE/);
   assert.match(restored.text, /data-dpe-house-stage/);
   assert.equal(
     repositories.listings.findById(user.id, listing.id).linked_dpe_numero,

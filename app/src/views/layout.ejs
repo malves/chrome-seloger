@@ -34,6 +34,9 @@
     <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" />
     <script src="/public/js/htmx.min.js" defer></script>
     <script src="/public/js/app.js?v=<%= assetVersion %>" defer></script>
+    <% if (user) { %>
+      <script src="/public/js/bear-toggle.js?v=<%= assetVersion %>" defer></script>
+    <% } %>
     <% (locals.scripts || []).forEach(function (src) { %>
       <script src="<%= src %>?v=<%= assetVersion %>" defer></script>
     <% }) %>

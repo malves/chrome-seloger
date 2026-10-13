@@ -31,20 +31,27 @@
 %>
 <% if (linkedDpeInsights) { %>
   <% var ins = linkedDpeInsights; var hero = ins.hero; %>
+  <%
+    // `idPrefix` : la maison est aussi rendue dans la modale « Pièces et état ».
+    var pfx = typeof idPrefix !== "undefined" && idPrefix ? idPrefix : "";
+    var embedded = Boolean(pfx);
+  %>
   <% var zoneById = {}; ins.zones.forEach(function (z) { zoneById[z.id] = z; }); %>
   <% function zoneClass(id) { return 'dpe-house__zone dpe-house__zone--' + zoneById[id].state; } %>
   <section
-    class="works__part dpe-house"
-    id="listing-linked-dpe"
-    aria-labelledby="listing-linked-dpe-title"
+    class="<%= embedded ? 'dpe-house dpe-house--embedded' : 'works__part dpe-house' %>"
+    id="<%= pfx %>listing-linked-dpe"
+    <% if (!embedded) { %>aria-labelledby="listing-linked-dpe-title"<% } else { %>aria-label="Énergie : diagnostic de performance énergétique"<% } %>
     data-dpe-house
   >
+    <% if (!embedded) { %>
     <div class="works__part-head">
       <div class="works__part-heading">
         <span class="works__part-icon works__part-icon--energy" aria-hidden="true"><svg class="wi"><use href="#wi-sun"></use></svg></span>
         <p class="panel__eyebrow" id="listing-linked-dpe-title">Énergie</p>
       </div>
     </div>
+    <% } %>
 
     <div class="dpe-house__hero dpe-house__hero--<%= hero.tone %>">
       <div class="dpe-house__summary">
@@ -187,7 +194,7 @@
             style="--x: <%= pin.x %>%; --y: <%= pin.y %>%"
             data-dpe-zone-toggle="<%= zone.id %>"
             aria-expanded="false"
-            aria-controls="dpe-house-detail-<%= zone.id %>"
+            aria-controls="<%= pfx %>dpe-house-detail-<%= zone.id %>"
             aria-label="<%= zone.label %> : <%= STATE_LABELS[zone.state] %>"
           ><span aria-hidden="true"><%= GLYPHS[zone.state] %></span></button>
         <% }); %>
@@ -214,7 +221,7 @@
           <% ins.zones.forEach(function (zone) { %>
             <article
               class="dpe-house__detail-card dpe-house__detail-card--<%= zone.state %>"
-              id="dpe-house-detail-<%= zone.id %>"
+              id="<%= pfx %>dpe-house-detail-<%= zone.id %>"
               data-dpe-zone-detail="<%= zone.id %>"
               hidden
             >

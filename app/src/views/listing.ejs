@@ -106,50 +106,6 @@
     </section>
   <% } %>
 
-  <!-- 3a. Travaux : pièces et état (modale), analyse des photos, énergie -->
-  <% var worksHasPhotos = photos.length; %>
-  <%- include("partials/works-icons") %>
-  <section
-    class="panel works<%= worksHasPhotos ? '' : ' works--dpe-only' %>"
-    id="listing-works"
-    aria-labelledby="listing-works-title"
-  >
-    <div class="panel__head works__head">
-      <div class="works__heading">
-        <div>
-          <p class="panel__eyebrow">Analyse du bien</p>
-          <h2 class="panel__title" id="listing-works-title">État général &amp; Analyse du bien</h2>
-        </div>
-      </div>
-      <% if (photos.length && typeof photoAnalysis !== "undefined" && photoAnalysis) { %>
-        <%- include("partials/listing-works-head-aside", {
-          listing: listing,
-          photoAnalysis: photoAnalysis,
-          photoLabels: photoLabels,
-          worksHasPhotos: worksHasPhotos,
-        }) %>
-      <% } %>
-    </div>
-
-    <% if (photos.length && typeof photoAnalysis !== "undefined" && photoAnalysis) { %>
-      <%- include("partials/listing-photo-analysis", {
-        listing: listing,
-        photos: photos,
-        photoAnalysis: photoAnalysis,
-        photoLabels: photoLabels,
-        worksHasPhotos: worksHasPhotos,
-      }) %>
-    <% } %>
-
-    <%- include("partials/listing-linked-dpe-block", {
-      linkedDpeInsights: typeof linkedDpeInsights !== 'undefined' ? linkedDpeInsights : null,
-    }) %>
-  </section>
-
-  <% if (worksHasPhotos) { %>
-    <%- include("partials/listing-works-modal", { listing: listing }) %>
-  <% } %>
-
   <!-- 4. Caractéristiques -->
   <section class="panel">
     <div class="panel__head">
@@ -190,12 +146,67 @@
             data-listing-description-toggle
             aria-expanded="false"
           >
-            Voir plus
+            <span class="listing-description__toggle-label">Voir plus</span>
+            <svg
+              class="listing-description__toggle-chevron"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           </button>
         <% } %>
       </div>
     <% } %>
   </section>
+
+  <!-- 4a. Travaux : pièces et état (modale), analyse des photos -->
+  <% var worksHasPhotos = photos.length; %>
+  <%- include("partials/works-icons") %>
+  <section
+    class="panel works<%= worksHasPhotos ? '' : ' works--dpe-only' %>"
+    id="listing-works"
+    aria-labelledby="listing-works-title"
+  >
+    <div class="panel__head works__head">
+      <div class="works__heading">
+        <div>
+          <p class="panel__eyebrow">Analyse technique du bien</p>
+          <h2 class="panel__title" id="listing-works-title">État général</h2>
+        </div>
+      </div>
+      <% if (photos.length && typeof photoAnalysis !== "undefined" && photoAnalysis) { %>
+        <%- include("partials/listing-works-head-aside", {
+          listing: listing,
+          photoAnalysis: photoAnalysis,
+          photoLabels: photoLabels,
+          worksHasPhotos: worksHasPhotos,
+        }) %>
+      <% } %>
+    </div>
+
+    <% if (photos.length && typeof photoAnalysis !== "undefined" && photoAnalysis) { %>
+      <%- include("partials/listing-photo-analysis", {
+        listing: listing,
+        photos: photos,
+        photoAnalysis: photoAnalysis,
+        photoLabels: photoLabels,
+        worksHasPhotos: worksHasPhotos,
+      }) %>
+    <% } %>
+  </section>
+
+  <% if (worksHasPhotos) { %>
+    <%- include("partials/listing-works-modal", {
+      listing: listing,
+      linkedDpeInsights: typeof linkedDpeInsights !== 'undefined' ? linkedDpeInsights : null,
+    }) %>
+  <% } %>
 
   <%
     const hasExtensionData =

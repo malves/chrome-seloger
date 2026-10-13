@@ -5,7 +5,6 @@
 
 import { qualityLevelFromScore } from "./coverage.js";
 import { filterPotentialWorks } from "./works.js";
-import { dpeCorrelations } from "./dpe-correlation.js";
 import { usableForNegotiation } from "./traceability.js";
 
 /** Libellé de fiabilité toujours dérivé du score (seuils à jour, y compris cache ancien). */
@@ -81,8 +80,6 @@ export function photoAnalysisViewModel(stored, photos = [], dpeInsights = null) 
     galleryBadges[ref.index] = image.classification;
   }
 
-  const correlations = dpeInsights ? dpeCorrelations(a, dpeInsights) : [];
-
   return {
     ...base,
     analysis: a,
@@ -112,7 +109,6 @@ export function photoAnalysisViewModel(stored, photos = [], dpeInsights = null) 
       refs: refs(c.image_ids),
     })),
     structuredDataNotes: a.structured_data_notes || [],
-    dpeCorrelations: correlations,
     wideAngle: { ...(a.wide_angle || { likely: false, image_ids: [] }), refs: refs(a.wide_angle?.image_ids) },
     photoInconsistency: a.possible_photo_inconsistency || { status: false },
     missingRooms: a.missing_visual_coverage || [],

@@ -49,7 +49,7 @@
             aria-label="<%= step.label %>"
             <% if (isCurrent) { %>aria-current="step"<% } %>
           >
-            <span class="status-pipe__marker" aria-hidden="true">
+            <span class="status-pipe__marker" data-pipeline-step="<%= step.value %>" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <% if (isReached) { %>
                   <path d="M6.5 12.5 10 16l7.5-8" />

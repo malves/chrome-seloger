@@ -18,6 +18,11 @@
   var toastEl = modal.querySelector("[data-works-toast]");
   var announcer = modal.querySelector("[data-works-announcer]");
   var planUrl = modal.getAttribute("data-plan-url");
+  var propertyType = modal.getAttribute("data-property-type") || "";
+
+  /** Vues spéciales du menu (« @ » est exclu des identifiants de pièce). */
+  var HOME_VIEW = "@home";
+  var ENERGY_VIEW = "@energy";
 
   var ISSUE_SURFACE = {
     floor_worn: "floor",
@@ -27,10 +32,6 @@
     ceiling_paint: "ceiling",
     ceiling_damaged: "ceiling",
   };
-  var EXCLUSIVE_ISSUES = [
-    ["floor_worn", "floor_redo"],
-    ["ceiling_paint", "ceiling_damaged"],
-  ];
   var GROUP_META = {
     unassigned: { icon: "inbox", hint: "Photos qui ne sont rattachées à aucune pièce." },
     exterior: { icon: "building", hint: "Façade, jardin, parties communes : hors pièces du logement." },
@@ -39,6 +40,27 @@
   var SAVE_DELAY = 700;
   var reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  /** Calculs partagés avec la fiche (mêmes modules que le serveur). */
+  var estimateWorksCostsFn = null;
+  var computeHomeHealthFn = null;
+  var coherence = null;
+  var estimateModulePromise = null;
+
+  function loadEstimateModule() {
+    if (estimateWorksCostsFn && coherence) return Promise.resolve();
+    if (!estimateModulePromise) {
+      estimateModulePromise = Promise.all([
+        import("/public/js/works-estimate.js"),
+        import("/public/js/works-coherence.js"),
+      ]).then(function (mods) {
+        estimateWorksCostsFn = mods[0].estimateWorksCosts;
+        computeHomeHealthFn = mods[0].computeHomeHealth;
+        coherence = mods[1];
+      });
+    }
+    return estimateModulePromise;
+  }
+
   var S = {
     loaded: false,
     plan: null,
@@ -46,6 +68,9 @@
     photos: [],
     stored: false,
     aiStatus: "pending",
+    aiNewer: false,
+    overview: null,
+    dpeSource: null,
     view: null,
     selection: new Set(),
     saveTimer: null,
@@ -125,6 +150,23 @@
     return key === "unassigned" || key === "exterior" || key === "excluded";
   }
 
+  function isHome(key) {
+    return key === HOME_VIEW;
+  }
+
+  function isEnergy(key) {
+    return key === ENERGY_VIEW;
+  }
+
+  function homeLabel() {
+    if (S.overview && S.overview.propertyLabel) return S.overview.propertyLabel;
+    return propertyType === "house" ? "Maison" : propertyType === "apartment" ? "Appartement" : "Logement";
+  }
+
+  function homeIcon() {
+    return propertyType === "apartment" ? "building" : "home";
+  }
+
   /** Liste de photos d'un conteneur : `room:<id>` ou `group:<clé>`. */
   function listOf(container) {
     var parts = container.split(":");
@@ -163,8 +205,8 @@
 
   function render() {
     if (!S.loaded) return;
-    if (!S.view || (!isGroup(S.view) && !findRoom(S.view))) {
-      S.view = S.plan.rooms.length ? S.plan.rooms[0].id : "unassigned";
+    if (!S.view || (!isHome(S.view) && !isEnergy(S.view) && !isGroup(S.view) && !findRoom(S.view))) {
+      S.view = HOME_VIEW;
     }
     body.innerHTML =
       '<div class="works-planner">' +
@@ -176,23 +218,57 @@
       "</section>" +
       "</div>" +
       '<div class="works-layer" data-works-layer hidden></div>';
+    mountView(true);
+  }
+
+  function renderEnergySideItem() {
+    var active = isEnergy(S.view);
+    var dpe = S.overview && S.overview.dpe;
+    var state = dpe && dpe.letter ? "DPE " + dpe.letter : "Diagnostic";
+    return (
+      '<button type="button" class="works-side__item works-side__item--energy' + (active ? " is-active" : "") + '"' +
+      ' data-select="' + ENERGY_VIEW + '"' + (active ? ' aria-current="true"' : "") + ">" +
+      '<span class="works-side__icon">' + icon("sun") + "</span>" +
+      '<span class="works-side__text"><span class="works-side__name">Énergie</span>' +
+      '<span class="works-side__state">' + esc(state) + "</span></span></button>"
+    );
+  }
+
+  function renderHomeItem() {
+    var active = isHome(S.view);
+    var health = homeHealth();
+    var tone = health.score == null ? "unknown" : health.tone;
+    return (
+      '<button type="button" class="works-side__item works-side__item--home works-side__item--' + tone + (active ? " is-active" : "") + '"' +
+      ' data-select="' + HOME_VIEW + '"' + (active ? ' aria-current="true"' : "") + ">" +
+      '<span class="works-side__icon">' + icon(homeIcon()) + "</span>" +
+      '<span class="works-side__text"><span class="works-side__name">' + esc(homeLabel()) + "</span>" +
+      '<span class="works-side__state">Vue d\'ensemble</span></span>' +
+      (health.score == null ? "" : '<span class="works-side__score">' + health.score + "</span>") +
+      "</button>"
+    );
   }
 
   function renderSide() {
-    var html = '<div class="works-side__section">';
-    html +=
-      '<p class="works-side__caption">Pièces <span class="works-side__count">' +
-      S.plan.rooms.length +
-      "</span></p>";
-    html += '<ul class="works-side__list" role="list" data-works-room-list>';
+    var html = '<div class="works-side__section works-side__section--home">';
+    html += renderHomeItem();
+    html += '<p class="works-side__caption works-side__caption--sub">Pièces</p>';
+    html += '<div class="works-side__rooms">';
+    html += '<ul class="works-side__list works-side__list--rooms" role="list" data-works-room-list>';
     S.plan.rooms.forEach(function (room) {
-      html += renderSideItem("room:" + room.id, room.id, roomName(room), typeIcon(room.type), room.photos.length, roomTone(room), optionLabel(S.options.roomConditions, room.condition));
+      var state = optionLabel(S.options.roomConditions, room.condition) + (needsReview(room) ? " · à préciser" : "");
+      html += renderSideItem("room:" + room.id, room.id, roomName(room), typeIcon(room.type), room.photos.length, roomTone(room), state);
     });
     html += "</ul>";
     html +=
       '<button type="button" class="works-side__add" data-action="add-room">' +
       icon("plus") +
       "<span>Ajouter une pièce</span></button>";
+    html += "</div>";
+    html += '<p class="works-side__caption works-side__caption--sub">Énergie</p>';
+    html += '<ul class="works-side__list" role="list">';
+    html += '<li class="works-side__entry">' + renderEnergySideItem() + "</li>";
+    html += "</ul>";
     html += "</div>";
 
     html += '<div class="works-side__section">';
@@ -236,6 +312,8 @@
   }
 
   function renderMain() {
+    if (isHome(S.view)) return renderBanner() + renderOverview();
+    if (isEnergy(S.view)) return renderBanner() + renderEnergyView();
     if (isGroup(S.view)) return renderBanner() + renderGroupView(S.view);
     return renderBanner() + renderRoomView(findRoom(S.view));
   }
@@ -273,46 +351,96 @@
       '<button type="button" class="works-icon-btn works-icon-btn--danger" data-action="delete-room" title="Supprimer la pièce" aria-label="Supprimer la pièce">' + icon("trash") + "</button>" +
       "</div></header>";
 
-    html += '<div class="works-room__overview">' + renderRoomCondition(room) + renderTraits(room) + "</div>";
+    html += '<div class="works-room__overview">' + renderRoomCondition(room) + "</div>";
+    html += renderRoomStatus(room);
     html += renderPhotos("room:" + room.id);
     html += renderIssues(room);
+    html += renderAiSeen(room);
     html +=
       '<label class="works-summary">' +
-      '<span class="works-label">' + icon("message") + " Notes</span>" +
+      '<span class="works-label">' + icon("message") + " Vos notes</span>" +
       '<textarea class="works-textarea" rows="2" maxlength="400" data-field="summary" placeholder="Ex. parquet à poncer, papier peint à retirer, trace près de la fenêtre…">' + esc(room.summary) + "</textarea>" +
       "</label>";
     html += "</div>";
     return html;
   }
 
-  function renderTraits(room) {
-    var ambiance = room.ambiance || {};
-    var html =
-      '<div class="works-traits" data-works-traits>' +
-      '<div class="works-condition__head"><span class="works-label">Caractéristiques</span></div>' +
-      '<p class="works-traits__lead">Hors travaux — utile pour l\'analyse du bien</p>' +
-      '<div class="works-traits__list" role="group" aria-label="Caractéristiques de la pièce">';
-    S.options.traits.forEach(function (t) {
-      var on = t.values.indexOf(ambiance[t.field]) !== -1;
+  /** Règle de works-coherence.js, chargé avant le premier rendu. */
+  function needsReview(room) {
+    return Boolean(coherence && coherence.roomNeedsReview(room));
+  }
+
+  function issueApplies(option, roomType) {
+    return !option.roomTypes || option.roomTypes.indexOf(roomType) !== -1;
+  }
+
+  /** Budget de la pièce, ou pourquoi elle n'en a pas, et bandeau « à préciser ». */
+  function renderRoomStatus(room) {
+    var html = '<div class="works-room-status" data-works-room-status>';
+    if (needsReview(room)) {
+      var state = optionLabel(S.options.roomConditions, room.condition);
       html +=
-        '<button type="button" class="works-trait' + (on ? " is-on" : "") + '" aria-pressed="' + on + '"' +
-        ' data-action="toggle-trait" data-value="' + esc(t.value) + '">' +
-        (on ? icon("check") : "") + esc(t.label) +
-        (on && ambiance.source === "ai" ? icon("sparkles", "works-issue__ai") : "") +
-        "</button>";
-    });
-    html += "</div></div>";
+        '<div class="works-review" role="status">' +
+        '<span class="works-review__icon">' + icon("help") + "</span>" +
+        '<div class="works-review__body">' +
+        '<p class="works-review__title">Pièce à préciser</p>' +
+        "<p>L'état « " + esc(state) + " » suppose des travaux, mais aucun point n'est coché : cette pièce ne compte pas dans le budget. " +
+        "Cochez ci-dessous ce qu'il faut refaire, ou indiquez que la pièce est en bon état.</p>" +
+        "</div>" +
+        '<button type="button" class="btn btn--ghost btn--sm" data-action="set-condition" data-value="good">Rien à refaire</button>' +
+        "</div>";
+    }
+    var est = estimateCosts();
+    var cost = est.byRoom && est.byRoom[room.id];
+    if (est.unavailableReason === "missing_surface") {
+      html += '<p class="works-room-budget works-room-budget--muted">' + icon("coins") + "Budget non estimé : la surface du bien n'est pas renseignée.</p>";
+    } else if (cost && cost.max > 0) {
+      html +=
+        '<p class="works-room-budget">' + icon("coins") +
+        "<span>Budget de la pièce</span><strong>" + costRange(cost.min, cost.max) + "</strong></p>";
+    } else if (!est.unavailableReason) {
+      html += '<p class="works-room-budget works-room-budget--muted">' + icon("coins") + "Non comptée dans le budget : aucun point à refaire n'est coché.</p>";
+    }
+    html += "</div>";
     return html;
   }
 
-  function toggleTrait(room, key) {
-    var t = optionOf(S.options.traits, key);
-    if (!t || !room.ambiance) return;
-    var on = t.values.indexOf(room.ambiance[t.field]) !== -1;
-    room.ambiance[t.field] = on ? t.reset : t.set;
-    room.ambiance.source = "user";
-    changed();
-    replaceBlock("[data-works-traits]", renderTraits(room), '[data-action="toggle-trait"][data-value="' + cssEscape(key) + '"]', true);
+  /** Ce que l'IA a relevé sur les photos de la pièce (résumé et raisons des points proposés). */
+  function renderAiSeen(room) {
+    var reasons = room.issue_reasons || {};
+    var keys = (room.issues_ai || []).filter(function (k) {
+      return reasons[k];
+    });
+    if (!room.ai_summary && !keys.length) return "";
+    return (
+      '<details class="works-ai-seen">' +
+      "<summary>" + icon("sparkles") + "<span>Ce que l'IA a vu sur les photos</span>" + icon("chevron-right", "works-ai-seen__chevron") + "</summary>" +
+      (room.ai_summary ? '<p class="works-ai-seen__summary">' + esc(room.ai_summary) + "</p>" : "") +
+      (keys.length
+        ? '<ul class="works-ai-seen__list" role="list">' +
+          keys
+            .map(function (k) {
+              var on = (room.issues || []).indexOf(k) !== -1;
+              return (
+                '<li class="' + (on ? "" : "is-off") + '"><strong>' + esc(issueLabel(k)) + "</strong>" +
+                (on ? "" : " <em>(décoché)</em>") +
+                "<span>" + esc(reasons[k]) + "</span></li>"
+              );
+            })
+            .join("") +
+          "</ul>"
+        : "") +
+      "</details>"
+    );
+  }
+
+  function refreshRoomStatus(room) {
+    var block = body.querySelector("[data-works-room-status]");
+    if (!block) return;
+    var tmp = document.createElement("div");
+    tmp.innerHTML = renderRoomStatus(room);
+    block.replaceWith(tmp.firstChild);
+    rerenderSideOnly();
   }
 
   function flashPop(el) {
@@ -351,6 +479,8 @@
   }
 
   function issueHint(room, key) {
+    var reason = room.issue_reasons && room.issue_reasons[key];
+    if (reason && (room.issues_ai || []).indexOf(key) !== -1) return "Vu par l'IA : " + reason;
     var surface = ISSUE_SURFACE[key];
     var note = surface && room[surface] && room[surface].note;
     return note ? "IA : " + note : "";
@@ -368,8 +498,9 @@
       '<div class="works-issues__groups">';
     S.options.issueCategories.forEach(function (c) {
       var items = S.options.issues.filter(function (o) {
-        return o.category === c.value;
+        return o.category === c.value && issueApplies(o, room.type);
       });
+      if (!items.length) return;
       var count = items.filter(function (o) {
         return issues.indexOf(o.value) !== -1;
       }).length;
@@ -430,12 +561,14 @@
     var added = [];
     var issues = (room.issues || []).slice();
     worst.forEach(function (k) {
+      var o = optionOf(S.options.issues, k);
+      if (o && o.heavyRoomTypes && o.heavyRoomTypes.indexOf(room.type) === -1) return;
       if (issues.indexOf(k) === -1) {
         issues.push(k);
         added.push(k);
       }
     });
-    EXCLUSIVE_ISSUES.forEach(function (pair) {
+    exclusiveIssues().forEach(function (pair) {
       if (issues.indexOf(pair[1]) !== -1) {
         var weak = issues.indexOf(pair[0]);
         if (weak !== -1) issues.splice(weak, 1);
@@ -452,7 +585,7 @@
       issues.splice(at, 1);
     } else {
       issues.push(key);
-      EXCLUSIVE_ISSUES.forEach(function (pair) {
+      exclusiveIssues().forEach(function (pair) {
         var other = pair[0] === key ? pair[1] : pair[1] === key ? pair[0] : null;
         if (other && issues.indexOf(other) !== -1) issues.splice(issues.indexOf(other), 1);
       });
@@ -466,6 +599,32 @@
       });
     changed();
     replaceBlock("[data-works-issues]", renderIssues(room), '[data-action="toggle-issue"][data-value="' + cssEscape(key) + '"]', true);
+    refreshRoomStatus(room);
+    var ai = body.querySelector(".works-ai-seen");
+    if (ai) {
+      var tmp = document.createElement("div");
+      tmp.innerHTML = renderAiSeen(room);
+      if (tmp.firstChild) {
+        tmp.firstChild.open = ai.open;
+        ai.replaceWith(tmp.firstChild);
+      }
+    }
+  }
+
+  function exclusiveIssues() {
+    return S.options.exclusiveIssues || [];
+  }
+
+  /** Au changement de type, retire les points qui ne concernent pas la nouvelle pièce. */
+  function dropInapplicableIssues(room) {
+    var removed = [];
+    room.issues = (room.issues || []).filter(function (k) {
+      var o = optionOf(S.options.issues, k);
+      if (!o || issueApplies(o, room.type)) return true;
+      removed.push(o.label);
+      return false;
+    });
+    return removed;
   }
 
   function renderRoomCondition(room) {
@@ -554,6 +713,525 @@
     );
   }
 
+  /* --------------------- Vue récapitulative Maison / Appartement --------------------- */
+
+  var PRIORITY_STYLES = {
+    necessary: { icon: "alert", tone: "poor" },
+    comfort: { icon: "zap", tone: "average" },
+    cosmetic: { icon: "sparkles", tone: "good" },
+  };
+
+  var ALERT_SOURCES = {
+    description: "Annonce",
+    data: "Annonce",
+    dpe: "DPE",
+    photos: "Photos",
+    plan: "Pièces × DPE",
+    room: "Pièces",
+    unplaced: "Hors des pièces",
+  };
+
+  var ALERT_ICONS = {
+    description: "message",
+    data: "message",
+    dpe: "zap",
+    photos: "camera",
+    plan: "grid",
+    room: "help",
+    unplaced: "inbox",
+  };
+
+  var GAUGE_LENGTH = 326.73;
+
+  var euroFormat = window.Intl ? new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }) : null;
+
+  function formatNumber(n) {
+    return euroFormat ? euroFormat.format(n) : String(n);
+  }
+
+  function roundCost(n) {
+    var step = n >= 20000 ? 1000 : n >= 5000 ? 500 : n >= 1000 ? 100 : 50;
+    return Math.round(n / step) * step;
+  }
+
+  function costRange(min, max) {
+    return formatNumber(roundCost(min)) + " – " + formatNumber(roundCost(max)) + " €";
+  }
+
+  function costs() {
+    return (
+      (S.options && S.options.costs) || {
+        posts: [],
+        issueIntensity: {},
+        roomTypeFactors: {},
+        energy: {},
+        energySurfaceRefM2: 70,
+      }
+    );
+  }
+
+  function issueLabel(key) {
+    var o = optionOf(S.options.issues, key);
+    return o ? o.label : key;
+  }
+
+  function dpeZones() {
+    var map = {};
+    var dpe = S.overview && S.overview.dpe;
+    ((dpe && dpe.zones) || []).forEach(function (z) {
+      map[z.id] = z;
+    });
+    return map;
+  }
+
+  /** État global d'après les pièces (le score IA sert de repli). */
+  /** Même calcul que l'état général affiché sur la fiche (works-estimate.js). */
+  function homeHealth() {
+    var ai = S.overview && S.overview.condition && S.overview.condition.score;
+    if (!computeHomeHealthFn) {
+      return { score: typeof ai === "number" ? ai : null, tone: "unknown", verdict: "État général à préciser", assessed: 0, fromPlan: false };
+    }
+    var tones = {};
+    S.options.issues.forEach(function (o) {
+      tones[o.value] = o.tone;
+    });
+    return computeHomeHealthFn({
+      rooms: S.plan.rooms,
+      roomTypeFactors: costs().roomTypeFactors,
+      issueTones: tones,
+      fallbackScore: typeof ai === "number" ? ai : null,
+    });
+  }
+
+  function issueIcon(key) {
+    var issue = optionOf(S.options.issues, key);
+    var cat = optionOf(S.options.issueCategories, issue && issue.category);
+    return cat ? cat.icon : "hammer";
+  }
+
+  /** Chiffrage à partir de la surface du bien et des cases cochées (works-estimate.js). */
+  function estimateCosts() {
+    if (!estimateWorksCostsFn) {
+      return {
+        min: null,
+        max: null,
+        posts: [],
+        items: [],
+        copro: [],
+        unavailableReason: "loading",
+      };
+    }
+    var o = S.overview || {};
+    return estimateWorksCostsFn({
+      surface: o.surface,
+      propertyType: propertyType,
+      rooms: S.plan.rooms,
+      dpeZones: dpeZones(),
+      costs: costs(),
+      issueLabel: issueLabel,
+      issueIcon: issueIcon,
+      roomName: roomName,
+    });
+  }
+
+  /** Pièces dont l'état suppose des travaux sans aucun point coché : absentes du budget. */
+  function roomReviewAlerts() {
+    return S.plan.rooms.filter(needsReview).map(function (room) {
+      return {
+        source: "room",
+        tone: "average",
+        roomId: room.id,
+        title: roomName(room) + " : à préciser",
+        text:
+          "État « " + optionLabel(S.options.roomConditions, room.condition) +
+          " » mais aucun point à refaire coché : la pièce ne compte pas dans le budget.",
+      };
+    });
+  }
+
+  /** Croisement pièces × DPE (works-coherence.js, identique sur la fiche) : seuls les écarts sont signalés. */
+  function planDpeChecks(health) {
+    var o = S.overview || {};
+    if (!coherence || !o.dpe || !S.plan.rooms.length) return [];
+    return coherence
+      .dpeCoherence({ rooms: S.plan.rooms, health: health, dpe: o.dpe, photoSignals: o.photoSignals || {} })
+      .filter(function (c) {
+        return c.status !== "consistent";
+      })
+      .map(function (c) {
+        return { source: "plan", tone: c.tone, title: c.title, text: c.text };
+      });
+  }
+
+  /** Travaux repérés par l'analyse hors des pièces du plan (works-coherence.js, identique sur la fiche). */
+  function unplacedAlerts() {
+    var sources = (S.overview && S.overview.unplacedWorks) || [];
+    if (!coherence || !sources.length) return [];
+    return coherence.placeUnplacedWorks(sources, S.plan.rooms, roomName).map(function (w) {
+      var missing = (w.missingIssues || []).map(function (k) {
+        return issueLabel(k).toLowerCase();
+      });
+      var text;
+      if (w.status === "exterior") text = "Extérieur : non chiffré dans le budget, à faire estimer à part.";
+      else if (w.status === "to_check")
+        text =
+          "Sa photo est dans " + w.rooms.map(function (r) { return r.name; }).join(", ") + ", mais " + missing.join(", ") +
+          (missing.length > 1 ? " n'y sont pas cochés." : " n'y est pas coché.");
+      else if (w.status === "unassigned") text = "Sa photo n'est rattachée à aucune pièce : placez-la pour que ce travail soit chiffré.";
+      else text = "Repéré sur les photos sans point à refaire correspondant : non chiffré.";
+      return {
+        source: "unplaced",
+        tone: w.status === "exterior" || w.status === "note" ? "info" : "average",
+        roomId: w.status === "to_check" && w.rooms[0] ? w.rooms[0].id : null,
+        title: w.label,
+        text: text,
+      };
+    });
+  }
+
+  /** Le plan enregistré part d'une analyse plus ancienne que la dernière. */
+  function staleAlerts() {
+    if (!S.aiNewer) return [];
+    return [
+      {
+        source: "photos",
+        tone: "average",
+        title: "Nouvelle analyse des photos disponible",
+        text: "Vos réglages partent d'une analyse plus ancienne. « Repartir du diagnostic » les remplace par la nouvelle proposition (vos corrections seront perdues).",
+      },
+    ];
+  }
+
+  function overviewCard(cls, i, inner) {
+    return '<section class="works-overview__card ' + cls + '" style="--i:' + i + '">' + inner + "</section>";
+  }
+
+  function overviewHead(iconName, title, extra) {
+    return (
+      '<header class="works-overview__head"><h4 class="works-overview__heading">' +
+      '<span class="works-overview__head-icon">' + icon(iconName) + "</span>" + esc(title) + "</h4>" +
+      (extra || "") +
+      "</header>"
+    );
+  }
+
+  function renderOverviewHero(health) {
+    var o = S.overview || {};
+    var facts = [];
+    if (o.roomsAnnounced) facts.push(plural(o.roomsAnnounced, "pièce"));
+    if (o.surface) facts.push(formatNumber(o.surface) + " m²");
+    if (o.bedrooms) facts.push(plural(o.bedrooms, "chambre"));
+    var chips = [];
+    if (S.plan.rooms.length) {
+      chips.push('<span class="works-overview__chip">' + icon("grid") + plural(health.assessed, "pièce") + " évaluée" + (health.assessed > 1 ? "s" : "") + "</span>");
+    }
+    if (o.renovation && o.renovation.text) {
+      chips.push('<span class="works-overview__chip works-overview__chip--ai" title="Lecture initiale des photos, avant vos corrections">' + icon("sparkles") + "IA : " + esc(o.renovation.text.charAt(0).toLowerCase() + o.renovation.text.slice(1)) + "</span>");
+    }
+    if (o.renovation && o.renovation.cosmeticOnly) {
+      chips.push('<span class="works-overview__chip works-overview__chip--average">' + icon("alert") + "Rénovation énergétique nécessaire</span>");
+    }
+    if (o.condition && typeof o.condition.score === "number" && health.fromPlan) {
+      chips.push('<span class="works-overview__chip works-overview__chip--ai" title="Score de l\'analyse des photos, avant vos corrections">' + icon("sparkles") + "IA : " + o.condition.score + "/100</span>");
+    }
+    var offset = health.score == null ? GAUGE_LENGTH : GAUGE_LENGTH * (1 - health.score / 100);
+    return (
+      '<header class="works-overview__hero works-overview__hero--' + health.tone + '" style="--i:0">' +
+      '<div class="works-overview__gauge" role="img" aria-label="État général : ' + (health.score == null ? "non évalué" : health.score + " sur 100") + '">' +
+      '<svg viewBox="0 0 120 120" aria-hidden="true">' +
+      '<circle class="works-overview__gauge-track" cx="60" cy="60" r="52" />' +
+      '<circle class="works-overview__gauge-value" cx="60" cy="60" r="52" style="--gauge-len:' + GAUGE_LENGTH + ";--gauge-offset:" + offset.toFixed(2) + '" />' +
+      "</svg>" +
+      '<span class="works-overview__gauge-text">' +
+      (health.score == null
+        ? "<strong>?</strong>"
+        : '<strong data-count-to="' + health.score + '">' + health.score + "</strong><small>/100</small>") +
+      "</span></div>" +
+      '<div class="works-overview__hero-text">' +
+      '<p class="works-overview__eyebrow">' + icon(homeIcon()) + esc(homeLabel()) + "</p>" +
+      '<h3 class="works-overview__title">' + esc(health.verdict) + "</h3>" +
+      (facts.length ? '<p class="works-overview__facts">' + esc(facts.join(" · ")) + "</p>" : "") +
+      (chips.length ? '<div class="works-overview__chips">' + chips.join("") + "</div>" : "") +
+      (o.summary
+        ? '<p class="works-overview__summary" title="' + esc(o.summary) + '">' + icon("sparkles", "works-overview__summary-icon") + esc(o.summary) + "</p>"
+        : "") +
+      "</div></header>"
+    );
+  }
+
+  function renderOverviewBudget(est) {
+    var inner = overviewHead("coins", "Budget travaux estimé", '<span class="works-overview__badge">Provisoire</span>');
+    if (est.unavailableReason === "missing_surface") {
+      inner +=
+        '<div class="works-overview__empty">' + icon("alert") +
+        "<p>Impossible d'estimer les travaux : la <strong>surface du bien</strong> n'est pas renseignée sur l'annonce.</p></div>";
+    } else if (est.unavailableReason === "loading") {
+      inner +=
+        '<div class="works-overview__empty">' + icon("hammer") +
+        "<p>Préparation du chiffrage…</p></div>";
+    } else if (!est.posts.length) {
+      inner +=
+        '<div class="works-overview__empty works-overview__empty--good">' + icon("shield") +
+        "<p>Aucun travaux signalé pour l'instant. Cochez des points à signaler dans les pièces pour alimenter le chiffrage.</p></div>";
+    } else {
+      inner +=
+        '<p class="works-overview__amount">' +
+        '<span data-count-to="' + est.min + '" data-count-format="euro">' + formatNumber(est.min) + "</span>" +
+        '<span class="works-overview__amount-sep">–</span>' +
+        '<span data-count-to="' + est.max + '" data-count-format="euro">' + formatNumber(est.max) + "</span>" +
+        '<span class="works-overview__amount-unit">€</span></p>' +
+        '<p class="works-overview__amount-sub">Fourchette indicative · ' + plural(est.items.length - est.copro.length, "poste") + " de travaux</p>";
+      inner += '<div class="works-overview__bar" role="img" aria-label="Répartition du budget par poste">';
+      est.posts.forEach(function (p, i) {
+        var share = est.max ? (p.max / est.max) * 100 : 0;
+        inner +=
+          '<span class="works-overview__seg works-overview__seg--' + esc(p.key) + '" style="--w:' + Math.max(share, 2).toFixed(1) + "%;--i:" + i + '" title="' + esc(p.label + " : " + costRange(p.min, p.max)) + '"></span>';
+      });
+      inner += "</div>";
+      inner += '<ul class="works-overview__posts" role="list">';
+      est.posts.forEach(function (p) {
+        inner +=
+          '<li><details class="works-overview__post">' +
+          '<summary><span class="works-overview__dot works-overview__seg--' + esc(p.key) + '"></span>' +
+          '<span class="works-overview__post-label">' + esc(p.label) + "</span>" +
+          '<span class="works-overview__post-cost">' + costRange(p.min, p.max) + "</span>" +
+          icon("chevron-right", "works-overview__post-chevron") + "</summary>" +
+          '<ul class="works-overview__post-items" role="list">' +
+          p.items
+            .map(function (it) {
+              return (
+                "<li><span>" + esc(it.label) +
+                (it.rooms.length ? ' <em>· ' + esc(it.rooms.join(", ")) + "</em>" : "") +
+                "</span><span>" + costRange(it.min, it.max) + "</span></li>"
+              );
+            })
+            .join("") +
+          "</ul></details></li>";
+      });
+      inner += "</ul>";
+    }
+    if (est.copro.length) {
+      inner +=
+        '<div class="works-overview__copro">' + icon("building") +
+        "<p><strong>À voir avec la copropriété</strong> (hors total) : " +
+        est.copro
+          .map(function (i) {
+            return esc(i.label) + " (" + costRange(i.min, i.max) + ")";
+          })
+          .join(", ") +
+        ".</p></div>";
+    }
+    if (!est.unavailableReason) {
+      inner +=
+        "<p class=\"works-overview__footnote\">Estimation indicative d'après la surface du bien et la répartition estimée entre les pièces du plan (type et nombre de pièces). À affiner avec des devis.</p>";
+    }
+    return overviewCard("works-overview__budget", 1, inner);
+  }
+
+  function renderOverviewAlerts(alerts) {
+    var poor = alerts.filter(function (a) {
+      return a.tone === "poor";
+    }).length;
+    var inner = overviewHead(
+      "alert",
+      "Incohérences et vigilance",
+      alerts.length ? '<span class="works-overview__count works-overview__count--' + (poor ? "poor" : "average") + '">' + alerts.length + "</span>" : ""
+    );
+    if (!alerts.length) {
+      inner +=
+        '<div class="works-overview__empty works-overview__empty--good">' + icon("check") +
+        "<p>Rien d'incohérent relevé entre l'annonce, le DPE, les photos et vos constats.</p></div>";
+    } else {
+      inner += '<ul class="works-overview__alerts" role="list">';
+      alerts.forEach(function (a, i) {
+        inner +=
+          '<li class="works-overview__alert works-overview__alert--' + esc(a.tone) + '" style="--i:' + i + '">' +
+          '<span class="works-overview__alert-icon">' + icon(ALERT_ICONS[a.source] || "alert") + "</span>" +
+          '<div class="works-overview__alert-body">' +
+          '<p class="works-overview__alert-title">' + esc(a.title) +
+          '<span class="works-overview__source">' + esc(ALERT_SOURCES[a.source] || "") + "</span></p>" +
+          (a.text ? '<p class="works-overview__alert-text">' + esc(a.text) + "</p>" : "") +
+          (a.roomId ? '<button type="button" class="works-link works-overview__alert-action" data-select="' + esc(a.roomId) + '">Ouvrir la pièce' + icon("chevron-right") + "</button>" : "") +
+          "</div></li>";
+      });
+      inner += "</ul>";
+    }
+    return overviewCard("works-overview__vigilance", 2, inner);
+  }
+
+  function renderOverviewRooms() {
+    var rooms = S.plan.rooms;
+    var inner = overviewHead("grid", "Pièce par pièce", '<span class="works-overview__count">' + rooms.length + "</span>");
+    if (!rooms.length) {
+      inner +=
+        '<div class="works-overview__empty">' + icon("home") +
+        '<p>Aucune pièce pour l\'instant.</p><button type="button" class="btn btn--ghost btn--sm" data-action="add-room">' + icon("plus") + " Ajouter une pièce</button></div>";
+      return overviewCard("works-overview__rooms", 3, inner);
+    }
+    inner += '<div class="works-overview__tiles">';
+    rooms.forEach(function (room, i) {
+      var tone = roomTone(room);
+      var issues = room.issues || [];
+      var poorCount = issues.filter(function (k) {
+        var o = optionOf(S.options.issues, k);
+        return o && o.tone === "poor";
+      }).length;
+      var thumb = room.photos[0];
+      inner +=
+        '<button type="button" class="works-overview__tile works-overview__tile--' + tone + '" data-select="' + esc(room.id) + '" style="--i:' + i + '" aria-label="' + esc(roomName(room) + " : " + optionLabel(S.options.roomConditions, room.condition) + ", " + plural(issues.length, "point") + " à signaler. Ouvrir la pièce.") + '">' +
+        '<span class="works-overview__tile-media">' +
+        (thumb ? '<img src="' + esc(thumb) + '" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer" />' : icon(typeIcon(room.type))) +
+        "</span>" +
+        '<span class="works-overview__tile-body">' +
+        '<span class="works-overview__tile-name" title="' + esc(roomName(room)) + '">' + esc(roomName(room)) + "</span>" +
+        '<span class="works-overview__tile-state">' + esc(optionLabel(S.options.roomConditions, room.condition)) +
+        (needsReview(room) ? ' <em class="works-overview__tile-review">· à préciser</em>' : "") + "</span>" +
+        "</span>" +
+        '<span class="works-overview__tile-issues' + (poorCount ? " is-poor" : issues.length ? " is-average" : needsReview(room) ? " is-review" : " is-clear") + '">' +
+        (issues.length ? issues.length : needsReview(room) ? "?" : icon("check")) +
+        "</span></button>";
+    });
+    inner += "</div>";
+    return overviewCard("works-overview__rooms", 3, inner);
+  }
+
+  function renderOverviewWorks(est) {
+    var inner = overviewHead("hammer", "Travaux à prévoir");
+    var any = false;
+    var cols = (S.options.priorities || []).map(function (prio) {
+      var p = { key: prio.key, label: prio.label, hint: prio.hint, icon: PRIORITY_STYLES[prio.key].icon, tone: PRIORITY_STYLES[prio.key].tone };
+      var items = est.items.filter(function (it) {
+        return it.priority === p.key;
+      });
+      if (!items.length) return "";
+      any = true;
+      return (
+        '<div class="works-overview__prio works-overview__prio--' + p.tone + '">' +
+        '<p class="works-overview__prio-head">' + icon(p.icon) + "<strong>" + esc(p.label) + "</strong><span>" + esc(p.hint) + "</span></p>" +
+        '<ul class="works-overview__prio-list" role="list">' +
+        items
+          .map(function (it) {
+            return (
+              '<li><span class="works-overview__prio-icon">' + icon(it.icon || "hammer") + "</span>" +
+              '<span class="works-overview__prio-text"><span>' + esc(it.label) + (it.copro ? " <em>(copropriété)</em>" : "") + "</span>" +
+              (it.rooms.length ? "<small>" + esc(it.rooms.join(", ")) + "</small>" : it.post === "energy" ? "<small>D'après le DPE</small>" : "") +
+              "</span>" +
+              '<span class="works-overview__prio-cost">' + costRange(it.min, it.max) + "</span></li>"
+            );
+          })
+          .join("") +
+        "</ul></div>"
+      );
+    }).join("");
+    if (!any) {
+      inner +=
+        '<div class="works-overview__empty works-overview__empty--good">' + icon("shield") +
+        "<p>Aucun travaux identifié. Les points cochés dans chaque pièce apparaîtront ici, classés par priorité.</p></div>";
+    } else {
+      inner += '<div class="works-overview__prios">' + cols + "</div>";
+    }
+    return overviewCard("works-overview__works", 4, inner);
+  }
+
+  function renderEnergyPanel() {
+    var dpe = S.overview && S.overview.dpe;
+    var extra = dpe && dpe.letter ? '<span class="works-overview__dpe-letter works-overview__dpe-letter--' + esc(dpe.letter) + '">DPE ' + esc(dpe.letter) + "</span>" : "";
+    var inner = overviewHead("sun", "Énergie", extra);
+    if (!dpe) {
+      inner +=
+        '<div class="works-overview__empty">' + icon("zap") +
+        "<p>Aucun DPE n'est lié à cette annonce. Déterminez l'adresse du bien pour retrouver son diagnostic et voir l'état de chaque partie du logement.</p></div>";
+    } else {
+      inner += '<div class="works-overview__dpe" data-overview-dpe></div>';
+    }
+    return overviewCard("works-overview__energy", 0, inner);
+  }
+
+  function renderEnergyView() {
+    return '<div class="works-view works-view--energy works-overview" data-view-anim>' + renderEnergyPanel() + "</div>";
+  }
+
+  function renderOverview() {
+    var health = homeHealth();
+    var est = estimateCosts();
+    var alerts = staleAlerts().concat(
+      roomReviewAlerts(),
+      unplacedAlerts(),
+      planDpeChecks(health),
+      (S.overview && S.overview.alerts) || []
+    );
+    var rank = { poor: 0, average: 1, info: 2 };
+    alerts.sort(function (a, b) {
+      return (rank[a.tone] == null ? 1 : rank[a.tone]) - (rank[b.tone] == null ? 1 : rank[b.tone]);
+    });
+    return (
+      '<div class="works-view works-view--home works-overview" data-view-anim>' +
+      renderOverviewHero(health) +
+      '<div class="works-overview__grid">' +
+      renderOverviewBudget(est) +
+      renderOverviewAlerts(alerts) +
+      "</div>" +
+      renderOverviewRooms() +
+      renderOverviewWorks(est) +
+      "</div>"
+    );
+  }
+
+  function dpeSourceEl() {
+    return document.getElementById("works-dpe-house-source");
+  }
+
+  function countUp(el, animate) {
+    var to = Number(el.getAttribute("data-count-to")) || 0;
+    if (!animate || reducedMotion || !to) return;
+    var duration = 900;
+    var start = null;
+    el.textContent = "0";
+    function step(ts) {
+      if (!el.isConnected) return;
+      if (start == null) start = ts;
+      var t = Math.min(1, (ts - start) / duration);
+      var eased = 1 - Math.pow(1 - t, 3);
+      var value = Math.round(to * eased);
+      el.textContent = formatNumber(el.getAttribute("data-count-format") === "euro" && t < 1 ? roundCost(value) : value);
+      if (t < 1) requestAnimationFrame(step);
+      else el.textContent = formatNumber(to);
+    }
+    requestAnimationFrame(step);
+  }
+
+  /** Branche le contenu qui n'est pas rendu en chaîne (maison DPE, compteurs). */
+  function mountView(animate) {
+    if (!isHome(S.view) && !isEnergy(S.view)) return;
+    var slot = body.querySelector("[data-overview-dpe]");
+    if (slot) {
+      var source = dpeSourceEl();
+      var tpl = source && source.querySelector("template");
+      if (tpl && tpl.content && tpl.content.querySelector("[data-dpe-house]")) {
+        slot.appendChild(tpl.content.cloneNode(true));
+      } else {
+        slot.innerHTML = '<p class="works-overview__footnote">Le détail du diagnostic sera disponible après rechargement de la page.</p>';
+      }
+    }
+    body.querySelectorAll("[data-count-to]").forEach(function (el) {
+      countUp(el, animate);
+    });
+  }
+
+  function refreshOverview() {
+    S.dpeSource = dpeSourceEl();
+    fetch(planUrl, { credentials: "same-origin", headers: { Accept: "application/json" } })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        S.overview = data.overview || null;
+        if ((isHome(S.view) || isEnergy(S.view)) && !modal.hidden) rerender();
+      })
+      .catch(function () {});
+  }
+
   /* ------------------------ Rendu ciblé + animations ------------------------ */
 
   function capturePositions() {
@@ -606,6 +1284,7 @@
     }
     side.scrollTop = scrollSide;
     playFlip(before);
+    mountView(Boolean(opts.animateView));
   }
 
   /* -------------------------------- Actions -------------------------------- */
@@ -666,13 +1345,16 @@
       id: uid(),
       type: type,
       label: nextLabelFor(type),
-      condition: "average",
+      condition: "not_assessable",
       condition_source: "user",
       summary: "",
+      ai_summary: "",
       source: "user",
       issues: [],
       issues_ai: [],
       issues_heavy_auto: [],
+      issue_reasons: {},
+      needs_review: false,
       floor: { material: "unknown", condition: "unknown", note: "", source: "user" },
       walls: { condition: "unknown", note: "", source: "user" },
       ceiling: { condition: "unknown", note: "", source: "user" },
@@ -745,6 +1427,32 @@
 
   /* ----------------------------- Calques (picker) ---------------------------- */
 
+  function syncTypePickerFilter(layer) {
+    var filter = layer.querySelector("[data-type-filter]");
+    var grid = layer.querySelector("[data-type-grid]");
+    var empty = layer.querySelector("[data-type-empty]");
+    if (!filter || !grid) return;
+    var q = filter.value.trim().toLowerCase();
+    var visible = 0;
+    grid.querySelectorAll("[data-type]").forEach(function (btn) {
+      var label = (btn.querySelector(".works-type__label") || btn).textContent.trim().toLowerCase();
+      var type = (btn.getAttribute("data-type") || "").toLowerCase();
+      var show = !q || label.indexOf(q) !== -1 || type.indexOf(q) !== -1;
+      btn.classList.toggle("is-filtered-out", !show);
+      if (show) visible += 1;
+    });
+    if (empty) empty.hidden = visible > 0;
+  }
+
+  function lockTypePickerLayout(layer) {
+    var picker = layer.querySelector(".works-picker--types");
+    var bodyEl = layer.querySelector("[data-type-body]");
+    var grid = layer.querySelector("[data-type-grid]");
+    if (!picker || !bodyEl || !grid) return;
+    bodyEl.style.minHeight = Math.ceil(grid.getBoundingClientRect().height) + "px";
+    picker.style.minHeight = Math.ceil(picker.getBoundingClientRect().height) + "px";
+  }
+
   function openLayer(html, onClick) {
     var layer = body.querySelector("[data-works-layer]");
     if (!layer) return;
@@ -757,6 +1465,10 @@
       }
       onClick(event);
     };
+    layer.oninput = function (event) {
+      if (!event.target.matches("[data-type-filter]")) return;
+      syncTypePickerFilter(layer);
+    };
     var first = layer.querySelector("[data-layer-focus]") || layer.querySelector("button, textarea, select");
     if (first) first.focus({ preventScroll: true });
   }
@@ -767,6 +1479,7 @@
     layer.hidden = true;
     layer.innerHTML = "";
     layer.onclick = null;
+    layer.oninput = null;
     S.viewer = null;
     return true;
   }
@@ -774,36 +1487,53 @@
   function openTypePicker(mode) {
     var room = mode === "change" ? findRoom(S.view) : null;
     var html =
-      '<div class="works-picker" role="dialog" aria-modal="true" aria-label="' + (room ? "Changer le type de pièce" : "Ajouter une pièce") + '">' +
+      '<div class="works-picker works-picker--types" role="dialog" aria-modal="true" aria-label="' + (room ? "Changer le type de pièce" : "Ajouter une pièce") + '">' +
       '<header class="works-picker__head"><h3>' + (room ? "Type de pièce" : "Quelle pièce ajouter ?") + "</h3>" +
       '<button type="button" class="modal__close" data-layer-close aria-label="Fermer">' + icon("close") + "</button></header>" +
-      '<div class="works-picker__grid">' +
+      '<label class="works-picker__search">' +
+      '<span class="visually-hidden">Rechercher un type de pièce</span>' +
+      '<span class="admin-users-search__wrap">' +
+      '<svg class="admin-users-search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>' +
+      '<input type="search" class="input input--sm admin-users-search__input" data-type-filter placeholder="Rechercher une pièce…" data-layer-focus autocomplete="off" />' +
+      "</span></label>" +
+      '<div class="works-picker__types-body" data-type-body>' +
+      '<p class="works-picker__empty" data-type-empty hidden>Aucune pièce ne correspond à votre recherche.</p>' +
+      '<div class="works-picker__grid" data-type-grid="">' +
       S.options.roomTypes
         .map(function (o, i) {
           var on = room && room.type === o.value;
           return (
-            '<button type="button" class="works-type' + (on ? " is-on" : "") + '" data-type="' + esc(o.value) + '" style="--i:' + i + '"' + (i === 0 ? " data-layer-focus" : "") + ">" +
+            '<button type="button" class="works-type' + (on ? " is-on" : "") + '" data-type="' + esc(o.value) + '" style="--i:' + i + '">' +
             '<span class="works-type__icon">' + icon(o.icon) + "</span>" +
             '<span class="works-type__label">' + esc(o.label) + "</span></button>"
           );
         })
         .join("") +
-      "</div></div>";
+      "</div></div></div>";
     openLayer(html, function (event) {
       var btn = event.target.closest("[data-type]");
-      if (!btn) return;
+      if (!btn || btn.classList.contains("is-filtered-out")) return;
       var type = btn.getAttribute("data-type");
       closeLayer();
       if (room) {
         var oldDefault = optionLabel(S.options.roomTypes, room.type);
         room.type = type;
         if (!room.label || room.label.indexOf(oldDefault) === 0) room.label = nextLabelFor(type);
+        var removed = dropInapplicableIssues(room);
         changed();
         rerender();
+        if (removed.length) toast("Retiré car sans objet dans cette pièce : " + removed.join(", ") + ".");
       } else {
         addRoom(type);
       }
     });
+    var typeLayer = body.querySelector("[data-works-layer]");
+    if (typeLayer) {
+      requestAnimationFrame(function () {
+        lockTypePickerLayout(typeLayer);
+      });
+    }
   }
 
   function openMovePicker(urls) {
@@ -1073,21 +1803,28 @@
     modal.hidden = false;
     document.body.classList.add("is-modal-open");
     if (S.loaded) {
+      if (dpeSourceEl() !== S.dpeSource) refreshOverview();
       applyTarget(target);
       return;
     }
     setSaveState("idle", "Chargement…");
-    fetch(planUrl, { credentials: "same-origin", headers: { Accept: "application/json" } })
-      .then(function (res) {
+    Promise.all([
+      fetch(planUrl, { credentials: "same-origin", headers: { Accept: "application/json" } }).then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
-      })
-      .then(function (data) {
+      }),
+      loadEstimateModule(),
+    ])
+      .then(function (results) {
+        var data = results[0];
         S.plan = data.plan;
         S.options = data.options;
         S.photos = data.photos || [];
         S.stored = data.stored;
         S.aiStatus = data.aiStatus;
+        S.aiNewer = Boolean(data.aiNewer);
+        S.overview = data.overview || null;
+        S.dpeSource = dpeSourceEl();
         S.loaded = true;
         setSaveState(S.stored ? "saved" : "idle", S.stored ? "Enregistré" : "Proposition IA");
         S.view = null;
@@ -1107,8 +1844,14 @@
       openTypePicker("add");
       return;
     }
-    if (target && (isGroup(target) || findRoom(target))) {
+    if (target === "energy" || target === ENERGY_VIEW) {
+      S.view = ENERGY_VIEW;
+      S.selection.clear();
+    } else if (target && (isGroup(target) || findRoom(target))) {
       S.view = target;
+      S.selection.clear();
+    } else if (!target || isHome(target)) {
+      S.view = HOME_VIEW;
       S.selection.clear();
     }
     rerender({ animateView: true });
@@ -1122,7 +1865,9 @@
     hideToast();
     modal.classList.add("is-closing");
     flush().then(function () {
-      if (S.changed) S.changed = false;
+      if (!S.changed) return;
+      S.changed = false;
+      document.body.dispatchEvent(new CustomEvent("works-plan-saved", { bubbles: true }));
     });
     window.setTimeout(
       function () {
@@ -1158,6 +1903,7 @@
             S.photos = data.photos || S.photos;
             S.stored = false;
             S.aiStatus = data.aiStatus;
+            S.aiNewer = false;
             S.changed = true;
             S.view = null;
             S.selection.clear();
@@ -1233,7 +1979,6 @@
         return rerender();
       }
       if (action === "toggle-issue" && room) return toggleIssue(room, actionEl.getAttribute("data-value"));
-      if (action === "toggle-trait" && room) return toggleTrait(room, actionEl.getAttribute("data-value"));
       if (action === "toggle-select") {
         var photo = actionEl.closest("[data-photo]");
         if (photo) toggleSelect(photo.getAttribute("data-photo"));
@@ -1285,6 +2030,11 @@
   }
 
   modal.addEventListener("input", function (event) {
+    if (event.target.matches && event.target.matches("[data-type-filter]")) {
+      var pickerLayer = event.target.closest("[data-works-layer]");
+      if (pickerLayer) syncTypePickerFilter(pickerLayer);
+      return;
+    }
     if (!S.loaded) return;
     var field = event.target.getAttribute("data-field");
     var room = findRoom(S.view);
@@ -1305,6 +2055,8 @@
       event.preventDefault();
       if (dragState && dragState.active) return cancelDrag();
       if (closeLayer()) return;
+      // La maison DPE (app.js) referme elle-même sa zone active sur Échap.
+      if (body.querySelector("[data-dpe-house-stage][data-active-zone]")) return;
       if (S.selection.size) {
         S.selection.clear();
         return rerender();

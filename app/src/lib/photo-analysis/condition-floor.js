@@ -3,6 +3,10 @@
  * pas être meilleur que ce que montrent les fiches par image et les anomalies
  * relevées. Ces règles ne font que dégrader, jamais améliorer, et chaque
  * ajustement est tracé (`{ scope, from, to, reason }`).
+ *
+ * Elles s'appliquent à la sortie brute de l'analyse. L'état des pièces du plan
+ * (aligné sur les points à refaire, pièce « à préciser ») relève uniquement de
+ * works-coherence.js.
  */
 
 import { EXTERIOR_ROOM_TYPES } from "./enums.js";

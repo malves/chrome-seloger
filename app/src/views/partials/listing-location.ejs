@@ -44,33 +44,6 @@
     <% } %>
   </div>
 
-  <% if (!hasAddress) { %>
-    <aside class="listing-location__why" aria-labelledby="listing-location-why-title">
-      <p class="listing-location__why-title" id="listing-location-why-title">
-        Pour estimer ce logement, il faut son adresse
-      </p>
-      <p class="listing-location__why-lead">
-        L'annonce ne donne qu'un secteur&nbsp;: la commune, ou une zone déduite
-        des lieux cités. Même affichée sur la carte, cette zone reste trop large
-        pour juger ce bien.
-      </p>
-      <ul class="listing-location__why-list">
-        <li>
-          <span class="listing-location__why-label">Prix au m&#8288;²</span>
-          <span class="listing-location__why-text">
-            Comparé aux ventes juste autour de cette adresse.
-          </span>
-        </li>
-        <li>
-          <span class="listing-location__why-label">Travaux</span>
-          <span class="listing-location__why-text">
-            Le DPE de ce logement peut être retrouvé, et les travaux estimés.
-          </span>
-        </li>
-      </ul>
-    </aside>
-  <% } %>
-
   <div class="listing-location__grid">
     <!-- Colonne gauche : annonce puis adresse réelle -->
     <div class="listing-location__col listing-location__col--stack">
@@ -147,7 +120,7 @@
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Ouvrir l'adresse dans Google Maps (nouvel onglet)"
-              >Google Maps ↗</a>
+              >Google Maps <span class="link-exit-arrow" aria-hidden="true">↗</span></a>
               <div class="listing-location__actions">
                 <button
                   type="button"

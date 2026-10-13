@@ -1,0 +1,88 @@
+<%# Interrupteur décoratif : un ours le remet sur « off » (inspiré de https://codepen.io/hxvlyz/pen/OJrPYWb). %>
+<div class="bear-toggle" data-bear-toggle>
+  <div class="bear-toggle__stage" aria-hidden="true">
+    <svg class="bear-toggle__bear" data-bear viewBox="0 0 284.94574 359.73706" preserveAspectRatio="xMinYMin">
+      <g transform="translate(-7.5271369,-761.38595)">
+        <g transform="matrix(1.2335313,0,0,1.2335313,-35.029693,-212.83637)">
+          <path fill="#784421" d="M 263.90933,1081.4151 A 113.96792,96.862576 0 0 0 149.99132,985.71456 113.96792,96.862576 0 0 0 36.090664,1081.4151 l 227.818666,0 z" />
+          <path fill="#784421" d="m 250.42825,903.36218 c 2e-5,66.27108 -44.75411,114.99442 -102.42825,114.99442 -57.674143,0 -98.428271,-48.72334 -98.428251,-114.99442 4e-6,-66.27106 40.754125,-92.99437 98.428251,-92.99437 57.67413,0 102.42825,26.72331 102.42825,92.99437 z" />
+          <path fill="#e9c6af" d="m 217,972.86218 c 2e-5,21.53911 -30.44462,42.00002 -68,42.00002 -37.55538,0 -66.000019,-20.46091 -66,-42.00002 0,-21.53911 28.44464,-36 66,-36 37.55536,0 68,14.46089 68,36 z" />
+          <path fill="#000" d="m 181.5,944.36218 c 0,8.28427 -20.59974,26.5 -32.75,26.5 -12.15026,0 -34.75,-18.21573 -34.75,-26.5 0,-8.28427 22.59974,-13.5 34.75,-13.5 12.15026,0 32.75,5.21573 32.75,13.5 z" />
+          <g>
+            <ellipse fill="#784421" cx="69" cy="823.07269" rx="34.5" ry="33.289474" />
+            <path fill="#e9c6af" transform="translate(0,752.36216)" d="M 69,47.310547 A 24.25,23.399124 0 0 0 44.75,70.710938 24.25,23.399124 0 0 0 64.720703,93.720703 c 0.276316,-0.40734 0.503874,-0.867778 0.787109,-1.267578 1.70087,-2.400855 3.527087,-4.666237 5.470704,-6.798828 1.943616,-2.132591 4.004963,-4.133318 6.179687,-6.003906 2.174725,-1.870589 4.461274,-3.611714 6.855469,-5.226563 2.394195,-1.614848 4.896019,-3.10338 7.498047,-4.46875 0.539935,-0.283322 1.133058,-0.500695 1.68164,-0.773437 A 24.25,23.399124 0 0 0 69,47.310547 Z" />
+          </g>
+          <g transform="matrix(-1,0,0,1,300,0)">
+            <ellipse fill="#784421" cx="69" cy="823.07269" rx="34.5" ry="33.289474" />
+            <path fill="#e9c6af" transform="translate(0,752.36216)" d="M 69,47.310547 A 24.25,23.399124 0 0 0 44.75,70.710938 24.25,23.399124 0 0 0 64.720703,93.720703 c 0.276316,-0.40734 0.503874,-0.867778 0.787109,-1.267578 1.70087,-2.400855 3.527087,-4.666237 5.470704,-6.798828 1.943616,-2.132591 4.004963,-4.133318 6.179687,-6.003906 2.174725,-1.870589 4.461274,-3.611714 6.855469,-5.226563 2.394195,-1.614848 4.896019,-3.10338 7.498047,-4.46875 0.539935,-0.283322 1.133058,-0.500695 1.68164,-0.773437 A 24.25,23.399124 0 0 0 69,47.310547 Z" />
+          </g>
+          <ellipse fill="#000" cx="105.83063" cy="900.38916" rx="9.2701159" ry="9.6790915" />
+          <ellipse fill="#000" cx="186.89894" cy="900.38916" rx="9.2701159" ry="9.6790915" />
+          <g class="bear-toggle__brows" stroke="#000" stroke-width="20" stroke-linecap="round">
+            <path d="m 92.05833,865.4614 39.42665,22.76299" />
+            <path d="m 202.82482,865.4614 -39.42664,22.76299" />
+          </g>
+        </g>
+      </g>
+    </svg>
+  </div>
+  <div class="bear-toggle__swear" data-bear-swear aria-hidden="true">#@$%*!</div>
+  <label class="bear-toggle__switch">
+    <input type="checkbox" class="bear-toggle__input" data-bear-input aria-label="Jour / nuit (à vos risques et périls)" />
+    <span class="bear-toggle__track">
+      <%# Décor jour/nuit inspiré de https://codepen.io/chrisgannon/pen/eezVOJ %>
+      <svg class="bear-toggle__scene" viewBox="215 205 370 190" aria-hidden="true">
+        <defs>
+          <filter id="bear-toggle-shadow" x="-100%" y="-100%" width="250%" height="250%">
+            <feGaussianBlur stdDeviation="4" />
+            <feFlood flood-color="#000" flood-opacity="0.07" />
+            <feComposite in2="SourceAlpha" operator="in" />
+            <feMerge>
+              <feMergeNode />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <clipPath id="bear-toggle-clip">
+            <rect x="225" y="215" width="350" height="170" rx="85" ry="85" />
+          </clipPath>
+        </defs>
+        <rect class="bear-toggle__outline" x="220" y="210" width="360" height="180" rx="90" ry="90" stroke-width="10" />
+        <g class="bear-toggle__stars" fill="#fff" clip-path="url(#bear-toggle-clip)">
+          <polygon points="405 248.25 406.58 254.42 412.75 256 406.58 257.58 405 263.75 403.42 257.58 397.25 256 403.42 254.42 405 248.25" />
+          <circle cx="427.33" cy="300.4" r="1.5" />
+          <circle cx="402.59" cy="365.7" r="1.5" />
+          <polygon points="447 325.5 450.17 337.83 462.5 341 450.17 344.17 447 356.5 443.83 344.17 431.5 341 443.83 337.83 447 325.5" />
+          <circle cx="464" cy="240" r="1.5" />
+          <polygon points="496 274.25 497.58 280.42 503.75 282 497.58 283.58 496 289.75 494.42 283.58 488.25 282 494.42 280.42 496 274.25" />
+          <circle cx="503.53" cy="349.9" r="1.5" />
+          <circle cx="537.18" cy="247.9" r="1.5" />
+          <circle cx="553" cy="321.2" r="1.5" />
+        </g>
+        <g class="bear-toggle__orb">
+          <circle class="bear-toggle__sun" cx="346" cy="280" r="66" fill="#FEC100" />
+          <path class="bear-toggle__moon" fill="#fff" d="M298.1 235.7A66 66 0 1 0 361.9 344.3A66 66 0 0 1 298.1 235.7Z" />
+        </g>
+        <g class="bear-toggle__plane" fill="#fff" clip-path="url(#bear-toggle-clip)">
+          <path d="M611.12,262.15l-7.16,0-6.48-5.43-1.06.58,1.930,4.88-3.67.06-3.48-3.37-.78.36,1.26,3.05h-.58a27.07,27.07,0,0,0,4.6,2.24s8.57,0,12.37,0H611c.65,0,2.19,0,2.19-1.25C613.19,262.26,612.05,262.15,611.12,262.15Z" />
+          <line class="bear-toggle__contrail" x1="590.17" y1="264" x2="246.51" y2="264" stroke="#fff" stroke-width="1" />
+        </g>
+        <g fill="#fff" clip-path="url(#bear-toggle-clip)">
+          <g class="bear-toggle__cloud" filter="url(#bear-toggle-shadow)">
+            <rect x="515.79" y="314.92" width="47.15" height="10.37" rx="5.19" ry="5.19" />
+            <circle cx="521.45" cy="313.98" r="11.32" />
+            <circle cx="540.84" cy="305.91" r="15.61" />
+            <circle cx="556.82" cy="316.34" r="8.96" />
+          </g>
+          <g class="bear-toggle__cloud bear-toggle__cloud--big" filter="url(#bear-toggle-shadow)">
+            <rect x="397.85" y="349.02" width="92.34" height="10.37" rx="5.19" ry="5.19" />
+            <circle cx="484.53" cy="348.08" r="11.32" />
+            <circle cx="432.65" cy="332.46" r="24.66" />
+            <circle cx="464.35" cy="338.11" r="17.51" />
+            <circle cx="404.21" cy="348.19" r="11.32" />
+          </g>
+        </g>
+      </svg>
+      <span class="bear-toggle__arm" data-bear-arm aria-hidden="true"></span>
+    </span>
+  </label>
+</div>

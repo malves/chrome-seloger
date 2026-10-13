@@ -1,0 +1,22 @@
+<%
+  // Verdict de la fiche : tiré du plan des pièces (même calcul que l'état
+  // général), la lecture des photos par l'IA n'étant que le point de départ.
+  var ws = typeof worksSummary !== "undefined" ? worksSummary : null;
+  var h = ws ? ws.health : null;
+  var tone = h ? h.tone : "unknown";
+  var aiInitial = ws ? ws.aiInitial : "";
+%>
+<div
+  class="pa-hero__intro pa-hero__intro--<%= tone %>"
+  id="listing-works-verdict"
+  <% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %>hx-swap-oob="true"<% } %>
+>
+  <p class="pa-hero__eyebrow">Analyse technique du bien</p>
+  <p class="pa-hero__verdict"><%= h ? h.verdict : "État en cours d'évaluation" %></p>
+  <% if (aiInitial && h && h.fromPlan && aiInitial !== h.verdict) { %>
+    <p class="pa-hero__initial">Lecture initiale des photos : <%= aiInitial.charAt(0).toLowerCase() + aiInitial.slice(1) %></p>
+  <% } %>
+  <% if (ws && ws.aiNewer) { %>
+    <p class="pa-hero__initial pa-hero__initial--warn">Une analyse des photos plus récente que vos réglages est disponible. <button type="button" class="works-link" data-works-open>Ouvrir le dossier technique</button></p>
+  <% } %>
+</div>

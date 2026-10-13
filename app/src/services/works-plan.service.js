@@ -35,6 +35,9 @@ export default function createWorksPlanService({ repositories, photoAnalysisRun 
         stored: true,
         aiStatus,
         aiAnalyzedAt,
+        // Le plan enregistré part d'une analyse plus ancienne que celle en cache.
+        aiNewer: Boolean(aiAnalyzedAt && row.ai_analyzed_at && aiAnalyzedAt !== row.ai_analyzed_at),
+        analysis,
         photos,
         updatedAt: row.updated_at,
       };
@@ -44,6 +47,8 @@ export default function createWorksPlanService({ repositories, photoAnalysisRun 
       stored: false,
       aiStatus,
       aiAnalyzedAt,
+      aiNewer: false,
+      analysis,
       photos,
       updatedAt: null,
     };
@@ -54,7 +59,9 @@ export default function createWorksPlanService({ repositories, photoAnalysisRun 
     if (!parsed.ok) throw HttpError.badRequest(parsed.error);
     const { photos, aiAnalyzedAt } = context(listing);
     const plan = reconcileWorksPlan(parsed.plan, photos);
-    repositories.worksPlans.upsert(listing.id, plan, { aiAnalyzedAt });
+    // On garde la référence à l'analyse dont le plan est issu, pas la dernière en cache.
+    const basedOn = repositories.worksPlans.find(listing.id)?.ai_analyzed_at || aiAnalyzedAt;
+    repositories.worksPlans.upsert(listing.id, plan, { aiAnalyzedAt: basedOn });
     return getPlan(listing);
   }
 

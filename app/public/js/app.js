@@ -2862,18 +2862,40 @@
     var start = null;
     var end = null;
     var popoverOpen = false;
-    var importedDays = new Set();
+    var completeDays = new Set();
+    var partialDays = new Set();
 
-    function parseImportedDays() {
-      var raw = root.getAttribute("data-cal-imported-days");
+    function applyImportCalendar(payload) {
+      completeDays = new Set();
+      partialDays = new Set();
+      if (!payload) return;
+      if (Array.isArray(payload)) {
+        payload.forEach(function (day) {
+          completeDays.add(day);
+        });
+        return;
+      }
+      if (payload.complete && Array.isArray(payload.complete)) {
+        payload.complete.forEach(function (day) {
+          completeDays.add(day);
+        });
+      }
+      if (payload.partial && Array.isArray(payload.partial)) {
+        payload.partial.forEach(function (day) {
+          partialDays.add(day);
+        });
+      }
+    }
+
+    function parseImportCalendar() {
+      var raw =
+        root.getAttribute("data-cal-import-days") ||
+        root.getAttribute("data-cal-imported-days");
       if (!raw) return;
       try {
-        var list = JSON.parse(decodeURIComponent(raw));
-        if (Array.isArray(list)) {
-          importedDays = new Set(list);
-        }
+        applyImportCalendar(JSON.parse(decodeURIComponent(raw)));
       } catch (_err) {
-        importedDays = new Set();
+        applyImportCalendar(null);
       }
     }
 
@@ -2886,20 +2908,22 @@
           if (!res.ok) return null;
           return res.json();
         })
-        .then(function (list) {
-          if (Array.isArray(list)) {
-            importedDays = new Set(list);
-            root.setAttribute(
-              "data-cal-imported-days",
-              encodeURIComponent(JSON.stringify(list))
-            );
-            render();
-          }
+        .then(function (payload) {
+          if (!payload) return;
+          applyImportCalendar(payload);
+          root.setAttribute(
+            "data-cal-import-days",
+            encodeURIComponent(JSON.stringify({
+              complete: Array.from(completeDays),
+              partial: Array.from(partialDays),
+            }))
+          );
+          render();
         })
         .catch(function () {});
     }
 
-    parseImportedDays();
+    parseImportCalendar();
 
     function iso(d) {
       var m = String(d.getMonth() + 1).padStart(2, "0");
@@ -3129,7 +3153,9 @@
           btn.classList.add("is-disabled");
         }
         if (sameDay(date, today)) btn.classList.add("is-today");
-        if (importedDays.has(iso(date))) btn.classList.add("is-imported");
+        var dayIso = iso(date);
+        if (partialDays.has(dayIso)) btn.classList.add("is-imported-partial");
+        else if (completeDays.has(dayIso)) btn.classList.add("is-imported");
 
         (function (d, isDisabled) {
           // Clic simple ou clavier (Entrée/Espace) : sélection en deux temps.
@@ -4544,10 +4570,7 @@
     document.body.addEventListener("htmx:afterSwap", function (event) {
       var target = event.detail && event.detail.target;
       if (!target) return;
-      if (
-        target.id === "listing-location-block" ||
-        target.id === "listing-linked-dpe-block"
-      ) {
+      if (target.id === "listing-location-block") {
         initStageHeights(target);
         return;
       }
@@ -4677,7 +4700,8 @@
         "aria-label",
         "Ouvrir " + (candidate.street || "cette adresse") + " dans Google Maps (nouvel onglet)"
       );
-      maps.textContent = "Google Maps ↗";
+      maps.innerHTML =
+        'Google Maps <span class="link-exit-arrow" aria-hidden="true">↗</span>';
       li.appendChild(maps);
 
       return li;
@@ -6620,7 +6644,12 @@
     var expanded = text.classList.toggle("is-clamped");
     expanded = !expanded;
     toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-    toggle.textContent = expanded ? "Voir moins" : "Voir plus";
+    var label = toggle.querySelector(".listing-description__toggle-label");
+    if (label) {
+      label.textContent = expanded ? "Voir moins" : "Voir plus";
+    } else {
+      toggle.textContent = expanded ? "Voir moins" : "Voir plus";
+    }
   });
 
 })();

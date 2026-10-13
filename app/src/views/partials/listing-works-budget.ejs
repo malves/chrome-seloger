@@ -1,0 +1,27 @@
+<%
+  var ws = typeof worksSummary !== "undefined" && worksSummary ? worksSummary : null;
+  var reason = ws ? ws.unavailableReason : null;
+  var hasRange = ws && !reason && Number(ws.max) > 0;
+  var min = hasRange ? ws.min : null;
+  var max = hasRange ? ws.max : null;
+%>
+<div
+  class="pa-hero__stat-col pa-hero__stat-col--budget"
+  id="listing-works-budget"
+  <% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %>hx-swap-oob="true"<% } %>
+  <% if (hasRange) { %>title="Fourchette indicative d'après l'état des pièces et les points à refaire"<% } %>
+>
+  <span class="pa-hero__stat-name">Travaux estimés</span>
+  <% if (reason === "missing_surface") { %>
+    <span class="pa-hero__stat-value">—</span>
+    <span class="pa-hero__stat-hint">Surface du bien non renseignée</span>
+  <% } else if (!hasRange) { %>
+    <span class="pa-hero__stat-value">—</span>
+    <span class="pa-hero__stat-hint">Aucun travaux chiffré pour l'instant</span>
+  <% } else { %>
+    <span class="pa-hero__stat-value pa-hero__stat-value--range">
+      <%= fmt.euro(min) %><span class="pa-hero__stat-range-sep" aria-hidden="true"> – </span><%= fmt.euro(max) %>
+    </span>
+    <span class="pa-hero__stat-hint">Fourchette indicative TTC</span>
+  <% } %>
+</div>

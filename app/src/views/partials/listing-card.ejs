@@ -36,7 +36,7 @@
       data-confirm-title="Supprimer l'annonce"
     >
       <button
-        class="card__action-btn card__delete-btn"
+        class="card__action-btn card__delete-btn detail-head__delete-btn"
         type="submit"
         title="Supprimer l'annonce"
         aria-label="Supprimer l'annonce"
@@ -58,12 +58,23 @@
       <input type="hidden" name="view" value="card" />
       <input type="hidden" name="is_favorite" value="<%= listing.is_favorite ? '0' : '1' %>" />
       <button
-        class="card__action-btn card__fav-btn<%= listing.is_favorite ? ' is-active' : '' %>"
+        class="card__action-btn card__fav-btn detail-head__fav-btn<%= listing.is_favorite ? ' is-active btn--gold' : ' btn--fav-add' %>"
         type="submit"
         title="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"
         aria-label="<%= listing.is_favorite ? 'Retirer des favoris' : 'Ajouter aux favoris' %>"
         aria-pressed="<%= listing.is_favorite ? 'true' : 'false' %>"
-      ><%= listing.is_favorite ? '★' : '☆' %></button>
+      >
+        <svg
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      </button>
     </form>
   </div>
 
@@ -103,19 +114,32 @@
       <% } %>
     </p>
 
-    <% if (listing.projects && listing.projects.length) { %>
-      <p class="card__projects">
-        <% listing.projects.forEach(function (project) { %>
+    <% if ((listing.projects && listing.projects.length) || listing.url) { %>
+      <div class="card__projects-row">
+        <% if (listing.projects && listing.projects.length) { %>
+          <p class="card__projects">
+            <% listing.projects.forEach(function (project) { %>
+              <a
+                class="project-chip"
+                href="/listings?project=<%= project.slug %>"
+                style="--project-color: <%= fmt.projectColor(project.color) %>"
+              >
+                <span class="project-dot" aria-hidden="true"></span>
+                <%= project.name %>
+              </a>
+            <% }); %>
+          </p>
+        <% } %>
+        <% if (listing.url) { %>
           <a
-            class="project-chip"
-            href="/listings?project=<%= project.slug %>"
-            style="--project-color: <%= fmt.projectColor(project.color) %>"
+            class="card__origin-link"
+            href="<%= listing.url %>"
+            target="_blank"
+            rel="noreferrer noopener"
+            >Voir l'annonce d'origine <span class="link-exit-arrow" aria-hidden="true">↗</span></a
           >
-            <span class="project-dot" aria-hidden="true"></span>
-            <%= project.name %>
-          </a>
-        <% }); %>
-      </p>
+        <% } %>
+      </div>
     <% } %>
   </div>
 

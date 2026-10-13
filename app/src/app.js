@@ -116,6 +116,14 @@ export default function createApp(options = {}) {
     next();
   });
 
+  // Modules de chiffrage et de cohérence partagés avec le navigateur (sans dépendance serveur).
+  for (const file of ["works-estimate.js", "works-coherence.js", "works-issues.js"]) {
+    app.get(`/public/js/${file}`, (req, res) => {
+      res.type("application/javascript");
+      res.sendFile(path.join(rootDir, "src/lib/works", file));
+    });
+  }
+
   app.use(
     "/public",
     express.static(path.join(rootDir, "public"), {

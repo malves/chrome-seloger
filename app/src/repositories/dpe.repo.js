@@ -8,6 +8,7 @@
 
 import { nowIso } from "../lib/time.js";
 import { fromJson, toJson } from "../lib/json.js";
+import { splitImportCalendarDays } from "../lib/dpe-import-calendar.js";
 
 /** Colonnes clés extraites de chaque ligne pour la recherche et l'affichage. */
 const KEY_COLUMNS = [
@@ -152,6 +153,44 @@ export default function createDpeRepository(db) {
        )
        ORDER BY day`
     ),
+    importDaySummaries: db.prepare(
+      `WITH latest_job AS (
+         SELECT j.date_from AS day,
+                j.status AS job_status,
+                j.day_rows_total,
+                j.day_rows_done,
+                j.rows_imported
+         FROM dpe_import_jobs j
+         WHERE j.date_from = j.date_to
+           AND j.date_from IS NOT NULL
+           AND j.id = (
+             SELECT MAX(j2.id) FROM dpe_import_jobs j2
+             WHERE j2.date_from = j.date_from AND j2.date_to = j.date_to
+           )
+       ),
+       day_counts AS (
+         SELECT date_derniere_modification_dpe AS day, COUNT(*) AS row_count
+         FROM dpe_records
+         WHERE date_derniere_modification_dpe IS NOT NULL
+         GROUP BY 1
+       ),
+       all_days AS (
+         SELECT day FROM latest_job
+         UNION
+         SELECT day FROM day_counts
+       )
+       SELECT
+         ad.day AS day,
+         COALESCE(dc.row_count, 0) AS row_count,
+         lj.job_status,
+         lj.day_rows_total,
+         lj.day_rows_done,
+         lj.rows_imported
+       FROM all_days ad
+       LEFT JOIN latest_job lj ON lj.day = ad.day
+       LEFT JOIN day_counts dc ON dc.day = ad.day
+       ORDER BY ad.day`
+    ),
   };
 
   /** Upsert d'un lot de lignes dans une seule transaction. */
@@ -261,6 +300,11 @@ export default function createDpeRepository(db) {
 
     listImportedDays() {
       return statements.importedDays.all().map((row) => row.day);
+    },
+
+    /** Jours terminés vs incomplets pour le calendrier d'import admin. */
+    listImportCalendarDays() {
+      return splitImportCalendarDays(statements.importDaySummaries.all());
     },
 
     findByNumero(numeroDpe) {

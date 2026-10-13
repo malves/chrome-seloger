@@ -85,7 +85,7 @@
             <div
               class="calendar"
               data-calendar
-              data-cal-imported-days="<%= encodeURIComponent(JSON.stringify(dpeImportedDays || [])) %>"
+              data-cal-import-days="<%= encodeURIComponent(JSON.stringify(dpeImportCalendar || { complete: [], partial: [] })) %>"
             >
               <div class="calendar__head">
                 <button type="button" class="calendar__nav" data-cal-prev aria-label="Mois précédent">
@@ -102,6 +102,10 @@
               <div class="calendar__grid" data-cal-grid role="grid"></div>
             </div>
             <p class="date-range-picker__hint" data-cal-hint>Cliquez la date de début, puis la date de fin.</p>
+            <p class="date-range-picker__legend" aria-hidden="true">
+              <span class="calendar-legend__item"><span class="calendar-legend__dot calendar-legend__dot--complete"></span> Terminé</span>
+              <span class="calendar-legend__item"><span class="calendar-legend__dot calendar-legend__dot--partial"></span> Incomplet · à relancer</span>
+            </p>
           </div>
         </div>
 

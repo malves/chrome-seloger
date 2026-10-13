@@ -35,6 +35,8 @@ import * as photoLabels from "../lib/photo-analysis/labels.js";
 import { PHOTO_ANALYSIS_PROVIDER } from "../lib/photo-analysis-cache.js";
 import createWorksPlanService from "../services/works-plan.service.js";
 import { plannerOptions } from "../lib/works/works-plan.js";
+import { buildWorksOverview } from "../lib/works/works-overview.js";
+import { buildWorksSummary } from "../lib/works/works-summary.js";
 import { listingPayloadSchema } from "../schemas/listing.payload.js";
 import {
   buildAmortizationSchedule,
@@ -146,6 +148,24 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     return buildDpeInsights(record, fmt);
   }
 
+  /** Travaux à prévoir d'après le plan des pièces (même chiffrage que la modale). */
+  function worksSummaryForListing(listing, fmt, dpeInsights) {
+    const state = worksPlans.getPlan(listing);
+    const overview = buildWorksOverview(
+      listing,
+      state.analysis,
+      dpeInsights === undefined ? linkedDpeInsightsForListing(listing, fmt) : dpeInsights,
+      state.photos
+    );
+    return buildWorksSummary({
+      plan: state.plan,
+      overview,
+      propertyType: overview.propertyType || "",
+      aiStatus: state.aiStatus,
+      aiNewer: state.aiNewer,
+    });
+  }
+
   function linkedDpeNumeroFromBody(body) {
     const raw = body.linked_dpe_numero;
     if (typeof raw !== "string" || !raw.trim()) return null;
@@ -162,7 +182,8 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       photos,
       linkedDpeInsights
     );
-    return { photos, linkedDpeInsights, photoAnalysis };
+    const worksSummary = photos.length ? worksSummaryForListing(listing, fmt, linkedDpeInsights) : null;
+    return { photos, linkedDpeInsights, photoAnalysis, worksSummary };
   }
 
   // Ces deux routes reçoivent du JSON (fetch côté client) ; le reste du site
@@ -434,6 +455,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         photos,
         photoAnalysis: photoAnalysisForListing(listing, photos, linkedDpeInsights),
         photoLabels,
+        worksSummary: photos.length ? worksSummaryForListing(listing, res.locals.fmt, linkedDpeInsights) : null,
         scripts: photos.length ? ["/public/js/works-planner.js"] : [],
         priceHistory: repositories.listings.listPriceHistory(listing.id),
         // Le financement a son propre bloc ; les autres providers sont groupés
@@ -534,6 +556,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       photos: gallery,
       photoAnalysis,
       photoLabels,
+      worksSummary: gallery.length ? worksSummaryForListing(listing, res.locals.fmt) : null,
       worksHasPhotos: gallery.length > 0,
       refreshWorksHeadAside: true,
     });
@@ -588,6 +611,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       stored: state.stored,
       aiStatus: state.aiStatus,
       aiAnalyzedAt: state.aiAnalyzedAt,
+      aiNewer: state.aiNewer,
       updatedAt: state.updatedAt,
       photos: state.photos,
     };
@@ -605,12 +629,33 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     try {
       const listing = loadListing(req);
       res.set("Cache-Control", "no-store");
+      const state = worksPlans.getPlan(listing);
       return res.json({
-        ...worksPlanResponse(worksPlans.getPlan(listing)),
+        ...worksPlanResponse(state),
         options: plannerOptions(),
+        overview: buildWorksOverview(
+          listing,
+          state.analysis,
+          linkedDpeInsightsForListing(listing, res.locals.fmt),
+          state.photos
+        ),
       });
     } catch (err) {
       return worksJsonError(res, next, err);
+    }
+  });
+
+  /** Verdict et état général de la fiche, resynchronisés après le plan des pièces. */
+  router.get("/listings/:id/works/summary", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      res.set("Cache-Control", "no-store");
+      return res.render("partials/listing-works-summary", {
+        layout: false,
+        worksSummary: worksSummaryForListing(listing, res.locals.fmt),
+      });
+    } catch (err) {
+      return next(err);
     }
   });
 
@@ -902,6 +947,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         linkedDpeInsights: addressLocals.linkedDpeInsights,
         photos: addressLocals.photos,
         photoAnalysis: addressLocals.photoAnalysis,
+        worksSummary: addressLocals.worksSummary,
         photoLabels,
       });
     } catch (err) {

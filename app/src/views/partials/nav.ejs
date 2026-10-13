@@ -110,6 +110,7 @@
 
       <div class="topbar__account topbar__account--header">
         <span class="topbar__email" title="<%= user.email %>"><%= user.email %></span>
+        <%- include("bear-toggle") %>
         <form method="post" action="/logout">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
           <button class="btn btn--ghost btn--sm" type="submit">Déconnexion</button>

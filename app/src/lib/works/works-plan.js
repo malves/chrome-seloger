@@ -15,6 +15,20 @@ import {
   FLOOR_MATERIAL_LABELS,
   ROOM_LABELS,
 } from "../photo-analysis/labels.js";
+import { costsOptions } from "./works-costs.js";
+import {
+  EXCLUSIVE_ISSUES,
+  HEAVY_RENOVATION_WORST_ISSUES,
+  ISSUE_PRIORITY,
+  PRIORITIES,
+  ROOM_ISSUES,
+  ROOM_ISSUE_CATEGORIES,
+  ROOM_ISSUE_KEYS,
+  cleanIssues,
+  issueAppliesTo,
+} from "./works-issues.js";
+import { reconcileRoomCondition, roomNeedsReview } from "./works-coherence.js";
+import { roomIssuesFromAnalysis } from "./works-seed-sources.js";
 
 export const WORKS_PLAN_VERSION = 1;
 
@@ -31,6 +45,7 @@ const LIMITS = {
   caption: 400,
   url: 2000,
   photos: 300,
+  issueReason: 160,
 };
 
 /* ----------------------------- Libellés ----------------------------- */
@@ -159,56 +174,36 @@ const VIEW_NOTES = {
   limited_overlooking: "Vis-à-vis limité",
 };
 
-/** Catégories des points à signaler (icône du sprite `works-icons.ejs`). */
-export const ROOM_ISSUE_CATEGORIES = [
-  { key: "floor", label: "Sol", icon: "floor" },
-  { key: "walls", label: "Murs", icon: "walls" },
-  { key: "ceiling", label: "Plafond", icon: "ceiling" },
-  { key: "humidity", label: "Humidité", icon: "droplet" },
-  { key: "equipment", label: "Fenêtres et équipements", icon: "window" },
-];
+export {
+  EXCLUSIVE_ISSUES,
+  HEAVY_RENOVATION_WORST_ISSUES,
+  ISSUE_PRIORITY,
+  PRIORITIES,
+  ROOM_ISSUES,
+  ROOM_ISSUE_CATEGORIES,
+  ROOM_ISSUE_KEYS,
+  cleanIssues,
+  issueAppliesTo,
+};
 
 /**
- * Points à signaler par pièce : uniquement ce qu'on peut corriger par des
- * travaux. `tone` colore l'étiquette cochée.
+ * Tags lourds applicables à une pièce : les équipements de cuisine ou de salle
+ * d'eau seulement si le type de pièce est connu et concerné.
  */
-export const ROOM_ISSUES = [
-  { key: "floor_worn", category: "floor", label: "Sol usé", tone: "average" },
-  { key: "floor_redo", category: "floor", label: "Sol à refaire", tone: "poor" },
-  { key: "paint", category: "walls", label: "Peinture à refaire", tone: "average" },
-  { key: "walls_damaged", category: "walls", label: "Murs à refaire", tone: "poor" },
-  { key: "cracks", category: "walls", label: "Fissures", tone: "poor" },
-  { key: "ceiling_paint", category: "ceiling", label: "Plafond à repeindre", tone: "average" },
-  { key: "ceiling_damaged", category: "ceiling", label: "Plafond à refaire", tone: "poor" },
-  { key: "humidity", category: "humidity", label: "Traces d'humidité", tone: "poor" },
-  { key: "mold", category: "humidity", label: "Moisissures", tone: "poor" },
-  { key: "windows", category: "equipment", label: "Fenêtres à changer", tone: "average" },
-  { key: "joinery", category: "equipment", label: "Menuiseries abîmées", tone: "average" },
-  { key: "electricity", category: "equipment", label: "Électricité à revoir", tone: "poor" },
-  { key: "heating", category: "equipment", label: "Chauffage à moderniser", tone: "average" },
-];
-
-export const ROOM_ISSUE_KEYS = ROOM_ISSUES.map((i) => i.key);
-
-const TONE_RANK = { unknown: 0, good: 1, average: 2, poor: 3 };
-
-/**
- * Tags les plus graves par catégorie (sol, murs, plafond, humidité, équipements),
- * appliqués lorsque l'état de la pièce est « Rénovation lourde ».
- */
-export const HEAVY_RENOVATION_WORST_ISSUES = ROOM_ISSUE_CATEGORIES.flatMap(({ key: category }) => {
-  const inCategory = ROOM_ISSUES.filter((i) => i.category === category);
-  const maxTone = Math.max(...inCategory.map((i) => TONE_RANK[i.tone] ?? 0));
-  return inCategory.filter((i) => (TONE_RANK[i.tone] ?? 0) === maxTone).map((i) => i.key);
-});
+export function heavyIssuesFor(roomType) {
+  return HEAVY_RENOVATION_WORST_ISSUES.filter((k) => {
+    const issue = ROOM_ISSUES.find((i) => i.key === k);
+    return !issue.heavyRoomTypes || issue.heavyRoomTypes.includes(roomType);
+  });
+}
 
 /**
  * Ajoute les pires tags par catégorie.
  * @returns {{ issues: string[], added: string[] }} `added` = clés nouvellement cochées (pour annulation au changement d'état).
  */
-export function applyHeavyRenovationIssues(issues) {
+export function applyHeavyRenovationIssues(issues, roomType = null) {
   const before = new Set(cleanIssues(issues || []));
-  const next = cleanIssues([...(issues || []), ...HEAVY_RENOVATION_WORST_ISSUES]);
+  const next = cleanIssues([...(issues || []), ...heavyIssuesFor(roomType)]);
   const added = next.filter((k) => !before.has(k));
   return { issues: next, added };
 }
@@ -221,8 +216,8 @@ export function revertHeavyRenovationAutoIssues(issues, autoKeys) {
 }
 
 /**
- * Caractéristiques de la pièce qu'aucun travaux ne change : conservées dans
- * `ambiance` pour l'analyse globale du bien, hors points à signaler.
+ * Luminosité et hauteur sous plafond : conservées dans `ambiance` (seed IA,
+ * migration), sans édition dans la modale « Pièces et état ».
  */
 export const ROOM_TRAITS = [
   { key: "bright", field: "brightness", label: "Lumineuse", values: ["bright", "very_bright"], set: "bright", reset: "not_assessable" },
@@ -231,32 +226,8 @@ export const ROOM_TRAITS = [
   { key: "low_ceiling", field: "ceiling_height", label: "Plafond bas", values: ["low"], set: "low", reset: "unknown" },
 ];
 
-/** Étiquettes qui s'excluent (la seconde l'emporte). */
-const EXCLUSIVE_ISSUES = [
-  ["floor_worn", "floor_redo"],
-  ["ceiling_paint", "ceiling_damaged"],
-];
-
 const WORN = ["worn", "dated"];
 const BROKEN = ["damaged", "replacement_likely"];
-
-const ANOMALY_ISSUES = {
-  possible_humidity: "humidity",
-  possible_water_damage: "humidity",
-  possible_mold: "mold",
-  crack: "cracks",
-  ceiling_damage: "ceiling_damaged",
-  peeling_paint: "paint",
-  damaged_floor: "floor_redo",
-  damaged_joinery: "joinery",
-  visible_wiring: "electricity",
-};
-
-function cleanIssues(keys) {
-  const set = new Set(keys.filter((k) => ROOM_ISSUE_KEYS.includes(k)));
-  for (const [weak, strong] of EXCLUSIVE_ISSUES) if (set.has(strong)) set.delete(weak);
-  return ROOM_ISSUE_KEYS.filter((k) => set.has(k));
-}
 
 /** Points déduits de l'état des surfaces d'une pièce. */
 export function issuesFromRoom(room) {
@@ -308,10 +279,21 @@ export function plannerOptions() {
     ceilingHeights: options(E.CEILING_HEIGHTS, PLANNER_CEILING_HEIGHT_LABELS),
     storage: options(STORAGE_LEVELS, PLANNER_STORAGE_LABELS),
     issueCategories: ROOM_ISSUE_CATEGORIES.map((c) => ({ value: c.key, label: c.label, icon: c.icon })),
-    issues: ROOM_ISSUES.map((i) => ({ value: i.key, label: i.label, tone: i.tone, category: i.category })),
+    issues: ROOM_ISSUES.map((i) => ({
+      value: i.key,
+      label: i.label,
+      tone: i.tone,
+      category: i.category,
+      roomTypes: i.roomTypes || null,
+      heavyRoomTypes: i.heavyRoomTypes || null,
+    })),
     traits: ROOM_TRAITS.map((t) => ({ value: t.key, label: t.label, field: t.field, values: t.values, set: t.set, reset: t.reset })),
     groups: GROUP_KEYS.map((key) => ({ value: key, label: GROUP_LABELS[key] })),
     heavyRenovationWorstIssues: HEAVY_RENOVATION_WORST_ISSUES,
+    exclusiveIssues: EXCLUSIVE_ISSUES,
+    issuePriority: ISSUE_PRIORITY,
+    priorities: PRIORITIES,
+    costs: costsOptions(),
   };
 }
 
@@ -333,10 +315,13 @@ const roomSchema = z.object({
   condition: enumOf(E.ROOM_CONDITIONS, "not_assessable"),
   condition_source: source,
   summary: text(LIMITS.note),
+  ai_summary: text(LIMITS.note),
   source,
   issues: issueList,
   issues_ai: issueList,
   issues_heavy_auto: issueList,
+  issue_reasons: z.record(z.string(), z.string().trim().max(LIMITS.issueReason)).default({}),
+  needs_review: z.boolean().default(false),
   floor: z.object({ material: enumOf(E.FLOOR_MATERIALS, "unknown"), ...surfaceBase }),
   walls: z.object(surfaceBase),
   ceiling: z.object(surfaceBase),
@@ -376,9 +361,21 @@ export function parseWorksPlan(input) {
   for (const room of result.data.rooms) {
     if (ids.has(room.id)) return { ok: false, error: `Données du plan invalides (pièce en double : ${room.id}).` };
     ids.add(room.id);
-    room.issues = cleanIssues(room.issues);
+    room.issues = cleanIssues(room.issues, room.type);
+    room.issue_reasons = keepReasons(room.issue_reasons, room.issues_ai);
+    room.needs_review = roomNeedsReview(room);
   }
   return { ok: true, plan: { version: WORKS_PLAN_VERSION, ...result.data } };
+}
+
+/** Raisons de l'IA, limitées aux points qu'elle a proposés. */
+function keepReasons(reasons, keys) {
+  const out = {};
+  for (const key of keys || []) {
+    const reason = typeof reasons?.[key] === "string" ? reasons[key].trim().slice(0, LIMITS.issueReason) : "";
+    if (reason) out[key] = reason;
+  }
+  return out;
 }
 
 /* ------------------------------- Seed ------------------------------- */
@@ -392,13 +389,16 @@ export function emptyRoom(id, type = "unknown", label = "") {
     id,
     type,
     label,
-    condition: "average",
+    condition: "not_assessable",
     condition_source: "user",
     summary: "",
+    ai_summary: "",
     source: "user",
     issues: [],
     issues_ai: [],
     issues_heavy_auto: [],
+    issue_reasons: {},
+    needs_review: false,
     floor: emptySurface({ material: "unknown", source: "user" }),
     walls: emptySurface({ source: "user" }),
     ceiling: emptySurface({ source: "user" }),
@@ -421,7 +421,7 @@ function pick(value, values, fallback) {
   return values.includes(value) ? value : fallback;
 }
 
-function seedRoom(raw, urlsOf, anomalies = []) {
+function seedRoom(raw, urlsOf, stored) {
   const view = raw.view && VIEW_NOTES[raw.view.type];
   const room = {
     id: clip(raw.room_id, 40).replace(/[^\w-]/g, "_") || "room",
@@ -431,7 +431,8 @@ function seedRoom(raw, urlsOf, anomalies = []) {
       pick(raw.condition, E.ROOM_CONDITIONS, "not_assessable")
     ),
     condition_source: "ai",
-    summary: clip(raw.summary, LIMITS.note),
+    summary: "",
+    ai_summary: clip(raw.summary, LIMITS.note),
     source: "ai",
     floor: emptySurface({
       material: pick(raw.floor?.material, E.FLOOR_MATERIALS, "unknown"),
@@ -455,21 +456,41 @@ function seedRoom(raw, urlsOf, anomalies = []) {
     },
     photos: urlsOf(raw.image_ids),
   };
-  const fromAnomalies = anomalies
-    .filter((a) => a?.room_id && a.room_id === raw.room_id)
-    .map((a) => ANOMALY_ISSUES[a.type])
-    .filter(Boolean);
-  if (raw.windows?.replacement_may_be_relevant) fromAnomalies.push("windows");
-  if (raw.heating?.modernization_may_be_relevant) fromAnomalies.push("heating");
-  room.issues = cleanIssues([...issuesFromRoom(room), ...fromAnomalies]);
+  const found = roomIssuesFromAnalysis(raw, stored, room.type);
+  room.issues = found.issues;
+  room.issue_reasons = found.reasons;
   room.issues_heavy_auto = [];
   if (room.condition === "heavy_renovation_likely") {
-    const heavy = applyHeavyRenovationIssues(room.issues);
+    const heavy = applyHeavyRenovationIssues(room.issues, room.type);
     room.issues = heavy.issues;
     room.issues_heavy_auto = heavy.added;
   }
   room.issues_ai = [...room.issues];
-  return room;
+  return alignAiCondition(room);
+}
+
+/**
+ * État de l'IA confronté à ses points à refaire (works-coherence.js). Seuls
+ * les états encore proposés par l'IA, sur une pièce où l'IA a tout relevé
+ * elle-même, sont alignés ; un choix de l'utilisateur n'est jamais modifié.
+ */
+function alignAiCondition(room) {
+  if (room.condition_source !== "ai") return room;
+  const untouched = (room.issues || []).every((k) => (room.issues_ai || []).includes(k)) &&
+    (room.issues_ai || []).every((k) => (room.issues || []).includes(k));
+  if (!untouched) return room;
+  const checked = reconcileRoomCondition(room.condition, room.issues);
+  if (!checked.adjusted) return room;
+  const note = checked.unsupported
+    ? `État « ${PLANNER_ROOM_CONDITION_LABELS[checked.unsupported]} » d'abord proposé, sans aucun défaut précis relevé sur les photos : ramené à « Bon ».`
+    : "";
+  return {
+    ...room,
+    condition: checked.condition,
+    ai_summary: note && !String(room.ai_summary || "").includes(note)
+      ? clip([room.ai_summary, note].filter(Boolean).join(" "), LIMITS.note)
+      : room.ai_summary,
+  };
 }
 
 /** Légende d'une photo à partir des observations de l'IA. */
@@ -516,7 +537,7 @@ export function seedWorksPlan(stored, photos = []) {
 
     const seenIds = new Set();
     for (const raw of stored.rooms || []) {
-      const room = seedRoom(raw, urlsOf, stored.anomalies || []);
+      const room = seedRoom(raw, urlsOf, stored);
       while (seenIds.has(room.id)) room.id = `${room.id}_b`;
       seenIds.add(room.id);
       plan.rooms.push(room);
@@ -536,6 +557,13 @@ export function seedWorksPlan(stored, photos = []) {
 
 /* -------------------------- Réconciliation -------------------------- */
 
+/** Les anciens plans rangeaient le résumé de l'IA dans la note de l'utilisateur. */
+function migrateAiSummary(room) {
+  if (typeof room.ai_summary === "string") return {};
+  if (room.source !== "ai") return { ai_summary: "" };
+  return { ai_summary: room.summary || "", summary: "" };
+}
+
 /**
  * Aligne le plan sur la galerie : chaque photo apparaît une seule fois, les
  * photos disparues sont retirées et les nouvelles arrivent dans « À classer ».
@@ -550,15 +578,22 @@ export function reconcileWorksPlan(plan, photos = []) {
       return true;
     });
 
-  const rooms = (plan.rooms || []).map((room) => ({
-    ...room,
-    ambiance: migrateLegacyTraits(room),
-    photos: keep(room.photos),
-    condition: normalizePlannerRoomCondition(room.condition),
-    issues: Array.isArray(room.issues) ? cleanIssues(room.issues) : issuesFromRoom(room),
-    issues_ai: Array.isArray(room.issues_ai) ? cleanIssues(room.issues_ai) : [],
-    issues_heavy_auto: Array.isArray(room.issues_heavy_auto) ? cleanIssues(room.issues_heavy_auto) : [],
-  }));
+  const rooms = (plan.rooms || []).map((room) => {
+    const next = {
+      ...room,
+      ...migrateAiSummary(room),
+      ambiance: migrateLegacyTraits(room),
+      photos: keep(room.photos),
+      condition: normalizePlannerRoomCondition(room.condition),
+      issues: Array.isArray(room.issues) ? cleanIssues(room.issues, room.type) : issuesFromRoom(room),
+      issues_ai: Array.isArray(room.issues_ai) ? cleanIssues(room.issues_ai) : [],
+      issues_heavy_auto: Array.isArray(room.issues_heavy_auto) ? cleanIssues(room.issues_heavy_auto) : [],
+    };
+    next.issue_reasons = keepReasons(room.issue_reasons, next.issues_ai);
+    const aligned = alignAiCondition(next);
+    aligned.needs_review = roomNeedsReview(aligned);
+    return aligned;
+  });
   const groups = {};
   for (const key of GROUP_KEYS) groups[key] = keep(plan.groups?.[key]);
   for (const u of photos) {

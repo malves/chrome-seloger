@@ -153,6 +153,61 @@
       </div>
     <% } %>
 
+    <% var rawWorks = result.potential_works || []; var rawRooms = result.rooms || []; %>
+    <h3 class="pa-debug__h3">Travaux bruts de la synthèse (<%= rawWorks.length %>)</h3>
+    <% if (!rawWorks.length) { %>
+      <p class="field__hint">Aucun travail proposé par la synthèse.</p>
+    <% } else { %>
+      <div class="pa-debug__table-wrap">
+        <table class="pa-debug__table">
+          <thead>
+            <tr>
+              <th scope="col">Type</th>
+              <th scope="col">Pièce</th>
+              <th scope="col">Nécessité</th>
+              <th scope="col">Ampleur</th>
+              <th scope="col">Confiance</th>
+              <th scope="col">Justification</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% rawWorks.forEach(function (w) { %>
+              <tr>
+                <td><code><%= w.work_type %></code><br><%= w.label || "" %></td>
+                <td><code><%= w.room_id || "—" %></code></td>
+                <td><%= w.necessity %></td>
+                <td><%= w.scope %></td>
+                <td><%= w.confidence != null ? Math.round(w.confidence * 100) + " %" : "—" %></td>
+                <td><%= w.rationale || "" %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+
+    <h3 class="pa-debug__h3">Points à refaire proposés par pièce (<%= rawRooms.length %>)</h3>
+    <div class="pa-debug__table-wrap">
+      <table class="pa-debug__table">
+        <thead>
+          <tr>
+            <th scope="col">Pièce</th>
+            <th scope="col">État</th>
+            <th scope="col">Points (IA)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rawRooms.forEach(function (r) { %>
+            <tr class="<%= ['average', 'dated', 'refresh_needed', 'renovation_needed', 'heavy_renovation_likely'].indexOf(r.condition) !== -1 && !(r.issues || []).length ? 'pa-debug__row--warn' : '' %>">
+              <td><code><%= r.room_id %></code> <%= r.label || "" %></td>
+              <td><%= r.condition %></td>
+              <td><%= (r.issues || []).map(function (k) { return k + ((r.issue_reasons || {})[k] ? " : " + r.issue_reasons[k] : ""); }).join(" · ") || "—" %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
     <h3 class="pa-debug__h3">Par photo (<%= images.length %>)</h3>
     <div class="pa-debug__table-wrap">
       <table class="pa-debug__table">

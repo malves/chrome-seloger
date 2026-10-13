@@ -1,0 +1,12 @@
+<%
+  // Maison DPE clonée par works-planner.js dans la vue « Maison / Appartement ».
+  var oob = typeof hxSwapOob !== "undefined" && hxSwapOob;
+%>
+<div id="works-dpe-house-source" hidden data-works-dpe-source<% if (oob) { %> hx-swap-oob="true"<% } %>>
+  <template>
+    <%- include("listing-linked-dpe", {
+      linkedDpeInsights: typeof linkedDpeInsights !== "undefined" ? linkedDpeInsights : null,
+      idPrefix: "works-",
+    }) %>
+  </template>
+</div>
