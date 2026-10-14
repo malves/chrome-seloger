@@ -318,7 +318,7 @@ async function setup(t, { email = "a@example.com", withAnalysis = true } = {}) {
 
 test("fiche : section Travaux, bouton visible pour un utilisateur standard, modale et script chargés", async (t) => {
   const { page } = await setup(t);
-  assert.match(page.text, /Analyse technique du bien/);
+  assert.match(page.text, /Analyse technique du bien par l'IA/);
   assert.match(page.text, /id="listing-works-title"[\s\S]*État général/);
   assert.match(page.text, /data-works-open/);
   assert.match(page.text, /Dossier technique/);

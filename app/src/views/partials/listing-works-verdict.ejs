@@ -11,7 +11,7 @@
   id="listing-works-verdict"
   <% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %>hx-swap-oob="true"<% } %>
 >
-  <p class="pa-hero__eyebrow">Analyse technique du bien</p>
+  <p class="pa-hero__eyebrow">Analyse technique du bien par l'IA</p>
   <p class="pa-hero__verdict"><%= h ? h.verdict : "État en cours d'évaluation" %></p>
   <% if (aiInitial && h && h.fromPlan && aiInitial !== h.verdict) { %>
     <p class="pa-hero__initial">Lecture initiale des photos : <%= aiInitial.charAt(0).toLowerCase() + aiInitial.slice(1) %></p>

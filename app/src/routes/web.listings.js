@@ -35,11 +35,13 @@ import * as photoLabels from "../lib/photo-analysis/labels.js";
 import { PHOTO_ANALYSIS_PROVIDER } from "../lib/photo-analysis-cache.js";
 import createWorksPlanService from "../services/works-plan.service.js";
 import { plannerOptions } from "../lib/works/works-plan.js";
+import { financingWorksDefault } from "../lib/works/financing-works-default.js";
 import { buildWorksOverview } from "../lib/works/works-overview.js";
 import { buildWorksSummary } from "../lib/works/works-summary.js";
 import { listingPayloadSchema } from "../schemas/listing.payload.js";
 import {
   buildAmortizationSchedule,
+  editedFinancingKeys,
   financingForListing,
   listingFinancingParams,
   readListingFinancingForm,
@@ -239,16 +241,29 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     return listing;
   }
 
-  function financingFor(listing) {
-    const defaults = accountFinancingSettings(
-      repositories.users.findById(listing.user_id)
-    );
+  function financingFor(listing, dpeInsights = undefined) {
+    const defaults = accountFinancingSettings();
     const stored = repositories.enrichments.findOne(listing.id, "financing");
-    const params = listingFinancingParams(listing, defaults, stored?.data);
+    const worksDefault =
+      listing.transaction_type === "rent"
+        ? 0
+        : financingWorksDefault({
+            listing,
+            repositories,
+            analysis: photoAnalysisRun.readStored(listing),
+            dpeInsights,
+          });
+    const params = listingFinancingParams(
+      listing,
+      defaults,
+      stored?.data,
+      worksDefault
+    );
     const result = financingForListing(listing, params);
     return {
       params,
       result,
+      edited: Array.isArray(stored?.data?.edited) ? stored.data.edited : [],
       amortization: buildAmortizationSchedule(result),
     };
   }
@@ -279,6 +294,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
 
     res.render("listings", {
       title: activeProject ? activeProject.name : "Mes annonces",
+      styles: ["/public/css/listings.css"],
       listings: repositories.listings.search(req.user.id, {
         ...filters,
         limit: PER_PAGE,
@@ -464,7 +480,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         communeProviders,
         otherProviders,
         enrichmentPoll,
-        financing: financingFor(listing),
+        financing: financingFor(listing, linkedDpeInsights),
         projects: projectsService.list(req.user.id),
       });
     } catch (err) {
@@ -559,6 +575,11 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       worksSummary: gallery.length ? worksSummaryForListing(listing, res.locals.fmt) : null,
       worksHasPhotos: gallery.length > 0,
       refreshWorksHeadAside: true,
+      // Le budget travaux vient d'être chiffré : le financement le reprend.
+      financingOob:
+        photoAnalysis?.ready && listing.transaction_type !== "rent"
+          ? financingFor(listing)
+          : null,
     });
   }
 
@@ -652,7 +673,9 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       res.set("Cache-Control", "no-store");
       return res.render("partials/listing-works-summary", {
         layout: false,
+        listing,
         worksSummary: worksSummaryForListing(listing, res.locals.fmt),
+        financing: listing.transaction_type === "rent" ? null : financingFor(listing),
       });
     } catch (err) {
       return next(err);
@@ -991,13 +1014,14 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   router.post("/listings/:id/financing", (req, res, next) => {
     try {
       const listing = loadListing(req);
-      const current = financingFor(listing).params;
+      const { params: current, edited: previouslyEdited } = financingFor(listing);
       const params = readListingFinancingForm(req.body, current);
       const result = financingForListing(listing, params);
+      const edited = editedFinancingKeys(previouslyEdited, current, params);
 
       repositories.enrichments.saveListingResult(listing.id, "financing", {
         status: "ok",
-        data: { params, result },
+        data: { params, result, edited },
       });
 
       if (!req.get("hx-request")) {

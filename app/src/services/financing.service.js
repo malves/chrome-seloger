@@ -177,19 +177,36 @@ export function defaultDownPaymentForListing(
   return Math.round(price * rate);
 }
 
+const FINANCING_PARAM_KEYS = [
+  "negotiatedPrice",
+  "works",
+  "downPayment",
+  "years",
+  "interestRate",
+  "insuranceRate",
+];
+
 /**
- * Paramètres retenus pour une annonce : valeurs du compte, éventuellement
- * surchargées pour cette annonce, avec le prix de l'annonce comme prix négocié
- * par défaut.
+ * Paramètres retenus pour une annonce : valeurs par défaut (admin, prix de
+ * l'annonce, travaux estimés), sauf celles que l'utilisateur a modifiées sur
+ * la fiche (`stored.edited`).
  */
-export function listingFinancingParams(listing, accountDefaults, stored = null) {
+export function listingFinancingParams(
+  listing,
+  accountDefaults,
+  stored = null,
+  worksDefault = 0
+) {
   const override = stored?.params || {};
+  const edited = new Set(Array.isArray(stored?.edited) ? stored.edited : []);
   const pick = (key, fallback) =>
-    Number.isFinite(Number(override[key])) ? Number(override[key]) : fallback;
+    edited.has(key) && Number.isFinite(Number(override[key]))
+      ? Number(override[key])
+      : fallback;
 
   return {
     negotiatedPrice: pick("negotiatedPrice", listing.price ?? 0),
-    works: pick("works", 0),
+    works: pick("works", Math.max(0, Number(worksDefault) || 0)),
     downPayment: pick(
       "downPayment",
       defaultDownPaymentForListing(listing)
@@ -198,6 +215,15 @@ export function listingFinancingParams(listing, accountDefaults, stored = null) 
     interestRate: pick("interestRate", accountDefaults.interestRate),
     insuranceRate: pick("insuranceRate", accountDefaults.insuranceRate),
   };
+}
+
+/** Champs modifiés par l'utilisateur, cumulés avec ceux des saisies précédentes. */
+export function editedFinancingKeys(previous, current, next) {
+  const edited = new Set(Array.isArray(previous) ? previous : []);
+  for (const key of FINANCING_PARAM_KEYS) {
+    if (Math.abs(Number(next[key]) - Number(current[key])) > 1e-9) edited.add(key);
+  }
+  return FINANCING_PARAM_KEYS.filter((key) => edited.has(key));
 }
 
 /** Lit le formulaire de la fiche (htmx) en repartant des paramètres courants. */
@@ -240,6 +266,7 @@ export default {
   agencyFees,
   notaryRate,
   listingFinancingParams,
+  editedFinancingKeys,
   readListingFinancingForm,
   financingForListing,
 };

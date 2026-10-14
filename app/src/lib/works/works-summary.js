@@ -15,6 +15,14 @@ const MAX_ROOM_ISSUES = 4;
 
 const range = (min, max) => ({ min: roundCost(min), max: roundCost(max) });
 
+/** Milieu de la fourchette travaux (même arrondi que le budget affiché). */
+export function midpointWorksBudget(min, max) {
+  if (min == null || max == null || !(max > 0)) return 0;
+  const lo = Math.max(0, Number(min) || 0);
+  const hi = Math.max(lo, Number(max) || 0);
+  return roundCost((lo + hi) / 2);
+}
+
 function roomName(room) {
   return (room.label && String(room.label).trim()) || PLANNER_ROOM_LABELS[room.type] || "Pièce";
 }

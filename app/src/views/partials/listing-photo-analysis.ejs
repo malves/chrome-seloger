@@ -11,7 +11,7 @@
 <section
   class="works__part photo-analysis"
   id="listing-photo-analysis"
-  aria-labelledby="listing-photo-analysis-title"
+  aria-labelledby="listing-works-title"
   data-photo-analysis
   data-photo-analysis-url="<%= panelUrl %>"
   <% if (pa.ready && pa.status === "ok") {
@@ -32,13 +32,6 @@
   hx-swap-oob="true"
   <% } %>
 >
-  <div class="works__part-head">
-    <div class="works__part-heading">
-      <span class="works__part-icon" aria-hidden="true"><svg class="wi"><use href="#wi-camera"></use></svg></span>
-      <p class="panel__eyebrow" id="listing-photo-analysis-title">Analyse IA</p>
-    </div>
-  </div>
-
   <% if (pending) { %>
     <div class="pa-pending" role="status">
       <span class="spinner" aria-hidden="true"></span>
@@ -131,4 +124,7 @@
   worksHasPhotos: typeof worksHasPhotos !== "undefined" && worksHasPhotos,
   hxSwapOob: true,
 }) %>
+<% } %>
+<% if (typeof financingOob !== "undefined" && financingOob) { %>
+<%- include("financing", { listing: listing, financing: financingOob, hxSwapOob: true }) %>
 <% } %>

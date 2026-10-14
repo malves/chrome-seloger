@@ -47,10 +47,10 @@
       </a>
     <% }); %>
     <a
-      class="pill <%= filters.favorite ? 'is-active' : '' %>"
+      class="pill pill--favorites <%= filters.favorite ? 'is-active' : '' %>"
       href="<%= fmt.listingsUrl(query, { fav: '1', status: null }) %>"
     >
-      ★ Favoris
+      <span class="pill__star" aria-hidden="true">★</span> Favoris
     </a>
   </div>
 
@@ -181,6 +181,13 @@
       <%- include("partials/listing-card", { listing: listing }) %>
     <% }); %>
   </div>
+
+  <%# Entrée en cascade des cartes lors d'un changement de filtre (voir listings.css). %>
+  <style>
+    <% listings.forEach(function (listing, index) { %>
+      ::view-transition-new(listing-<%= listing.id %>):only-child { animation-delay: <%= 120 + index * 45 %>ms; }
+    <% }); %>
+  </style>
 
   <% if (pagination.total > 0) { %>
     <%- include("partials/pagination", { pagination: pagination, query: query }) %>

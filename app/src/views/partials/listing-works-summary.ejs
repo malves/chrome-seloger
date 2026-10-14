@@ -6,3 +6,6 @@
 <%- include("listing-works-health", { worksSummary: ws, hxSwapOob: true }) %>
 <%- include("listing-works-budget", { worksSummary: ws, hxSwapOob: true }) %>
 <%- include("listing-works-verdict", { worksSummary: ws, hxSwapOob: true }) %>
+<% if (typeof financing !== "undefined" && financing) { %>
+  <%- include("financing", { listing: listing, financing: financing, hxSwapOob: true }) %>
+<% } %>

@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { midpointWorksBudget } from "../src/lib/works/works-summary.js";
 import {
   agencyFees,
   buildAmortizationSchedule,
   computeFinancing,
   defaultDownPaymentForListing,
+  editedFinancingKeys,
   listingFinancingParams,
   monthlyPayment,
   notaryRate,
@@ -33,6 +35,32 @@ test("mensualité nulle sans capital ou sans durée", () => {
   assert.equal(monthlyPayment(200_000, 0.035, 0), 0);
 });
 
+test("midpointWorksBudget arrondit comme le budget travaux", () => {
+  assert.equal(midpointWorksBudget(12_400, 27_800), 20_000);
+  assert.equal(midpointWorksBudget(null, 15_000), 0);
+});
+
+test("travaux par défaut : milieu de la fourchette estimée", () => {
+  assert.equal(
+    listingFinancingParams(
+      { price: 300_000 },
+      { years: 25, interestRate: 0.035, insuranceRate: 0.003, downPayment: 0 },
+      null,
+      47_500
+    ).works,
+    47_500
+  );
+  assert.equal(
+    listingFinancingParams(
+      { price: 300_000 },
+      { years: 25, interestRate: 0.035, insuranceRate: 0.003, downPayment: 0 },
+      { params: { works: 12_000 }, edited: ["works"] },
+      47_500
+    ).works,
+    12_000
+  );
+});
+
 test("apport par défaut : 10 % du prix affiché de l'annonce", () => {
   assert.equal(
     defaultDownPaymentForListing({ price: 350_000 }),
@@ -50,10 +78,31 @@ test("apport par défaut : 10 % du prix affiché de l'annonce", () => {
     listingFinancingParams(
       { price: 400_000 },
       { years: 25, interestRate: 0.035, insuranceRate: 0.003, downPayment: 0 },
-      { params: { downPayment: 12_000 } }
+      { params: { downPayment: 12_000 }, edited: ["downPayment"] }
     ).downPayment,
     12_000
   );
+});
+
+test("paramètres enregistrés sans saisie utilisateur : défauts recalculés", () => {
+  const defaults = { years: 20, interestRate: 0.035, insuranceRate: 0.003, downPayment: 0 };
+  const params = listingFinancingParams(
+    { price: 300_000 },
+    defaults,
+    { params: { years: 25, works: 0 } },
+    30_000
+  );
+  assert.equal(params.years, 20);
+  assert.equal(params.works, 30_000);
+});
+
+test("champs modifiés : seuls ceux qui changent sont retenus, cumulés", () => {
+  const current = { negotiatedPrice: 300_000, works: 30_000, downPayment: 30_000, years: 20, interestRate: 0.035, insuranceRate: 0.003 };
+  assert.deepEqual(
+    editedFinancingKeys(["works"], current, { ...current, years: 22 }),
+    ["works", "years"]
+  );
+  assert.deepEqual(editedFinancingKeys([], current, { ...current }), []);
 });
 
 test("frais de notaire selon ancien ou neuf", () => {

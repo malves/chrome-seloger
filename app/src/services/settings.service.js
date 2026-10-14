@@ -47,19 +47,17 @@ export function defaultUserSettings() {
   };
 }
 
-/** Paramètres de financement du compte, complétés par les valeurs de config. */
-export function accountFinancingSettings(user) {
-  const stored = user?.settings?.financing || {};
+/**
+ * Paramètres de financement par défaut des fiches : ceux de l'administration
+ * (`config.financing`, surchargé par `app_settings`), pas un instantané par compte.
+ */
+export function accountFinancingSettings() {
   const base = config.financing;
   return {
-    downPayment: positiveInt(stored.downPayment, base.downPayment),
-    years: clamp(positiveInt(stored.years, base.years) || base.years, 1, 40),
-    interestRate: Number.isFinite(stored.interestRate)
-      ? clamp(stored.interestRate, 0, 1)
-      : base.interestRate,
-    insuranceRate: Number.isFinite(stored.insuranceRate)
-      ? clamp(stored.insuranceRate, 0, 1)
-      : base.insuranceRate,
+    downPayment: base.downPayment,
+    years: base.years,
+    interestRate: base.interestRate,
+    insuranceRate: base.insuranceRate,
   };
 }
 

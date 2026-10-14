@@ -112,7 +112,8 @@ test("provider standalone : exclu de la chaîne « tous », lancé seulement par
 test("fiche : panneau en attente sans cache, puis JSON `stored` en pending", async (t) => {
   const { agent, listing } = await setup(t);
   const page = await agent.get(`/listings/${listing.id}`).expect(200);
-  assert.match(page.text, /panel__eyebrow" id="listing-photo-analysis-title">Analyse IA/);
+  assert.doesNotMatch(page.text, /Analyse IA/);
+  assert.match(page.text, /id="listing-photo-analysis"/);
   assert.doesNotMatch(page.text, /Ce que montrent les photos/);
   assert.match(page.text, /Analyse des photos en cours/);
   assert.match(page.text, new RegExp(`hx-get="/listings/${listing.id}/photo-analysis/panel"`));

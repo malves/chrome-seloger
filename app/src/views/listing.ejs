@@ -176,7 +176,7 @@
     <div class="panel__head works__head">
       <div class="works__heading">
         <div>
-          <p class="panel__eyebrow">Analyse technique du bien</p>
+          <p class="panel__eyebrow">Analyse technique du bien par l'IA</p>
           <h2 class="panel__title" id="listing-works-title">État général</h2>
         </div>
       </div>
@@ -213,44 +213,40 @@
       listing.extension_data && Object.keys(listing.extension_data).length;
     const hasEnergyData = listing.dpe || listing.ges;
   %>
-  <% if (hasExtensionData || hasEnergyData) { %>
-    <div class="detail-columns detail-columns--widgets">
-      <% if (hasExtensionData) { %>
-        <section class="panel">
-          <div class="panel__head">
-            <div>
-              <p class="panel__eyebrow">Extension</p>
-              <h2 class="panel__title">Données du navigateur</h2>
-            </div>
-          </div>
-          <%
-            const travelProjects = listing.projects || [];
-            const travelConfigProject =
-              travelProjects[0] ||
-              (Array.isArray(projects) ? projects.find((p) => p.is_default) : null);
-            const projectConfigHref = travelConfigProject
-              ? `/projects/${travelConfigProject.id}`
-              : null;
-          %>
-          <%- include("partials/extension-data", {
-            data: listing.extension_data,
-            projectConfigHref,
-          }) %>
-        </section>
-      <% } %>
+  <% if (hasEnergyData) { %>
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Énergie</p>
+          <h2 class="panel__title">Performance énergétique</h2>
+        </div>
+      </div>
+      <%- include("partials/energy-performance", { listing: listing }) %>
+    </section>
+  <% } %>
 
-      <% if (hasEnergyData) { %>
-        <section class="panel">
-          <div class="panel__head">
-            <div>
-              <p class="panel__eyebrow">Énergie</p>
-              <h2 class="panel__title">Performance énergétique</h2>
-            </div>
-          </div>
-          <%- include("partials/energy-performance", { listing: listing }) %>
-        </section>
-      <% } %>
-    </div>
+  <% if (hasExtensionData) { %>
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Extension</p>
+          <h2 class="panel__title">Données du navigateur</h2>
+        </div>
+      </div>
+      <%
+        const travelProjects = listing.projects || [];
+        const travelConfigProject =
+          travelProjects[0] ||
+          (Array.isArray(projects) ? projects.find((p) => p.is_default) : null);
+        const projectConfigHref = travelConfigProject
+          ? `/projects/${travelConfigProject.id}`
+          : null;
+      %>
+      <%- include("partials/extension-data", {
+        data: listing.extension_data,
+        projectConfigHref,
+      }) %>
+    </section>
   <% } %>
 
   <!-- Analyse de marché + territoire (enrichissement auto + polling si cache vide) -->

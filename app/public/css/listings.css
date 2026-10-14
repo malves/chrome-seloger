@@ -1,0 +1,62 @@
+/* -------------------- Filtre favoris (barre d'outils) -------------------- */
+
+.pill--favorites .pill__star {
+  color: var(--gold);
+}
+
+/* -------------------- Transitions de la liste d'annonces -------------------- */
+
+/* Les filtres, le tri et la pagination restent des liens servis par le
+   serveur : la transition entre deux pages de liste est animée par le
+   navigateur. Les deux documents doivent porter cette règle, d'où cette
+   feuille chargée uniquement sur /listings. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+
+.grid > .card {
+  view-transition-class: listing-card;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+}
+
+/* Carte présente avant et après : elle glisse vers sa nouvelle place. */
+::view-transition-group(.listing-card) {
+  animation-duration: 460ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Carte qui sort du filtre. */
+::view-transition-old(.listing-card):only-child {
+  animation-name: listing-card-out;
+  animation-duration: 200ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+  animation-fill-mode: both;
+}
+
+/* Carte qui entre ; le décalage par carte est posé dans listings.ejs. */
+::view-transition-new(.listing-card):only-child {
+  animation-name: listing-card-in;
+  animation-duration: 420ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes listing-card-out {
+  to {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes listing-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+}

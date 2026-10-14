@@ -3,7 +3,7 @@
   const r = financing.result;
   const amortization = financing.amortization;
 %>
-<div id="financing-block">
+<div id="financing-block"<% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %> hx-swap-oob="true"<% } %>>
   <div class="panel__head">
     <div>
       <p class="panel__eyebrow">Budget</p>
