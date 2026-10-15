@@ -6,6 +6,7 @@
  */
 
 import config from "../config.js";
+import { formatPhone, isPhoneComplete, phoneDigits } from "../lib/phone-format.js";
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -36,6 +37,14 @@ export function parseAmount(value, fallback) {
   return Math.round(n);
 }
 
+export function defaultProfileSettings() {
+  return {
+    firstName: "",
+    lastName: "",
+    phone: "",
+  };
+}
+
 export function defaultUserSettings() {
   return {
     financing: {
@@ -44,6 +53,39 @@ export function defaultUserSettings() {
       interestRate: config.financing.interestRate,
       insuranceRate: config.financing.insuranceRate,
     },
+    profile: defaultProfileSettings(),
+  };
+}
+
+/** Identité optionnelle du compte (préremplissage des documents plus tard). */
+export function userProfileSettings(settings = {}) {
+  const profile = settings.profile ?? {};
+  return {
+    firstName: String(profile.firstName ?? "").trim(),
+    lastName: String(profile.lastName ?? "").trim(),
+    phone: formatPhone(profile.phone ?? ""),
+  };
+}
+
+/** Lit le formulaire « Profil » des paramètres du compte. */
+export function readProfileForm(body) {
+  const firstName = String(body.first_name ?? "").trim().slice(0, 80);
+  const lastName = String(body.last_name ?? "").trim().slice(0, 80);
+  const phoneRaw = String(body.phone ?? "");
+  const digits = phoneDigits(phoneRaw);
+  let phone = "";
+  if (digits) {
+    phone = formatPhone(phoneRaw);
+    if (!isPhoneComplete(phone)) {
+      return {
+        profile: { firstName, lastName, phone },
+        error: "Le numéro de téléphone semble incomplet.",
+      };
+    }
+  }
+  return {
+    profile: { firstName, lastName, phone },
+    error: null,
   };
 }
 

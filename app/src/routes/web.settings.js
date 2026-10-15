@@ -10,6 +10,10 @@ import { hashPassword, verifyPassword } from "../services/password.service.js";
 import createAddressbookService from "../services/addressbook.service.js";
 import createTravelService from "../services/travel.service.js";
 import { logActivity } from "../lib/activity.js";
+import {
+  readProfileForm,
+  userProfileSettings,
+} from "../services/settings.service.js";
 
 export default function createSettingsRouter({ repositories, enrichment, logger }) {
   const router = express.Router();
@@ -18,19 +22,50 @@ export default function createSettingsRouter({ repositories, enrichment, logger 
 
   router.use("/settings", requireUser);
 
-  function render(req, res, extra = {}) {
-    return res.render("settings", {
+  function settingsViewData(req, extra = {}) {
+    return {
       title: "Paramètres",
       extensionSessions: repositories.extension.listSessions(req.user.id),
       listingCount: repositories.listings.countByUser(req.user.id),
       addresses: addressbook.list(req.user.id),
       travelEnabled: travel.configured(),
+      profile: userProfileSettings(req.user.settings),
       errors: [],
       ...extra,
-    });
+    };
+  }
+
+  function render(req, res, extra = {}) {
+    return res.render("settings", settingsViewData(req, extra));
   }
 
   router.get("/settings", (req, res) => render(req, res));
+
+  /* ----------------------------- Profil ----------------------------- */
+
+  router.post("/settings/profile", (req, res, next) => {
+    try {
+      const { profile, error } = readProfileForm(req.body);
+      if (error) {
+        return res.status(422).render("settings", {
+          ...settingsViewData(req, { errors: [error], profile }),
+        });
+      }
+
+      repositories.users.updateSettings(req.user.id, {
+        ...req.user.settings,
+        profile,
+      });
+      logActivity(logger, req, "profil du compte mis à jour");
+      req.session.flash = {
+        type: "success",
+        message: "Profil enregistré.",
+      };
+      return res.redirect("/settings");
+    } catch (err) {
+      return next(err);
+    }
+  });
 
   /**
    * Répond à une action sur le carnet d'adresses. En htmx, on ne renvoie que le
@@ -167,14 +202,7 @@ export default function createSettingsRouter({ repositories, enrichment, logger 
       }
 
       if (errors.length) {
-        return res.status(422).render("settings", {
-          title: "Paramètres",
-          extensionSessions: repositories.extension.listSessions(req.user.id),
-          listingCount: repositories.listings.countByUser(req.user.id),
-          addresses: addressbook.list(req.user.id),
-          travelEnabled: travel.configured(),
-          errors,
-        });
+        return res.status(422).render("settings", settingsViewData(req, { errors }));
       }
 
       repositories.users.updatePassword(

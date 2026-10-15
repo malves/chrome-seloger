@@ -117,10 +117,16 @@ export default function createApp(options = {}) {
   });
 
   // Modules de chiffrage et de cohérence partagés avec le navigateur (sans dépendance serveur).
-  for (const file of ["works-estimate.js", "works-coherence.js", "works-issues.js"]) {
+  for (const file of [
+    "works-estimate.js",
+    "works-coherence.js",
+    "works-issues.js",
+    "phone-format.js",
+  ]) {
     app.get(`/public/js/${file}`, (req, res) => {
       res.type("application/javascript");
-      res.sendFile(path.join(rootDir, "src/lib/works", file));
+      const libDir = file === "phone-format.js" ? "lib" : path.join("lib", "works");
+      res.sendFile(path.join(rootDir, "src", libDir, file));
     });
   }
 

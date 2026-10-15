@@ -22,8 +22,27 @@
       <button
         type="button"
         class="settings-menu__item is-active"
-        data-settings-tab="extension"
+        data-settings-tab="profile"
         aria-selected="true"
+      >
+        <span class="settings-menu__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M5 20c0-4 3.5-6 7-6s7 2 7 6" />
+          </svg>
+        </span>
+        <span class="settings-menu__text">
+          <span class="settings-menu__label">Profil</span>
+          <span class="settings-menu__hint">Nom et téléphone</span>
+        </span>
+        <span class="settings-menu__chevron" aria-hidden="true">›</span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-menu__item"
+        data-settings-tab="extension"
+        aria-selected="false"
       >
         <span class="settings-menu__icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -98,8 +117,84 @@
 
   <!-- -------------------------- Contenu droite ------------------------- -->
   <div class="settings-content">
+    <!-- ----------------------------- Profil --------------------------- -->
+    <section class="panel settings-panel is-active" data-settings-panel="profile">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Profil</p>
+          <h2 class="panel__title">Vos coordonnées</h2>
+        </div>
+      </div>
+
+      <p class="field__hint" style="margin-bottom: var(--space-4)">
+        Ces informations sont <strong>facultatives</strong>. Elles ne sont pas
+        affichées publiquement : elles serviront plus tard à préremplir vos
+        documents (offres, courriers, pièces à joindre) sans les ressaisir à
+        chaque fois.
+      </p>
+
+      <form class="form settings-profile-form" method="post" action="/settings/profile">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+        <div class="settings-profile-form__row">
+          <div class="field">
+            <label class="field__label" for="profile_first_name">
+              Prénom <span class="field__optional">(facultatif)</span>
+            </label>
+            <input
+              class="input"
+              type="text"
+              id="profile_first_name"
+              name="first_name"
+              autocomplete="given-name"
+              maxlength="80"
+              value="<%= profile.firstName %>"
+            />
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="profile_last_name">
+              Nom <span class="field__optional">(facultatif)</span>
+            </label>
+            <input
+              class="input"
+              type="text"
+              id="profile_last_name"
+              name="last_name"
+              autocomplete="family-name"
+              maxlength="80"
+              value="<%= profile.lastName %>"
+            />
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="profile_phone">
+            Téléphone <span class="field__optional">(facultatif)</span>
+          </label>
+          <input
+            class="input input--phone"
+            type="tel"
+            id="profile_phone"
+            name="phone"
+            inputmode="tel"
+            autocomplete="tel"
+            placeholder="06 12 34 56 78"
+            data-phone-input
+            value="<%= profile.phone %>"
+          />
+          <span class="field__hint">
+            Saisie au format français : les chiffres sont espacés automatiquement
+            (06…, +33… ou 00 33…).
+          </span>
+        </div>
+
+        <button class="btn btn--green" type="submit">Enregistrer</button>
+      </form>
+    </section>
+
     <!-- --------------------------- Extension -------------------------- -->
-    <section class="panel settings-panel is-active" data-settings-panel="extension">
+    <section class="panel settings-panel" data-settings-panel="extension" hidden>
       <div class="panel__head">
         <div>
           <p class="panel__eyebrow">Extension</p>

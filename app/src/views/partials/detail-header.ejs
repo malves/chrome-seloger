@@ -114,6 +114,18 @@
   </div>
 
   <div class="detail-head__reject">
+    <% if (listing.transaction_type !== 'rent' && listing.price) { %>
+      <button
+        type="button"
+        class="btn btn--green btn--sm offer-cta detail-head__offer-btn"
+        data-offer-open
+        title="Préparer une proposition d'achat à envoyer à l'agence ou au propriétaire"
+      >
+        <svg class="wi" aria-hidden="true"><use href="#wi-coins"></use></svg>
+        <span class="detail-head__offer-label-full">Rédaction de l'offre</span>
+        <span class="detail-head__offer-label-short">Rédaction</span>
+      </button>
+    <% } %>
     <form
       method="post"
       action="/listings/<%= listing.id %>"

@@ -265,6 +265,34 @@ test("le carnet se gère depuis la page Paramètres", async (t) => {
   assert.equal(repositories.addresses.listByUser(user.id).length, 0);
 });
 
+test("le profil se gère depuis la page Paramètres", async (t) => {
+  const { app, repositories, close } = createTestApp();
+  t.after(close);
+  await createUser(repositories, "profile@example.com");
+  const agent = await loginAgent(app, "profile@example.com");
+
+  const page = await agent.get("/settings").expect(200);
+  assert.match(page.text, /Vos coordonnées/);
+  assert.match(page.text, /facultatives/);
+  const csrf = extractCsrf(page.text);
+
+  await agent
+    .post("/settings/profile")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      first_name: "Jean",
+      last_name: "Martin",
+      phone: "0612345678",
+    })
+    .expect(302);
+
+  const user = repositories.users.findByEmail("profile@example.com");
+  assert.equal(user.settings.profile.firstName, "Jean");
+  assert.equal(user.settings.profile.lastName, "Martin");
+  assert.equal(user.settings.profile.phone, "06 12 34 56 78");
+});
+
 /* -------------------------------- API --------------------------------- */
 
 test("GET /api/v1/projects renvoie les adresses de référence", async (t) => {

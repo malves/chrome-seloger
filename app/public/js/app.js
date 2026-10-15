@@ -1246,6 +1246,25 @@
     });
   })();
 
+  // Champs téléphone : espacement progressif (voir phone-format.js).
+  (function initPhoneInputs() {
+    var inputs = document.querySelectorAll("[data-phone-input]");
+    if (!inputs.length) return;
+    import("/public/js/phone-format.js")
+      .then(function (mod) {
+        var formatPhone = mod.formatPhone;
+        inputs.forEach(function (input) {
+          function onInput() {
+            var formatted = formatPhone(input.value);
+            if (input.value !== formatted) input.value = formatted;
+          }
+          input.addEventListener("input", onInput);
+          if (input.value) onInput();
+        });
+      })
+      .catch(function () {});
+  })();
+
   // Admin HexaSmal : onglets Import / Explorer la base.
   (function initHexasmalSectionTabs() {
     var root = document.querySelector("[data-hexasmal-section-tabs]");

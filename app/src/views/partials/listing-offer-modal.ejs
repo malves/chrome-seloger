@@ -1,0 +1,153 @@
+<%
+  // Modale « Faire une offre » : coque statique, étapes rendues par offer-wizard.js.
+  // Toutes les données nécessaires sont déjà calculées côté serveur et injectées
+  // dans un bloc JSON ; le widget ne fait aucune écriture serveur.
+  function offerIcon(name) {
+    return '<svg class="wi" aria-hidden="true"><use href="#wi-' + name + '"></use></svg>';
+  }
+  var ws = typeof worksSummary !== "undefined" && worksSummary ? worksSummary : null;
+  var worksRange =
+    ws && !ws.unavailableReason && Number(ws.max) > 0
+      ? { min: ws.min, max: ws.max }
+      : null;
+  var fin = typeof financing !== "undefined" && financing ? financing : null;
+  var agency = listing.agency || {};
+  var pp = typeof pricePosition !== "undefined" && pricePosition ? pricePosition : null;
+  var ppRef = pp && pp.primary && Number(pp.primary.price_m2) > 0 ? pp.primary : null;
+  var market = ppRef
+    ? {
+        key: ppRef.key,
+        price_m2: Math.round(Number(ppRef.price_m2)),
+        estimate: Number(ppRef.estimate) || null,
+        meters: ppRef.meters || null,
+        count: ppRef.count || null,
+        type_plural: pp.type_plural || null,
+      }
+    : null;
+  var prof =
+    typeof user !== "undefined" && user && user.settings && user.settings.profile
+      ? user.settings.profile
+      : {};
+  var profileName = [String(prof.firstName || "").trim(), String(prof.lastName || "").trim()]
+    .filter(Boolean)
+    .join(" ");
+  var profilePhone = String(prof.phone || "").trim();
+  var offerData = {
+    listing: {
+      id: listing.id,
+      title: listing.title || null,
+      url: listing.url || null,
+      price: listing.price ?? null,
+      surface: listing.surface ?? null,
+      land_surface: listing.land_surface ?? null,
+      rooms: listing.rooms ?? null,
+      bedrooms: listing.bedrooms ?? null,
+      city: listing.city || null,
+      postal_code: listing.postal_code || null,
+      user_address:
+        listing.user_address && String(listing.user_address).trim()
+          ? String(listing.user_address).trim()
+          : null,
+      property_type: listing.property_type || null,
+      property_type_label: fmt.propertyTypeLabel(listing.property_type) || null,
+      is_new_build: Boolean(listing.is_new_build),
+      dpe: /^[A-G]$/i.test(String(listing.dpe || "").trim()) ? String(listing.dpe).trim().toUpperCase() : null,
+      ges: /^[A-G]$/i.test(String(listing.ges || "").trim()) ? String(listing.ges).trim().toUpperCase() : null,
+      agency: {
+        name: agency.name || null,
+        phone: agency.phone || null,
+        email: agency.email || null,
+      },
+    },
+    worksRange: worksRange,
+    market: market,
+    financing: fin
+      ? {
+          params: {
+            negotiatedPrice: Number(fin.params.negotiatedPrice) || 0,
+            works: Number(fin.params.works) || 0,
+            downPayment: Number(fin.params.downPayment) || 0,
+            years: Number(fin.params.years) || 0,
+            interestRate: Number(fin.params.interestRate) || 0,
+            insuranceRate: Number(fin.params.insuranceRate) || 0,
+          },
+          result: {
+            price: Number(fin.result.price) || 0,
+            notaryRate: Number(fin.result.notaryRate) || 0,
+            notaryFees: Number(fin.result.notaryFees) || 0,
+            agencyFees: Number(fin.result.agencyFees) || 0,
+            works: Number(fin.result.works) || 0,
+            totalCost: Number(fin.result.totalCost) || 0,
+            downPayment: Number(fin.result.downPayment) || 0,
+            guaranteeRate: Number(fin.result.guaranteeRate) || 0,
+            guaranteeFees: Number(fin.result.guaranteeFees) || 0,
+            loanAmount: Number(fin.result.loanAmount) || 0,
+            months: Number(fin.result.months) || 0,
+            totalMonthly: Number(fin.result.totalMonthly) || 0,
+            creditCost: Number(fin.result.creditCost) || 0,
+            minimumIncome: Number(fin.result.minimumIncome) || 0,
+          },
+          agencyFeesIncluded: !(agency && agency.fees_included === false),
+        }
+      : null,
+    user: {
+      email: (typeof user !== "undefined" && user && user.email) || null,
+      profileName: profileName || null,
+      profilePhone: profilePhone || null,
+    },
+  };
+%>
+<div
+  class="modal offer-modal"
+  id="offer-modal"
+  hidden
+  data-offer-modal
+>
+  <div class="modal__overlay" data-offer-dismiss></div>
+  <div
+    class="modal__dialog offer-modal__dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="offer-modal-title"
+    aria-describedby="offer-modal-lead"
+  >
+    <header class="offer-modal__header">
+      <div class="offer-modal__heading">
+        <h2 class="offer-modal__title" id="offer-modal-title">Rédaction de l'offre</h2>
+        <p class="offer-modal__lead" id="offer-modal-lead">
+          Quelques étapes guidées pour rédiger votre proposition d'achat, sans mauvaise surprise juridique.
+        </p>
+      </div>
+      <button type="button" class="modal__close" data-offer-dismiss aria-label="Fermer">
+        <%- offerIcon("close") %>
+      </button>
+    </header>
+
+    <nav class="offer-steps" data-offer-steps aria-label="Étapes de l'offre"></nav>
+
+    <div class="offer-modal__body" data-offer-body></div>
+
+    <footer class="offer-modal__footer">
+      <button type="button" class="btn btn--ghost btn--sm" data-offer-prev hidden>
+        <%- offerIcon("chevron-left") %>
+        Précédent
+      </button>
+      <div class="offer-modal__footer-right">
+        <button type="button" class="btn btn--ghost btn--sm" data-offer-skip hidden>Ignorer</button>
+        <button type="button" class="btn btn--green btn--sm" data-offer-next>
+          Continuer
+          <%- offerIcon("chevron-right") %>
+        </button>
+        <button type="button" class="btn btn--ghost btn--sm" data-offer-close hidden>
+          Fermer
+        </button>
+      </div>
+    </footer>
+
+    <div class="offer-toast" data-offer-toast hidden role="status"></div>
+  </div>
+
+  <script type="application/json" data-offer-data>
+    <%- JSON.stringify(offerData).replace(/</g, "\\u003c") %>
+  </script>
+</div>

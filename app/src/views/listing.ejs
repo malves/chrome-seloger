@@ -219,6 +219,16 @@
     }) %>
   <% } %>
 
+  <!-- Assistant « Faire une offre » : génère un email de proposition d'achat -->
+  <% if (listing.transaction_type !== 'rent' && listing.price) { %>
+    <%- include("partials/listing-offer-modal", {
+      listing: listing,
+      financing: typeof financing !== 'undefined' ? financing : null,
+      worksSummary: typeof worksSummary !== 'undefined' ? worksSummary : null,
+      pricePosition: typeof offerPricePosition !== 'undefined' ? offerPricePosition : null,
+    }) %>
+  <% } %>
+
   <%- include("partials/listing-extension-panel", {
     listing: listing,
     displayData: typeof displayData !== "undefined" ? displayData : null,

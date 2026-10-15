@@ -614,6 +614,14 @@ export default function createListingsRouter({ repositories, enrichment, logger 
 
       const userAddressMapsHrefValue = await userAddressMapsHref(listing);
 
+      const offerPricePosition =
+        listing.transaction_type !== "rent" && listing.price
+          ? enrichment.pricePositionFor(
+              listing,
+              worksOptionsFor(listing, res.locals.fmt, { financing, worksSummary })
+            ).position
+          : null;
+
       const accountProjects = projectsService.list(req.user.id);
       maybeScheduleListingTravel(listing, req.user.id);
       const extensionPanel = extensionPanelLocals(listing, req.user.id);
@@ -628,7 +636,12 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         photoAnalysis: photoAnalysisForListing(listing, photos, linkedDpeInsights),
         photoLabels,
         worksSummary,
-        scripts: photos.length ? ["/public/js/works-planner.js"] : [],
+        scripts: [
+          ...(photos.length ? ["/public/js/works-planner.js"] : []),
+          ...(listing.transaction_type !== "rent" && listing.price
+            ? ["/public/js/offer-wizard.js"]
+            : []),
+        ],
         priceHistory: repositories.listings.listPriceHistory(listing.id),
         // Le financement a son propre bloc ; les autres providers sont groupés
         // par vocation d'affichage (territoire vs analyse de marché), pas par
@@ -637,6 +650,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         otherProviders,
         enrichmentPoll,
         financing,
+        offerPricePosition,
         projects: accountProjects,
         ...extensionPanel,
       });
