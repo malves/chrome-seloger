@@ -30,7 +30,7 @@
   const hasEnergyData = listing.dpe || listing.ges;
 %>
 
-<div class="detail">
+<div class="detail<%= listing.status === 'rejected' ? ' detail--rejected' : '' %>">
   <!-- 1. En-tête + barre de suivi (swapés ensemble quand le statut change) -->
   <%- include("partials/listing-lead", { listing: listing, projects: projects }) %>
 

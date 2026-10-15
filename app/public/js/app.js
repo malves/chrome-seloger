@@ -650,8 +650,27 @@
 
   // Carnet d'adresses : le retour inline (succès / erreur) s'efface tout seul
   // après quelques secondes, pour ne pas encombrer le panneau.
+  function syncListingRejectedPanels(leadEl) {
+    var lead =
+      leadEl && leadEl.id === "listing-lead"
+        ? leadEl
+        : document.getElementById("listing-lead");
+    if (!lead) return;
+    var detail = lead.closest(".detail");
+    if (!detail) return;
+    detail.classList.toggle(
+      "detail--rejected",
+      lead.getAttribute("data-listing-rejected") === "1"
+    );
+  }
+
+  syncListingRejectedPanels();
+
   document.body.addEventListener("htmx:afterSwap", function (event) {
     var target = event.target;
+    if (target && target.id === "listing-lead") {
+      syncListingRejectedPanels(target);
+    }
     if (!target || !target.querySelector) return;
     var flash = target.querySelector("[data-address-flash]");
     if (!flash) return;

@@ -361,8 +361,12 @@ withApp("écartée mémorise et affiche la progression du parcours", async (ctx)
   assert.equal(row.status_progress, "visited");
 
   assert.match(rejected.text, /status-pipe is-rejected/);
+  assert.match(rejected.text, /data-listing-rejected="1"/);
   assert.match(rejected.text, /status-pipe__step is-done/);
   assert.match(rejected.text, /M6\.5 12\.5 10 16l7\.5-8/);
+
+  const rejectedPage = await agent.get(`/listings/${id}`).expect(200);
+  assert.match(rejectedPage.text, /detail detail--rejected/);
 
   csrf = extractCsrf(rejected.text);
   const restored = await agent
@@ -376,6 +380,7 @@ withApp("écartée mémorise et affiche la progression du parcours", async (ctx)
   assert.equal(back.status, "visited");
   assert.equal(back.status_progress, null);
   assert.doesNotMatch(restored.text, /status-pipe is-rejected/);
+  assert.match(restored.text, /data-listing-rejected="0"/);
   assert.match(restored.text, /aria-current="step"/);
 });
 

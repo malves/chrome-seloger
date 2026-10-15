@@ -231,6 +231,25 @@
     return stored ? String(stored).trim() : "";
   }
 
+  /** « au 42 rue …, à Suresnes » pour l’intro de l’email (ville sans code postal). */
+  function propertyVisitIntroLocation() {
+    var card = document.querySelector("[data-listing-address-open]");
+    if (card) {
+      var street = String(card.getAttribute("data-street") || "").trim();
+      var complement = String(card.getAttribute("data-complement") || "").trim();
+      var city = String(card.getAttribute("data-city") || "").trim();
+      var line = [street, complement].filter(Boolean).join(", ");
+      if (line && city) return "au " + line + ", \u00e0 " + city;
+      if (line) return "au " + line;
+      if (city) return "\u00e0 " + city;
+    }
+    var full = propertyAddressLine();
+    if (!full) return "\u00e0 [adresse]";
+    var m = full.match(/^(.+?),\s*(?:\d{5}\s*)?(.+)$/);
+    if (m) return "au " + m[1].trim() + ", \u00e0 " + m[2].trim();
+    return "\u00e0 " + full;
+  }
+
   function esc(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -387,6 +406,7 @@
       docs: true,
     },
     emailEdited: false,
+    emailEditing: false,
     emailText: "",
     lastFocus: null,
   };
@@ -462,7 +482,8 @@
     );
   }
 
-  function stepHead(eyebrow, title, lead) {
+  function stepHead(eyebrow, title, lead, leadBlock) {
+    var leadHtml = leadBlock || (lead ? '<p class="offer-view__lead">' + lead + "</p>" : "");
     return (
       '<div class="offer-view__head">' +
       '<p class="offer-view__eyebrow">' +
@@ -471,7 +492,7 @@
       '<h3 class="offer-view__title">' +
       esc(title) +
       "</h3>" +
-      (lead ? '<p class="offer-view__lead">' + lead + "</p>" : "") +
+      leadHtml +
       "</div>"
     );
   }
@@ -614,9 +635,10 @@
         "Vos coordonn\u00e9es",
         "Elles personnalisent l'email et permettent \u00e0 l'agence de vous recontacter. Vous pouvez ignorer cette \u00e9tape\u00a0: des champs \u00e0 compl\u00e9ter resteront dans l'email."
       ) +
-      '<div class="offer-card' +
+      '<div class="offer-card offer-amounts-fields' +
       (disabled ? " is-disabled" : "") +
       '" data-offer-identity>' +
+      '<div class="offer-amounts-fields__row">' +
       field(
         "Nom et pr\u00e9nom",
         '<input class="input" type="text" autocomplete="name" data-offer-field="buyer.name" value="' +
@@ -633,6 +655,8 @@
           (disabled ? " disabled" : "") +
           ' placeholder="vous@exemple.fr" />'
       ) +
+      "</div>" +
+      '<div class="offer-amounts-fields__row">' +
       field(
         "T\u00e9l\u00e9phone",
         '<input class="input" type="tel" autocomplete="tel" data-offer-field="buyer.phone" value="' +
@@ -641,6 +665,7 @@
           (disabled ? " disabled" : "") +
           ' placeholder="06\u00a0\u2026" />'
       ) +
+      "</div>" +
       "</div>" +
       (disabled
         ? '<p class="offer-view__note offer-view__note--warn">' +
@@ -652,7 +677,18 @@
     );
   }
 
-  function clauseToggle(key, title, desc) {
+  function clauseHelp(tooltip, ariaLabel) {
+    if (!tooltip) return "";
+    return (
+      '<button type="button" class="offer-clause__help" data-tooltip="' +
+      esc(tooltip) +
+      '" tabindex="0" aria-label="' +
+      esc(ariaLabel || "En savoir plus") +
+      '"><span class="offer-clause__help-mark" aria-hidden="true">?</span></button>'
+    );
+  }
+
+  function clauseToggle(key, title, shortDesc, longHelp) {
     var on = S.clauses[key];
     return (
       '<label class="offer-clause' +
@@ -664,19 +700,21 @@
       (on ? " checked" : "") +
       ' class="offer-clause__check" />' +
       '<span class="offer-clause__body">' +
+      '<span class="offer-clause__head">' +
       '<span class="offer-clause__title">' +
       esc(title) +
       "</span>" +
+      clauseHelp(longHelp, "D\u00e9tail\u00a0: " + title) +
+      "</span>" +
       '<span class="offer-clause__desc">' +
-      desc +
+      shortDesc +
       "</span></span></label>"
     );
   }
 
   function unitInput(name, value, unit, aria, opts) {
     opts = opts || {};
-    return (
-      '<span class="offer-amount">' +
+    var input =
       '<input class="input offer-amount__input" type="text" inputmode="' +
       (opts.decimal ? "decimal" : "numeric") +
       '" autocomplete="off" data-offer-field="' +
@@ -685,8 +723,48 @@
       esc(value) +
       '" aria-label="' +
       esc(aria) +
-      '" />' +
-      '<span class="offer-amount__unit">' +
+      '"';
+    if (opts.stepper) {
+      input +=
+        ' data-step="' +
+        esc(String(opts.step == null ? 1 : opts.step)) +
+        '" data-min="' +
+        esc(String(opts.min == null ? 0 : opts.min)) +
+        '"';
+      if (opts.max != null) {
+        input += ' data-max="' + esc(String(opts.max)) + '"';
+      }
+      input +=
+        ' data-decimals="' +
+        esc(String(opts.decimals == null ? 0 : opts.decimals)) +
+        '"';
+    }
+    input += " />";
+
+    if (!opts.stepper) {
+      return (
+        '<span class="offer-amount">' +
+        input +
+        '<span class="offer-amount__unit">' +
+        unit +
+        "</span></span>"
+      );
+    }
+
+    var stepLabel = opts.stepperLabel || aria;
+    return (
+      '<span class="offer-amount offer-amount--stepper">' +
+      '<span class="amount-stepper">' +
+      input +
+      '<span class="amount-stepper__controls">' +
+      '<button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter ' +
+      esc(stepLabel) +
+      '"></button>' +
+      '<button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer ' +
+      esc(stepLabel) +
+      '"></button>' +
+      "</span></span>" +
+      '<span class="offer-amount__unit offer-amount__unit--after-stepper">' +
       unit +
       "</span></span>"
     );
@@ -716,9 +794,34 @@
     return "DPE conforme \u00e0 l'annonce (" + parts.join(", ") + ")";
   }
 
+  function docsClauseTexts(copro) {
+    var hint = dpeLabelsHint();
+    var title = copro ? "DPE, copropri\u00e9t\u00e9 et travaux vot\u00e9s" : "DPE annonc\u00e9";
+    var shortDesc = copro
+      ? "DPE, situation de copropri\u00e9t\u00e9 et plafond sur les travaux vot\u00e9s."
+      : "Classes \u00e9nergie et climat au moins \u00e9gales \u00e0 l'annonce.";
+    var longParts = [];
+    if (hint) longParts.push(hint);
+    if (copro) {
+      longParts.push(
+        (hint ? "Absence" : "Absence") +
+          " de proc\u00e9dure en cours, quote-part travaux vot\u00e9s plafonn\u00e9e \u00e0 " +
+          euro(OFFER_COPRO_WORKS_QUOTE_CAP) +
+          " (appels de fonds post-vente \u00e0 la charge du vendeur)."
+      );
+    }
+    return {
+      title: title,
+      shortDesc: shortDesc,
+      longHelp: longParts.join(" "),
+    };
+  }
+
   function renderConditions() {
     var hasSurface = Boolean(DATA.listing.surface);
     var copro = isApartment();
+    var docs = copro || dpeLabelsHint() ? docsClauseTexts(copro) : null;
+    var surface = DATA.listing.surface;
 
     return (
       '<div class="offer-view" data-step-anim>' +
@@ -730,7 +833,14 @@
       '<div class="offer-card">' +
       field(
         "Validit\u00e9 de l'offre",
-        unitInput("validityDays", S.validityDays, "jours", "Dur\u00e9e de validit\u00e9 en jours"),
+        unitInput("validityDays", S.validityDays, "jours", "Dur\u00e9e de validit\u00e9 en jours", {
+          stepper: true,
+          step: 1,
+          min: 1,
+          max: 90,
+          decimals: 0,
+          stepperLabel: "la dur\u00e9e de validit\u00e9 d'un jour",
+        }),
         '<span data-offer-validity-hint>Jusqu\'au <strong>' +
           esc(validityDate()) +
           "</strong> \u00e0 " +
@@ -747,30 +857,22 @@
         ? clauseToggle(
             "loan",
             "Condition suspensive de pr\u00eat",
-            "Montant \u00e0 emprunter (r\u00e9capitulatif), dur\u00e9e et taux maximal\u00a0: ceux de l'\u00e9tape Montants."
+            "Montant, dur\u00e9e et taux max. repris de l\u2019\u00e9tape Montants.",
+            "L\u2019offre reste sans effet si le pr\u00eat n\u2019est pas accord\u00e9 dans les conditions indiqu\u00e9es (montant \u00e0 emprunter issu du r\u00e9capitulatif, dur\u00e9e et taux maximal fix\u00e9s \u00e0 l\u2019\u00e9tape Montants)."
           )
         : "") +
       (hasSurface
         ? clauseToggle(
             "surface",
             "Surface d\u00e9terminante",
-            "Surface habitable de " +
-              fmtNumber(DATA.listing.surface) +
-              " m\u00b2, confirm\u00e9e par un professionnel, sans tol\u00e9rance \u00e0 la baisse."
+            "Au moins " + fmtNumber(surface) + " m\u00b2 habitables, mesur\u00e9s par un professionnel.",
+            "Surface de r\u00e9f\u00e9rence du DPE valide d'au moins " +
+              fmtNumber(surface) +
+              " m\u00b2, sans tol\u00e9rance \u00e0 la baisse."
           )
         : "") +
-      (copro || dpeLabelsHint()
-        ? clauseToggle(
-            "docs",
-            copro ? "DPE, copropri\u00e9t\u00e9 et travaux vot\u00e9s" : "DPE annonc\u00e9",
-            (dpeLabelsHint() ? dpeLabelsHint() + (copro ? ", " : ".") : "") +
-              (copro
-                ? (dpeLabelsHint() ? "absence" : "Absence") +
-                  " de proc\u00e9dure en cours, quote-part travaux vot\u00e9s plafonn\u00e9e \u00e0 " +
-                  euro(OFFER_COPRO_WORKS_QUOTE_CAP) +
-                  " (appels de fonds post-vente \u00e0 la charge du vendeur)."
-                : "")
-          )
+      (docs
+        ? clauseToggle("docs", docs.title, docs.shortDesc, docs.longHelp)
         : "") +
       "</div>" +
       '<p class="offer-view__note">' +
@@ -781,40 +883,89 @@
     );
   }
 
+  function formatEmailPreviewHtml(text) {
+    var lines = String(text || "").split("\n");
+    var chunks = [];
+    var inList = false;
+    lines.forEach(function (line) {
+      var trimmed = line.trim();
+      if (trimmed.indexOf("- ") === 0) {
+        if (!inList) {
+          chunks.push('<ul class="offer-email__list">');
+          inList = true;
+        }
+        chunks.push("<li>" + esc(trimmed.slice(2)) + "</li>");
+        return;
+      }
+      if (inList) {
+        chunks.push("</ul>");
+        inList = false;
+      }
+      if (!trimmed) {
+        chunks.push('<div class="offer-email__spacer" aria-hidden="true"></div>');
+        return;
+      }
+      chunks.push('<p class="offer-email__para">' + esc(line) + "</p>");
+    });
+    if (inList) chunks.push("</ul>");
+    return chunks.join("");
+  }
+
   function renderEmail() {
     if (!S.emailEdited) S.emailText = buildEmail();
     var subject = emailSubject();
+    var editing = S.emailEditing;
+    var bodyBlock = editing
+      ? '<div class="offer-email__editor">' +
+        '<textarea class="textarea offer-email__text" data-offer-field="emailText" rows="14" aria-label="Texte de l\'email">' +
+        esc(S.emailText) +
+        "</textarea>" +
+        '<p class="offer-email__editor-hint">Modifiez le texte librement, puis cliquez sur <strong>Terminer</strong>.</p>' +
+        "</div>"
+      : '<div class="offer-email__preview" data-offer-email-preview tabindex="0" role="article" aria-label="Aper\u00e7u de l\'email">' +
+        formatEmailPreviewHtml(S.emailText) +
+        '<p class="offer-email__preview-hint">' +
+        icon("pencil") +
+        " Double-cliquez pour modifier</p>" +
+        "</div>";
+    var editControl = editing
+      ? '<button type="button" class="offer-email__edit-btn offer-email__edit-btn--done" data-offer-action="done-edit-email">' +
+        icon("check") +
+        "<span>Terminer</span></button>"
+      : '<button type="button" class="offer-email__edit-btn" data-offer-action="edit-email" aria-label="Modifier le texte">' +
+        icon("pencil") +
+        "</button>";
+    var letterTools =
+      '<div class="offer-email__letter-tools">' +
+      '<button type="button" class="btn btn--ghost btn--sm" data-offer-action="copy">' +
+      icon("copy") +
+      " Copier</button>" +
+      editControl +
+      "</div>";
     return (
       '<div class="offer-view offer-view--email" data-step-anim>' +
       stepHead(
         "\u00c9tape 4",
         "Votre email est pr\u00eat",
-        "Relisez-le, ajustez si besoin, puis copiez-le ou ouvrez-le dans votre messagerie."
+        null,
+        '<p class="offer-view__note offer-view__note--warn">' +
+          icon("alert") +
+          " Cet email est une proposition et non un avis juridique. Une offre accept\u00e9e peut vous engager." +
+          "</p>"
       ) +
-      '<div class="offer-email">' +
-      '<div class="offer-email__subject"><span class="offer-field__label">Objet</span><span>' +
+      '<div class="offer-email offer-email--' +
+      (editing ? "editing" : "preview") +
+      '">' +
+      '<div class="offer-email__letter">' +
+      '<div class="offer-email__letter-head">' +
+      '<div class="offer-email__subject">' +
+      '<span class="offer-email__subject-text">' +
       esc(subject) +
       "</span></div>" +
-      '<textarea class="textarea offer-email__text" data-offer-field="emailText" rows="16" aria-label="Texte de l\'email">' +
-      esc(S.emailText) +
-      "</textarea>" +
+      letterTools +
       "</div>" +
-      '<div class="offer-email__actions">' +
-      '<button type="button" class="btn btn--ghost btn--sm" data-offer-action="reset-email">' +
-      icon("reset") +
-      " R\u00e9initialiser</button>" +
-      '<div class="offer-email__actions-right">' +
-      '<button type="button" class="btn btn--ghost btn--sm" data-offer-action="copy">' +
-      icon("copy") +
-      " Copier</button>" +
-      '<button type="button" class="btn btn--green btn--sm" data-offer-action="mailto">' +
-      icon("message") +
-      " Ouvrir dans ma messagerie</button>" +
+      bodyBlock +
       "</div></div>" +
-      '<p class="offer-view__note offer-view__note--warn">' +
-      icon("alert") +
-      " R\u00e9daction de travail, pas un avis juridique. Une offre accept\u00e9e sans r\u00e9serve peut vous engager\u00a0: faites valider par le notaire la formulation de la condition de surface et compl\u00e9tez les champs entre crochets avant l'envoi." +
-      "</p>" +
       "</div>"
     );
   }
@@ -845,16 +996,6 @@
     return "[adresse]";
   }
 
-  function propertyLocationInline() {
-    var addr = propertyAddressLine();
-    if (addr) return addr;
-    var l = DATA.listing;
-    if (l.city) {
-      return l.city + (l.postal_code ? " (" + l.postal_code + ")" : "");
-    }
-    return "[adresse]";
-  }
-
   function emailSubject() {
     return (
       "Offre d'achat sous conditions \u2013 " +
@@ -862,11 +1003,6 @@
       " situ\u00e9 \u00e0 " +
       propertyLocationForSubject()
     );
-  }
-
-  function buyerValue(key, placeholder) {
-    var v = S.identitySkipped ? "" : String(S.buyer[key] || "").trim();
-    return v || placeholder;
   }
 
   /** « D ou mieux » ; « G » seul (rien de pire). */
@@ -880,107 +1016,15 @@
     var ges = DATA.listing.ges;
     if (!dpe && !ges) return null;
     var parts = [];
-    if (dpe) parts.push(classAtLeast(dpe) + " en classe \u00e9nergie");
-    if (ges) parts.push(classAtLeast(ges) + " en classe climat");
+    if (dpe) parts.push(classAtLeast(dpe) + " en \u00e9nergie");
+    if (ges) parts.push(classAtLeast(ges) + " en climat");
     return (
-      "le DPE valide confirme " +
+      "Le DPE valide devra confirmer " +
       (parts.length > 1 ? "les classes annonc\u00e9es" : "la classe annonc\u00e9e") +
-      " et classe le logement " +
-      parts.join(" et ")
+      " : " +
+      parts.join(" et ") +
+      "."
     );
-  }
-
-  /** Écart sous lequel l'offre est considérée « au prix » : aucune justification. */
-  var PRICE_JUSTIFY_MIN_GAP = 0.01;
-  /** Au-delà, la baisse est jugée significative et le ton plus explicatif. */
-  var PRICE_JUSTIFY_STRONG_GAP = 0.07;
-
-  function marketScopePhrase(m) {
-    var what = m.type_plural || "biens";
-    var ofWhat = /^[aeiouh]/i.test(what) ? "d'" + what : "de " + what;
-    if (m.key === "radius") {
-      return (
-        "les ventes " +
-        ofWhat +
-        " comparables enregistr\u00e9es dans la base DVF" +
-        (m.meters ? " \u00e0 moins de " + fmtNumber(m.meters) + " m du bien" : " autour du bien")
-      );
-    }
-    if (m.key === "quartier") {
-      return "les prix de vente des " + what + " du quartier (base DVF)";
-    }
-    return "les prix de vente des " + what + " de la commune (base DVF)";
-  }
-
-  /**
-   * Paragraphe de négociation sous le prix : travaux et référence DVF, sur un
-   * ton mesuré. Vide si l'offre est au prix (ou au-dessus).
-   */
-  function priceJustification() {
-    var l = DATA.listing;
-    var listed = Number(l.price) || 0;
-    if (!(listed > 0) || !(S.offerPrice > 0)) return "";
-    var gap = (listed - S.offerPrice) / listed;
-    if (gap < PRICE_JUSTIFY_MIN_GAP) return "";
-
-    var strong = gap >= PRICE_JUSTIFY_STRONG_GAP;
-    var surface = Number(l.surface) || 0;
-    var m = DATA.market;
-    var listedM2 = surface > 0 ? listed / surface : 0;
-    var marketLower = Boolean(m && m.price_m2 > 0 && listedM2 > 0 && m.price_m2 < listedM2);
-    var marketEstimate = marketLower && surface > 0 ? roundCost(m.price_m2 * surface) : 0;
-    var hasWorks = S.works > 0;
-
-    var parts = [];
-    parts.push(
-      strong
-        ? "Je mesure que ce montant s'\u00e9carte du prix affich\u00e9, et je tiens \u00e0 vous en expliquer les raisons en toute transparence, sans rien enlever aux qualit\u00e9s du bien, qui nous a beaucoup plu."
-        : "Le bien nous a beaucoup plu, et ma proposition, l\u00e9g\u00e8rement en de\u00e7\u00e0 du prix affich\u00e9, tient compte de quelques \u00e9l\u00e9ments que je pr\u00e9f\u00e8re vous exposer simplement."
-    );
-
-    if (hasWorks) {
-      parts.push(
-        (marketLower ? "D'une part, l" : "L") +
-          "e logement n\u00e9cessite des travaux de r\u00e9novation que j'estime, \u00e0 ce stade, \u00e0 environ " +
-          euro(S.works) +
-          "\u00a0; c'est un budget important que je dois int\u00e9grer \u00e0 mon projet d\u00e8s aujourd'hui."
-      );
-    }
-
-    if (marketLower) {
-      parts.push(
-        (hasWorks ? "D'autre part, " : "En effet, ") +
-          marketScopePhrase(m) +
-          " font ressortir un prix m\u00e9dian d'environ " +
-          fmtNumber(m.price_m2) +
-          "\u00a0\u20ac/m\u00b2" +
-          (marketEstimate
-            ? ", soit de l'ordre de " + euro(marketEstimate) + " pour " + fmtNumber(surface) + "\u00a0m\u00b2"
-            : "") +
-          ", contre " +
-          fmtNumber(Math.round(listedM2)) +
-          "\u00a0\u20ac/m\u00b2 pour le prix affich\u00e9."
-      );
-      if (hasWorks && marketEstimate && S.offerPrice + S.works <= marketEstimate * 1.05) {
-        parts.push(
-          "Travaux compris, mon offre me para\u00eet ainsi coh\u00e9rente avec la valeur constat\u00e9e sur le secteur."
-        );
-      }
-    }
-
-    if (!hasWorks && !marketLower) {
-      parts.push(
-        "Ce montant correspond au budget global que je peux raisonnablement consacrer \u00e0 cette acquisition, frais compris."
-      );
-    }
-
-    parts.push(
-      strong
-        ? "J'esp\u00e8re que vous et le vendeur y verrez une proposition r\u00e9fl\u00e9chie et s\u00e9rieuse, et je reste bien s\u00fbr ouvert \u00e0 en \u00e9changer."
-        : "Je reste naturellement ouvert \u00e0 en \u00e9changer avec vous."
-    );
-
-    return parts.join(" ");
   }
 
   function buildEmail() {
@@ -990,60 +1034,63 @@
     var surfaceOn = S.clauses.surface && l.surface;
     var loanOn = S.clauses.loan;
     var loanCap = loanAmountForEmail();
-
-    lines.push("Madame, Monsieur,");
-    lines.push("");
-    lines.push(
-      "Je vous propose d'acqu\u00e9rir " +
-        propertyWithArticle() +
-        " que nous avons visit\u00e9, situ\u00e9 " +
-        propertyLocationInline() +
-        ", au prix de " +
-        euro(S.offerPrice) +
-        "."
-    );
-    lines.push("");
-    var justification = priceJustification();
-    if (justification) {
-      lines.push(justification);
-      lines.push("");
+    var intro =
+      "Apr\u00e8s la visite de " +
+      propertyWithArticle() +
+      " situ\u00e9 " +
+      propertyVisitIntroLocation() +
+      ", je vous propose de l'acheter au prix de " +
+      euro(S.offerPrice) +
+      ". Le logement nous a beaucoup plu.";
+    if (S.works > 0) {
+      intro +=
+        " Mon offre tient compte des travaux de r\u00e9novation, que j'estime pour l'instant \u00e0 environ " +
+        euro(S.works) +
+        ".";
     }
 
+    lines.push("Bonjour,");
+    lines.push("");
+    lines.push(intro);
+    lines.push("");
+
+    var bullets = [];
     if (surfaceOn) {
-      lines.push(
-        "Mon offre est fond\u00e9e sur une surface habitable de " +
+      bullets.push(
+        "La surface de r\u00e9f\u00e9rence indiqu\u00e9e dans le DPE valide devra \u00eatre d'au moins " +
           fmtNumber(l.surface) +
-          " m\u00b2, qui constitue une condition d\u00e9terminante\u00a0: un mesurage effectu\u00e9 par un professionnel devra confirmer une surface d'au moins " +
-          fmtNumber(l.surface) +
-          " m\u00b2, sans tol\u00e9rance \u00e0 la baisse. \u00c0 d\u00e9faut, mon engagement deviendra caduc sans indemnit\u00e9."
+          " m\u00b2. Ce point est d\u00e9terminant pour mon offre : je n'accepte aucune tol\u00e9rance \u00e0 la baisse."
       );
-      lines.push("");
     }
-
     var dpeCondition = dpeConditionText();
-    if (S.clauses.docs && (dpeCondition || copro)) {
-      lines.push("Mon offre est \u00e9galement soumise aux conditions suivantes\u00a0:");
-      if (dpeCondition) lines.push("- " + dpeCondition + "\u00a0;");
+    if (S.clauses.docs) {
+      if (dpeCondition) bullets.push(dpeCondition);
       if (copro) {
-        lines.push(
-          "- aucune proc\u00e9dure judiciaire n'est en cours concernant le syndicat des copropri\u00e9taires ou une d\u00e9cision d'assembl\u00e9e g\u00e9n\u00e9rale\u00a0;"
+        bullets.push(
+          "Aucune proc\u00e9dure judiciaire ne devra \u00eatre en cours concernant le syndicat des copropri\u00e9taires ou une d\u00e9cision d'assembl\u00e9e g\u00e9n\u00e9rale."
         );
-        lines.push(
-          "- aucun travail vot\u00e9 ou mentionn\u00e9 comme projet dans les proc\u00e8s-verbaux des assembl\u00e9es g\u00e9n\u00e9rales des trois derni\u00e8res ann\u00e9es, le plan pluriannuel de travaux ou un devis communiqu\u00e9 n'entra\u00eene pour moi une quote-part sup\u00e9rieure \u00e0 " +
+        bullets.push(
+          "Les travaux vot\u00e9s ou mentionn\u00e9s comme projets dans les proc\u00e8s-verbaux des assembl\u00e9es g\u00e9n\u00e9rales des trois derni\u00e8res ann\u00e9es, le plan pluriannuel de travaux ou les devis communiqu\u00e9s ne devront pas entra\u00eener une quote-part sup\u00e9rieure \u00e0 " +
             euro(OFFER_COPRO_WORKS_QUOTE_CAP) +
-            ". La quote-part inclura les appels de fonds exigibles apr\u00e8s la vente\u00a0; ceux-ci seront pris en charge par le vendeur, selon une stipulation expresse dans l'acte de vente."
+            " \u00e0 ma charge. Les appels de fonds exigibles apr\u00e8s la vente pour ces travaux resteront \u00e0 la charge du vendeur, comme indiqu\u00e9 dans l'acte de vente."
         );
       }
+    }
+    if (bullets.length) {
+      lines.push("Voici les conditions importantes pour moi :");
+      bullets.forEach(function (item) {
+        lines.push("- " + item);
+      });
       lines.push("");
     }
 
     if (loanOn) {
       lines.push(
-        "Pour financer l'acquisition, je pr\u00e9vois un apport personnel de " +
+        "Pour financer l'achat, je pr\u00e9vois un apport personnel de " +
           (S.downPayment > 0 ? euro(S.downPayment) : "[XXX \u20ac]") +
           " et un pr\u00eat de " +
           (loanCap > 0 ? euro(loanCap) : "[XXX \u20ac]") +
-          ", sur " +
+          " sur " +
           (S.loanYears > 0 ? S.loanYears : "[dur\u00e9e]") +
           " ans, \u00e0 un taux nominal maximal de " +
           (S.loanRateMax > 0 ? fmtDecimal(S.loanRateMax, 2) : "[XX %]") +
@@ -1053,17 +1100,14 @@
     }
 
     lines.push(
-      "La pr\u00e9sente offre est valable jusqu'au " +
+      "Cette offre est valable jusqu'au " +
         validityDate() +
         " \u00e0 " +
         OFFER_ACCEPTANCE_DEADLINE_HOUR +
-        ". Elle devra \u00eatre accept\u00e9e par \u00e9crit, sans r\u00e9serve et avec l'ensemble de ces conditions, avant cette \u00e9ch\u00e9ance."
+        ". Merci de me confirmer par \u00e9crit si le vendeur accepte l'offre et l'ensemble de ces conditions."
     );
     lines.push("");
     lines.push("Cordialement,");
-    lines.push("");
-    lines.push(buyerValue("name", "[Nom, pr\u00e9nom]"));
-    lines.push(buyerValue("phone", "[T\u00e9l\u00e9phone]"));
 
     return lines.join("\n");
   }
@@ -1146,6 +1190,14 @@
     if (firstInput && def.id !== "email") {
       firstInput.focus({ preventScroll: true });
     }
+    if (def.id === "email" && S.emailEditing) {
+      var emailField = body.querySelector('[data-offer-field="emailText"]');
+      if (emailField) {
+        emailField.focus({ preventScroll: true });
+        var len = emailField.value.length;
+        emailField.setSelectionRange(len, len);
+      }
+    }
     body.scrollTop = 0;
   }
 
@@ -1167,6 +1219,7 @@
   function goTo(index) {
     if (index < 0 || index >= STEPS.length) return;
     if (index > S.step) return; // on ne saute pas en avant via l'indicateur
+    if (STEPS[S.step].id === "email" && index !== S.step) S.emailEditing = false;
     S.step = index;
     render();
   }
@@ -1179,6 +1232,7 @@
 
   function prev() {
     if (S.step <= 0) return;
+    if (STEPS[S.step].id === "email") S.emailEditing = false;
     S.step -= 1;
     render();
   }
@@ -1232,6 +1286,10 @@
     }
   });
 
+  modal.addEventListener("mousedown", function (event) {
+    if (event.target.closest(".offer-clause__help")) event.preventDefault();
+  });
+
   modal.addEventListener("change", function (event) {
     var fieldName = event.target.getAttribute("data-offer-field");
     if (!fieldName) return;
@@ -1260,6 +1318,17 @@
       }
       if (action === "reset-email") {
         S.emailEdited = false;
+        S.emailEditing = false;
+        render();
+        return;
+      }
+      if (action === "edit-email") {
+        S.emailEditing = true;
+        render();
+        return;
+      }
+      if (action === "done-edit-email") {
+        S.emailEditing = false;
         render();
         return;
       }
@@ -1270,6 +1339,13 @@
     if (t.closest("[data-offer-prev]")) return prev();
     if (t.closest("[data-offer-skip]")) return skip();
     if (t.closest("[data-offer-next]")) return next();
+  });
+
+  modal.addEventListener("dblclick", function (event) {
+    if (!event.target.closest("[data-offer-email-preview]")) return;
+    if (STEPS[S.step].id !== "email" || S.emailEditing) return;
+    S.emailEditing = true;
+    render();
   });
 
   function updatePriceGap() {

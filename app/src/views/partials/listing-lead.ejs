@@ -1,4 +1,8 @@
-<div id="listing-lead" class="detail-lead">
+<div
+  id="listing-lead"
+  class="detail-lead"
+  data-listing-rejected="<%= listing.status === 'rejected' ? '1' : '0' %>"
+>
   <section class="panel">
     <%- include("detail-header", { listing: listing, projects: projects }) %>
   </section>

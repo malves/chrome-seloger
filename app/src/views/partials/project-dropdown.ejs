@@ -5,12 +5,6 @@
   const assigned = listing.projects || [];
   const assignedIds = new Set(assigned.map((project) => project.id));
   const isOpen = typeof open !== "undefined" && open;
-  const triggerLabel =
-    assigned.length === 0
-      ? "Aucun projet"
-      : assigned.length === 1
-        ? assigned[0].name
-        : assigned.length + " projets";
 %>
 <div
   class="project-select project-dropdown"
@@ -23,7 +17,7 @@
     data-project-dropdown-trigger
     aria-haspopup="true"
     aria-expanded="<%= isOpen ? 'true' : 'false' %>"
-    aria-label="Projets de l'annonce"
+    aria-label="Projets associés"
   >
     <% if (assigned.length) { %>
       <span class="project-dropdown__dots" aria-hidden="true">
@@ -37,7 +31,7 @@
     <% } else { %>
       <span class="project-dot project-dot--all" aria-hidden="true"></span>
     <% } %>
-    <span class="project-select__label"><%= triggerLabel %></span>
+    <span class="project-select__label">Projets associés</span>
     <svg class="project-select__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m6 9 6 6 6-6" />
     </svg>
@@ -56,7 +50,7 @@
   >
     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
 
-    <p class="project-dropdown__title">Projets de cette annonce</p>
+    <p class="project-dropdown__title">Projets associés</p>
 
     <% projects.forEach(function (project) { %>
       <label class="project-select__option project-dropdown__option <%= assignedIds.has(project.id) ? 'is-active' : '' %>">
