@@ -231,8 +231,8 @@ export default function createApp(options = {}) {
 
   app.use(createAuthRouter({ repositories, logger }));
   app.use(createExtensionRouter({ repositories, logger }));
-  app.use(createProjectsRouter({ repositories, logger }));
-  app.use(createSettingsRouter({ repositories, logger }));
+  app.use(createProjectsRouter({ repositories, enrichment, logger }));
+  app.use(createSettingsRouter({ repositories, enrichment, logger }));
   app.use(createAdminRouter({ repositories, enrichment, logger }));
   app.use(createListingsRouter({ repositories, enrichment, logger }));
 

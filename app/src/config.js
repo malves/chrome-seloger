@@ -233,6 +233,27 @@ const config = {
    * pilotent le coût (gpt-4o-mini + détail « high » ≈ 0,05 € / 15 photos).
    * Les photos sont téléchargées côté serveur puis envoyées en base64.
    */
+  /**
+   * Estimation de la valeur locative (€/m²) à l'adresse. Client compatible
+   * OpenAI : par défaut l'API Responses + recherche web (équivalent ChatGPT
+   * avec sources). `RENT_WEB_SEARCH=false` bascule sur `/chat/completions`
+   * (json_schema, sans web) pour un fournisseur non OpenAI. La clé vit
+   * uniquement ici.
+   */
+  rent: {
+    apiKey: String(process.env.RENT_API_KEY || process.env.LLM_API_KEY || "").trim(),
+    baseUrl: (
+      process.env.RENT_BASE_URL ||
+      process.env.LLM_BASE_URL ||
+      "https://api.openai.com/v1"
+    ).replace(/\/+$/, ""),
+    model: String(process.env.RENT_MODEL || "gpt-5-mini").trim(),
+    webSearch: !["0", "false", "no", "off"].includes(
+      String(process.env.RENT_WEB_SEARCH || "true").trim().toLowerCase()
+    ),
+    timeoutMs: num(process.env.RENT_TIMEOUT_MS, 120000),
+  },
+
   vision: {
     apiKey: String(process.env.VISION_API_KEY || process.env.LLM_API_KEY || "").trim(),
     baseUrl: (

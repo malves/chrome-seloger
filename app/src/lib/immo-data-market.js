@@ -320,6 +320,103 @@ export function listingRealtyType(listing) {
   return null;
 }
 
+/**
+ * Même logique que le partial prix-m2 : ancien cache (une seule série) ou
+ * format actuel `evolution.by_type`.
+ */
+export function normalizedMarketEvolution(data, listing) {
+  const evolution = data?.evolution;
+  if (!evolution) return null;
+  if (evolution.by_type) return evolution;
+  if (!evolution.points || evolution.points.length < 2) return null;
+
+  const legacyType =
+    listingRealtyType(listing) ||
+    evolution.property_type ||
+    data.property_type ||
+    "apartment";
+  const basePrice = evolution.points[0].median_price_m2;
+  const indexed = evolution.points.map((point) => {
+    if (point.index != null && Number.isFinite(point.index)) return point;
+    return {
+      year: point.year,
+      count: point.count,
+      median_price_m2: point.median_price_m2,
+      index:
+        basePrice > 0
+          ? Math.round((point.median_price_m2 / basePrice) * 1000) / 10
+          : point.index,
+    };
+  });
+  const legacyCommune = {
+    points: indexed,
+    trend_pct: evolution.trend_pct,
+    trend_from_year: evolution.trend_from_year,
+    trend_to_year: evolution.trend_to_year,
+    tone: evolution.tone,
+    label: evolution.label,
+    property_type: legacyType,
+  };
+  const empty = { commune: null, department: null };
+  return {
+    default_type: legacyType,
+    commune_name: data.commune_name,
+    department: evolution.department || null,
+    by_type: {
+      apartment:
+        legacyType === "apartment"
+          ? { commune: legacyCommune, department: null }
+          : empty,
+      house:
+        legacyType === "house"
+          ? { commune: legacyCommune, department: null }
+          : empty,
+    },
+  };
+}
+
+function pickMarketTypeKey(evo, listing) {
+  const explicit = listingRealtyType(listing);
+  if (explicit && evo.by_type?.[explicit]?.commune?.points?.length >= 2) {
+    return explicit;
+  }
+  if (evo.default_type && evo.by_type?.[evo.default_type]?.commune?.points?.length >= 2) {
+    return evo.default_type;
+  }
+  for (const key of ["apartment", "house"]) {
+    if (evo.by_type?.[key]?.commune?.points?.length >= 2) return key;
+    if (evo.by_type?.[key]?.department?.points?.length >= 2) return key;
+  }
+  return explicit || evo.default_type || "apartment";
+}
+
+/**
+ * Série mensuelle €/m² pour le comparatif loyer / vente (commune, puis département).
+ */
+export function marketSeriesForListing(data, listing) {
+  const evo = normalizedMarketEvolution(data, listing);
+  if (!evo?.by_type) return null;
+
+  const typeKey = pickMarketTypeKey(evo, listing);
+  const block = evo.by_type[typeKey];
+  if (!block) return null;
+
+  if (block.commune?.points?.length >= 2) {
+    return {
+      points: block.commune.points,
+      label: evo.commune_name || data.commune?.name || "la commune",
+    };
+  }
+  if (block.department?.points?.length >= 2) {
+    const dept = evo.department;
+    return {
+      points: block.department.points,
+      label: dept?.name || (dept?.code ? `le département ${dept.code}` : "le département"),
+    };
+  }
+  return null;
+}
+
 export function authorizationHeader(apiKey) {
   const token = String(apiKey || "").trim();
   if (!token) return "";

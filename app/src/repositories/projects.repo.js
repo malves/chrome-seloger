@@ -106,6 +106,18 @@ export default function createProjectsRepository(db) {
     unlinkAddress: db.prepare(
       "DELETE FROM project_address_links WHERE project_id = ? AND address_id = ?"
     ),
+    listingIdsForProject: db.prepare(
+      `SELECT lp.listing_id AS id
+       FROM listing_projects lp
+       JOIN listings l ON l.id = lp.listing_id
+       WHERE lp.project_id = ? AND l.user_id = ?`
+    ),
+    projectIdsForAddress: db.prepare(
+      `SELECT DISTINCT l.project_id AS id
+       FROM project_address_links l
+       JOIN projects p ON p.id = l.project_id
+       WHERE l.address_id = ? AND p.user_id = ?`
+    ),
   };
 
   const repository = {
@@ -251,6 +263,18 @@ export default function createProjectsRepository(db) {
     /** Détache une adresse du projet ; l'adresse reste dans le carnet. */
     unlinkAddress(projectId, addressId) {
       return statements.unlinkAddress.run(projectId, addressId).changes > 0;
+    },
+
+    listListingIds(userId, projectId) {
+      return statements.listingIdsForProject
+        .all(projectId, userId)
+        .map((row) => row.id);
+    },
+
+    listProjectIdsForAddress(userId, addressId) {
+      return statements.projectIdsForAddress
+        .all(addressId, userId)
+        .map((row) => row.id);
     },
   };
 

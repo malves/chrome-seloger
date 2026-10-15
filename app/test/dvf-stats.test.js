@@ -9,6 +9,7 @@ import {
   filterLowOutlierSales,
   buildDvfRadiusReference,
   priceVerdict,
+  priceGradeFromIndex,
   buildEvolution,
   evolutionHorizons,
   applyEvolutionHorizons,
@@ -109,6 +110,18 @@ test("priceVerdict classe le positionnement du prix", () => {
   assert.equal(high.index, 200);
   assert.equal(high.tone, "high");
   assert.equal(priceVerdict(2000, 0), null);
+});
+
+test("priceGradeFromIndex attribue une note A–F", () => {
+  assert.equal(priceGradeFromIndex(80).grade, "A");
+  assert.equal(priceGradeFromIndex(90).grade, "B");
+  assert.equal(priceGradeFromIndex(96).grade, "C");
+  assert.equal(priceGradeFromIndex(100).grade, "D");
+  assert.equal(priceGradeFromIndex(110).grade, "E");
+  assert.equal(priceGradeFromIndex(130).grade, "F");
+  assert.equal(priceVerdict(1700, 2000).grade, "A");
+  assert.equal(priceVerdict(2000, 2000).grade, "D");
+  assert.equal(priceVerdict(4000, 2000).grade, "F");
 });
 
 test("buildEvolution calcule la tendance, l'index 100 et variations 1–5 ans", () => {

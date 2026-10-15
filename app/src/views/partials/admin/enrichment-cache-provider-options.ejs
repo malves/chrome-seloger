@@ -1,0 +1,4 @@
+<option value="">Tous</option>
+<% providers.forEach(function (key) { %>
+  <option value="<%= key %>" <%= selected === key ? 'selected' : '' %>><%= key %></option>
+<% }); %>

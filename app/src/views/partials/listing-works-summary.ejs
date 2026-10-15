@@ -7,5 +7,11 @@
 <%- include("listing-works-budget", { worksSummary: ws, hxSwapOob: true }) %>
 <%- include("listing-works-verdict", { worksSummary: ws, hxSwapOob: true }) %>
 <% if (typeof financing !== "undefined" && financing) { %>
-  <%- include("financing", { listing: listing, financing: financing, hxSwapOob: true }) %>
+  <%- include("financing", {
+    listing: listing,
+    financing: financing,
+    hxSwapOob: true,
+    // Positionnement « prix + travaux » resynchronisé avec le budget travaux.
+    pricePositionOob: typeof pricePositionOob !== "undefined" ? pricePositionOob : null,
+  }) %>
 <% } %>

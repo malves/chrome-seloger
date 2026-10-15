@@ -227,8 +227,19 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       .map((provider) => provider.key);
   }
 
-  async function enrichmentCacheBrowseResults(filters) {
+  async function cacheProvidersFor(scope) {
+    const keys = repositories.enrichments.listCacheProviders(scope);
+    if (scope !== "listing") return keys;
+    const listingKeys = new Set(await listingScopeKeys());
+    return keys.filter((key) => listingKeys.has(key));
+  }
+
+  async function enrichmentCacheBrowseResults(requested) {
     const repo = repositories.enrichments;
+    const providers = await cacheProvidersFor(requested.scope);
+    const filters = providers.includes(requested.provider)
+      ? requested
+      : { ...requested, provider: null };
     const { scope, provider, q } = filters;
 
     let total;
@@ -275,6 +286,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
 
     return {
       records,
+      providers,
       filters: { ...filters, page },
       pagination: {
         page,
@@ -451,7 +463,6 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
   });
 
   router.get("/admin/enrichment-cache", async (req, res) => {
-    const enrichmentCacheProviders = repositories.enrichments.listCacheProviders();
     const enrichmentCacheBrowse = await enrichmentCacheBrowseResults(
       readCacheBrowseFilters(req.query)
     );
@@ -459,7 +470,6 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       title: "Administration — Cache enrichissements",
       adminSection: "enrichment-cache",
       ...adminSidebarLocals(),
-      enrichmentCacheProviders,
       enrichmentCacheBrowse,
     });
   });
@@ -620,6 +630,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     res.render("partials/admin/enrichment-cache-table", {
       layout: false,
       ...(await enrichmentCacheBrowseResults(filters)),
+      providersOob: true,
     });
   });
 
@@ -687,6 +698,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
         ...(await enrichmentCacheBrowseResults(filters)),
         cacheRevokeNotice: "Tous les caches enrichissement ont été vidés.",
         cacheStatsOob: repositories.enrichments.cacheStats(),
+        providersOob: true,
       });
     }
 
@@ -766,6 +778,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
         layout: false,
         ...(await enrichmentCacheBrowseResults(filters)),
         cacheRevokeNotice: "Entrée révoquée.",
+        providersOob: true,
       });
     }
 

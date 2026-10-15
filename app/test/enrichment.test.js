@@ -36,8 +36,13 @@ const PROVIDER_SOURCE = `export default {
   order: 50,
   label: "Provider de test",
   source: "Jeu de test",
+  isListingCacheValid(data, listing) {
+    return listing.title === "CACHE";
+  },
   async fetch({ listing }) {
+    globalThis.__zzfixtureCalls = (globalThis.__zzfixtureCalls || 0) + 1;
     if (listing.title === "ECHEC") throw new Error("source indisponible");
+    if (listing.title === "LENT") await new Promise((r) => setTimeout(r, 50));
     return { marqueur: "valeur-de-test", ville: listing.city || null };
   },
 };
@@ -88,6 +93,8 @@ withFixtureApp("un nouveau provider est découvert sans inscription", async (ctx
     "immo-data-dept",
     "dvf-local",
     "immo-data-quartier",
+    "rent-estimate",
+    "listing-travel",
     FIXTURE_KEY,
   ]);
 });
@@ -111,6 +118,35 @@ withFixtureApp("son résultat est stocké et affiché par son partial", async (c
   assert.match(page.text, /Provider de test/);
   assert.match(page.text, /Marqueur : valeur-de-test/);
   assert.match(page.text, /Source :\s*Jeu de test/);
+});
+
+withFixtureApp("une demande identique attend le calcul déjà en cours", async (ctx) => {
+  const { repositories, enrichment, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+  const { id } = listingsService.save(user, listingPayload({ title: "LENT" }));
+  globalThis.__zzfixtureCalls = 0;
+
+  const first = enrichment.runForListing(user.id, id, { only: FIXTURE_KEY });
+  const second = enrichment.runForListing(user.id, id, { only: FIXTURE_KEY });
+  await second;
+
+  assert.equal(repositories.enrichments.findOne(id, FIXTURE_KEY)?.status, "ok");
+  assert.equal(globalThis.__zzfixtureCalls, 1);
+  await first;
+});
+
+withFixtureApp("un résultat d'annonce encore valide n'est pas recalculé", async (ctx) => {
+  const { repositories, enrichment, listingsService } = ctx;
+  const user = await createUser(repositories, "a@example.com");
+  const { id } = listingsService.save(user, listingPayload({ title: "CACHE" }));
+  globalThis.__zzfixtureCalls = 0;
+
+  await enrichment.runForListing(user.id, id, { only: FIXTURE_KEY });
+  await enrichment.runForListing(user.id, id, { only: FIXTURE_KEY });
+  assert.equal(globalThis.__zzfixtureCalls, 1);
+
+  await enrichment.runForListing(user.id, id, { only: FIXTURE_KEY, force: true });
+  assert.equal(globalThis.__zzfixtureCalls, 2);
 });
 
 withFixtureApp("un provider en erreur n'empêche pas l'affichage", async (ctx) => {

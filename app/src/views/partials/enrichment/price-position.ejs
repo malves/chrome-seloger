@@ -1,189 +1,397 @@
 <%
+  // Positionnement du prix : lecture « en un coup d'œil » (verdict, trois
+  // repères chiffrés, jauge à deux curseurs, conseil, référence en puces).
+  // Re-rendable seul (OOB) quand le budget travaux change : `hxSwapOob`.
   const pp = position;
   const ref = pp.primary;
+  const ww = ref.with_works || null;
+  const oob = typeof hxSwapOob !== 'undefined' && hxSwapOob;
+  const modalId =
+    typeof dvfModalId !== 'undefined' && dvfModalId ? dvfModalId : 'immodata-dvf-sales-modal';
+  const radiusInput = typeof dvfRadius !== 'undefined' ? dvfRadius : null;
+
   const eur = function (v) {
     if (v == null || !isFinite(v)) return '—';
     return fmt.euro(v);
   };
-  const signedEur = function (v) {
-    if (v == null || !isFinite(v)) return '—';
-    if (Math.round(v) === 0) return fmt.euro(0);
-    return (v < 0 ? '−\u00a0' : '+\u00a0') + fmt.euro(Math.abs(v));
+  const pct1 = function (v) {
+    return (Math.round(Math.abs(v) * 10) / 10).toLocaleString('fr-FR') + '\u00a0%';
   };
   const signedPct = function (v) {
     if (v == null || !isFinite(v)) return '—';
-    const abs = (Math.round(Math.abs(v) * 10) / 10).toLocaleString('fr-FR');
-    if (v === 0) return '0\u00a0%';
-    return (v < 0 ? '−\u00a0' : '+\u00a0') + abs + '\u00a0%';
+    if (Math.round(v * 10) === 0) return '0\u00a0%';
+    return (v < 0 ? '−\u00a0' : '+\u00a0') + pct1(v);
   };
-  const basisCompare = ref.basis_compare || ref.basis || '';
-  const basisAdvice = ref.basis_advice || 'cette référence';
   // Échelle de la jauge : 100 (prix du marché) au centre, bornée à 50–150.
+  // Les curseurs restent visibles en bout de piste (1–99 %) au-delà de ±50 %.
   const gaugePos = function (index) {
-    if (index == null) return null;
-    return Math.max(0, Math.min(100, index - 50));
+    if (index == null || !isFinite(index)) return null;
+    return Math.max(1, Math.min(99, index - 50));
   };
-  const absDelta = Math.abs(ref.delta_amount);
-  const absPct = (Math.round(Math.abs(ref.delta_pct) * 10) / 10).toLocaleString('fr-FR') + '\u00a0%';
-  const radiusRef = pp.references.find(function (r) { return r.key === 'radius'; });
-  const radiusDetail = radiusRef && radiusRef.adjusted_radius ? radiusRef.adjusted_radius : dvfRadius;
+  const indexOfM2 = function (m2) {
+    if (m2 == null || !ref.price_m2) return null;
+    return (m2 / ref.price_m2) * 100;
+  };
+  const deltaTone = function (deltaPct) {
+    if (deltaPct == null || !isFinite(deltaPct)) return 'near';
+    if (deltaPct <= -2.5) return 'below';
+    if (deltaPct >= 2.5) return 'above';
+    return 'near';
+  };
+  const toneColor = function (tone) {
+    if (tone === 'ok') return 'var(--green-600)';
+    if (tone === 'high') return 'var(--danger-vivid)';
+    if (tone === 'mid') return '#c98a00';
+    return 'var(--ink-muted)';
+  };
 
-  let deltaTone = 'near';
-  if (ref.delta_pct != null && isFinite(ref.delta_pct)) {
-    if (ref.delta_pct <= -2.5) deltaTone = 'below';
-    else if (ref.delta_pct >= 2.5) deltaTone = 'above';
+  const radiusRef = pp.references.find(function (r) { return r.key === 'radius'; });
+  const radiusDetail =
+    radiusRef && radiusRef.adjusted_radius ? radiusRef.adjusted_radius : radiusInput;
+  const otherRefs = pp.references.filter(function (r) { return !r.primary; });
+
+  const bandP25 = ref.p25_price_m2 != null ? gaugePos(indexOfM2(ref.p25_price_m2)) : null;
+  const bandP75 = ref.p75_price_m2 != null ? gaugePos(indexOfM2(ref.p75_price_m2)) : null;
+  const hasBand = bandP25 != null && bandP75 != null && bandP75 > bandP25;
+
+  const absDelta = Math.abs(ref.delta_amount);
+  let advice;
+  if (ref.index > 103) {
+    advice = {
+      tone: 'negotiate',
+      title: 'Négociation conseillée',
+      text: '≈ ' + eur(absDelta) + ' (' + pct1(ref.delta_pct) + ') au-dessus de l\'estimation',
+      help: 'D\'après ' + (ref.basis_advice || 'cette référence') + ', ce bien vaudrait environ ' + eur(ref.estimate) + ', soit ' + eur(absDelta) + ' de moins que le prix affiché.',
+    };
+  } else if (ref.index <= 97) {
+    advice = {
+      tone: 'good',
+      title: 'Prix attractif',
+      text: eur(absDelta) + ' (' + pct1(ref.delta_pct) + ') sous l\'estimation',
+      help: 'Ce bien est affiché sous l\'estimation calculée d\'après ' + (ref.basis_advice || 'cette référence') + '.',
+    };
+  } else {
+    advice = {
+      tone: 'neutral',
+      title: 'Prix aligné',
+      text: 'écart de ' + eur(absDelta) + ' avec l\'estimation',
+      help: 'Le prix affiché est aligné sur ' + (ref.basis_advice || 'cette référence') + '.',
+    };
   }
 
   const caveats = [];
-  if (listing.dpe === 'F' || listing.dpe === 'G') caveats.push('DPE ' + listing.dpe);
-  if (listing.property_condition && /r[ée]nov|travaux/i.test(listing.property_condition)) {
-    caveats.push(listing.property_condition);
+  if (listing.dpe === 'F' || listing.dpe === 'G') {
+    caveats.push({
+      label: 'DPE ' + listing.dpe,
+      help: 'Bien énergivore : les références mélangent tous les états, un logement classé ' + listing.dpe + ' se vend généralement en dessous.',
+    });
   }
+  if (listing.property_condition && /r[ée]nov|travaux/i.test(listing.property_condition)) {
+    caveats.push({
+      label: listing.property_condition,
+      help: 'Les références mélangent des biens de tous états ; un bien à rénover se vend généralement en dessous.',
+    });
+  }
+
+  const surfaceComp = radiusRef && radiusRef.surface_comparable;
+  const adj = ref.adjustment || null;
+  const adjTooltip = adj
+    ? 'Évolution des prix à ' + adj.label + ' : ' +
+      adj.year_factors.map(function (f) { return f.year + ' ' + signedPct(f.pct); }).join(' · ')
+    : null;
+  const marketScopeLabel = ref.key === 'radius'
+    ? 'Autour de l\'adresse · ' + fmt.number(ref.meters) + ' m'
+    : ref.scope_label;
+
+  const PRICE_GRADE_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const PRICE_GRADE_COLORS = ['#319834', '#5faa32', '#a7c62c', '#f2d307', '#eca40c', '#e2691b'];
+  const priceGradeIdx = ref.grade
+    ? PRICE_GRADE_LETTERS.indexOf(String(ref.grade).toUpperCase())
+    : -1;
+  // Le prix affiché, pas le prix travaux compris. « Légèrement sous le marché »
+  // est l'écart typique d'un bien avant travaux : on le précise pour ne pas le
+  // lire comme une affaire une fois les travaux ajoutés.
+  const askingPriceLabel = function (text) {
+    return text === "Légèrement sous le marché"
+      ? "Légèrement sous le marché avant travaux"
+      : text;
+  };
+  const titleLabel = askingPriceLabel(ref.label);
+  const gradeLabel = askingPriceLabel(ref.grade_label);
 %>
-<div class="pricepos pricepos--<%= ref.tone %>">
+<div
+  class="pricepos pricepos--<%= ref.tone %>"
+  id="listing-price-position"
+  <% if (oob) { %>hx-swap-oob="true"<% } %>
+  <% if (ww) { %>style="--tone-works: <%= toneColor(ww.tone) %>"<% } %>
+>
   <div class="pricepos__head">
     <div class="pricepos__intro">
       <p class="pricepos__eyebrow">Positionnement du prix</p>
-      <h3 class="pricepos__title"><%= ref.label %></h3>
-      <p class="pricepos__basis">
-        Comparé aux <strong><%= basisCompare %></strong><% if (ref.adjustment) { %>, prix ramenés au marché de <%= ref.adjustment.reference_period %><% } %><% if (ref.key === 'radius' || ref.key === 'quartier') { %>
-          <span class="pricepos__address">
-            <%= ref.address %><% if (ref.address_source) { %> <span class="pricepos__address-source">(<%= ref.address_source %>)</span><% } %>
-          </span>
-        <% } %>
-      </p>
+      <h3 class="pricepos__title"><%= titleLabel %></h3>
+      <div class="pricepos__scope">
+        <span class="pricepos__scope-text">
+          Référence : <strong><%= marketScopeLabel %></strong><% if (ref.period && ref.key !== 'radius') { %> · <%= ref.period %><% } %>
+        </span>
+        <details class="pricem2__dvf-method pricepos__help">
+          <summary class="pricem2__dvf-method-trigger" aria-label="Comment est calculée l'estimation ?">
+            <span class="pricem2__dvf-method-mark" aria-hidden="true">?</span>
+          </summary>
+          <div class="pricem2__dvf-method-panel">
+            <p class="pricem2__dvf-method-title">Comment est calculée l'estimation ?</p>
+            <p class="pricem2__dvf-method-lead">
+              Prix au m² du bien comparé aux <strong><%= ref.basis_compare || ref.basis %></strong>.
+              L'indice vaut 100 quand le bien est au prix du marché ; sous 100, il est moins cher.
+              La note A–F reprend le même indice (A = excellente affaire, F = prix élevé).
+            </p>
+            <ul class="pricem2__dvf-method-list">
+              <% if (ref.key === 'radius' || ref.key === 'quartier') { %>
+                <% if (ref.address) { %>
+                  <li>Adresse : <%= ref.address %><% if (ref.address_source) { %> (<%= ref.address_source %>)<% } %></li>
+                <% } %>
+              <% } %>
+              <% if (ref.key === 'radius') { %>
+                <li>Ventes DVF sur les <%= ref.years %> dernières années<% if (ref.widened) { %>, rayon élargi faute de ventes suffisantes<% } %></li>
+                <% if (surfaceComp && surfaceComp.surface_filtered) { %>
+                  <li>Médiane des <%= fmt.number(surfaceComp.count_in_band) %> ventes de surface comparable (±<%= surfaceComp.tolerance_pct %> %, soit <%= fmt.number(surfaceComp.min) %>–<%= fmt.number(surfaceComp.max) %> m²)</li>
+                <% } else if (surfaceComp) { %>
+                  <li>Peu de ventes en surface comparable (±<%= surfaceComp.tolerance_pct %> %) : médiane sur toutes les surfaces du rayon</li>
+                <% } %>
+                <% if (adj) { %>
+                  <li>Chaque vente est ramenée au marché de <%= adj.reference_period %> selon l'évolution des prix à <%= adj.label %></li>
+                <% } %>
+              <% } else { %>
+                <li>Prix de marché<% if (ref.period) { %> · <%= ref.period %><% } %></li>
+              <% } %>
+              <% if (ww) { %>
+                <li>« Prix + travaux » : prix affiché augmenté du montant <strong>Travaux</strong> du financement (<%= eur(pp.works) %>), comparé à la même estimation</li>
+              <% } %>
+              <% if (ref.estimate_p25 != null && ref.estimate_p75 != null && ref.estimate_p25 !== ref.estimate_p75) { %>
+                <li>Fourchette P25–P75 des ventes : <%= eur(ref.estimate_p25) %> – <%= eur(ref.estimate_p75) %></li>
+              <% } %>
+            </ul>
+          </div>
+        </details>
+      </div>
     </div>
-    <div class="pricepos__score"
-      title="Indice = prix au m² du bien ÷ prix de référence × 100. Sous 100, le bien est moins cher que le marché.">
-      <span class="pricepos__score-value"><%= ref.index %></span><span class="pricepos__score-unit">/ 100</span>
-      <span class="pricepos__score-hint">100 = prix du marché</span>
+    <div class="pricepos__grade"
+      title="Indice <%= ref.index %> / 100 : prix au m² du bien ÷ prix de référence × 100. A = excellente affaire, F = prix élevé.">
+      <% if (priceGradeIdx >= 0) { %>
+        <div class="pricepos__grade-row">
+          <p class="pricepos__grade-eyebrow">Attractivité du prix :</p>
+          <div class="pricepos__grade-scale-col">
+            <div class="dpe-scale pricepos__grade-scale" role="img"
+              aria-label="Attractivité du prix : <%= ref.grade %>. <%= gradeLabel %>">
+              <% PRICE_GRADE_LETTERS.forEach(function (letter, i) {
+                const isOn = i === priceGradeIdx;
+                const darkText = i >= 2 && i <= 4;
+              %>
+                <span class="dpe-seg<%= isOn ? ' is-active' : '' %><%= isOn && darkText ? ' is-active--dark' : '' %>"
+                  style="background: <%= PRICE_GRADE_COLORS[i] %>"><%= isOn ? letter : '' %></span>
+              <% }); %>
+            </div>
+          </div>
+        </div>
+        <p class="pricepos__grade-caption"><%= gradeLabel %></p>
+      <% } %>
     </div>
   </div>
 
-  <dl class="pricepos__figures">
-    <div class="pricepos__figure">
+  <dl class="pricepos__kpis">
+    <div class="pricepos__kpi">
       <dt>Prix affiché</dt>
       <dd>
-        <strong><%= eur(pp.listing_price) %></strong>
-        <span><%= eur(pp.listing_price_m2) %>/m² · <%= fmt.number(pp.surface) %> m²</span>
+        <span class="pricepos__kpi-row">
+          <strong><%= eur(pp.listing_price) %></strong>
+          <span class="pricepos__badge pricepos__badge--<%= deltaTone(ref.delta_pct) %>"
+            title="Écart au prix du marché : <%= signedPct(ref.delta_pct) %>"><%= signedPct(ref.delta_pct) %></span>
+        </span>
+        <span class="pricepos__kpi-sub"><%= eur(pp.listing_price_m2) %>/m² · <%= fmt.number(pp.surface) %> m²</span>
       </dd>
     </div>
-    <div class="pricepos__figure">
+
+    <% if (ww) { %>
+      <div class="pricepos__kpi pricepos__kpi--works">
+        <dt>Prix + travaux</dt>
+        <dd>
+          <span class="pricepos__kpi-row">
+            <strong><%= eur(ww.price) %></strong>
+            <span class="pricepos__badge pricepos__badge--<%= deltaTone(ww.delta_pct) %>"
+              title="Écart au prix du marché, travaux compris : <%= signedPct(ww.delta_pct) %>"><%= signedPct(ww.delta_pct) %></span>
+          </span>
+          <span class="pricepos__kpi-sub"
+            <% if (pp.works_range) { %>data-tooltip="Fourchette du plan des pièces : <%= eur(pp.works_range.min) %> – <%= eur(pp.works_range.max) %>" tabindex="0"<% } %>
+          >dont <%= eur(pp.works) %> de travaux · <%= eur(ww.price_m2) %>/m²</span>
+        </dd>
+      </div>
+    <% } else { %>
+      <div class="pricepos__kpi pricepos__kpi--muted">
+        <dt>Prix + travaux</dt>
+        <dd>
+          <span class="pricepos__kpi-row"><strong>—</strong></span>
+          <span class="pricepos__kpi-sub">
+            Chiffrez les travaux dans le <a href="#listing-works">dossier technique</a> ou le <a href="#financement">financement</a>.
+          </span>
+        </dd>
+      </div>
+    <% } %>
+
+    <div class="pricepos__kpi">
       <dt>Estimation marché</dt>
       <dd>
-        <strong>≈ <%= eur(ref.estimate) %></strong>
-        <span><%= eur(ref.price_m2) %>/m² × <%= fmt.number(pp.surface) %> m²</span>
-        <% if (ref.estimate_p25 != null && ref.estimate_p75 != null && ref.estimate_p25 !== ref.estimate_p75) { %>
-          <span class="pricepos__estimate-range">Fourchette P25–P75 : <%= eur(ref.estimate_p25) %> – <%= eur(ref.estimate_p75) %></span>
-        <% } %>
-      </dd>
-    </div>
-    <div class="pricepos__figure">
-      <dt>Écart au marché</dt>
-      <dd class="pricepos__delta pricepos__delta--<%= deltaTone %>">
-        <strong><%= signedEur(ref.delta_amount) %></strong>
-        <span><%= signedPct(ref.delta_pct) %> par rapport à l'estimation</span>
+        <span class="pricepos__kpi-row"><strong>≈ <%= eur(ref.estimate) %></strong></span>
+        <span class="pricepos__kpi-sub">
+          <%= eur(ref.price_m2) %>/m² × <%= fmt.number(pp.surface) %> m²<% if (ref.estimate_p25 != null && ref.estimate_p75 != null && ref.estimate_p25 !== ref.estimate_p75) { %> ·
+            <span class="pricepos__kpi-range" data-tooltip="Fourchette P25–P75 des ventes de référence" tabindex="0"><%= eur(ref.estimate_p25) %> – <%= eur(ref.estimate_p75) %></span><% } %>
+        </span>
       </dd>
     </div>
   </dl>
 
   <div class="pricepos__gauge">
-    <div class="pricem2__gauge-bar" role="img"
-      aria-label="Ce bien <%= eur(pp.listing_price_m2) %>/m², estimation marché <%= eur(ref.price_m2) %>/m²">
+    <div class="pricem2__gauge-bar pricepos__gauge-bar" role="img"
+      aria-label="Prix affiché <%= eur(pp.listing_price_m2) %>/m²<% if (ww) { %>, prix travaux compris <%= eur(ww.price_m2) %>/m²<% } %>, estimation marché <%= eur(ref.price_m2) %>/m²">
+      <% if (hasBand) { %>
+        <span class="pricepos__band" style="left: <%= bandP25 %>%; width: <%= bandP75 - bandP25 %>%"
+          data-tooltip="Ventes P25–P75 · <%= eur(ref.p25_price_m2) %> – <%= eur(ref.p75_price_m2) %>/m²" tabindex="0"
+          aria-label="Fourchette des ventes, <%= eur(ref.p25_price_m2) %> à <%= eur(ref.p75_price_m2) %> par m²"></span>
+      <% } %>
       <span class="pricem2__gauge-ref" style="left: 50%"
         data-tooltip="Estimation marché · <%= eur(ref.price_m2) %>/m²" tabindex="0"
         aria-label="Estimation marché, <%= eur(ref.price_m2) %> par m²"></span>
+      <% if (ww && ww.index != null) { %>
+        <span class="pricepos__marker-wrap" style="left: <%= gaugePos(ww.index) %>%"
+          data-tooltip="Prix + travaux · <%= eur(ww.price_m2) %>/m² · indice <%= ww.index %>" tabindex="0"
+          aria-label="Prix travaux compris, <%= eur(ww.price_m2) %> par m²">
+          <span class="pricepos__marker--works" aria-hidden="true"></span>
+        </span>
+      <% } %>
       <% if (ref.index != null) { %>
-        <span class="pricem2__gauge-marker" style="left: <%= gaugePos(ref.index) %>%"
-          data-tooltip="Ce bien · <%= eur(pp.listing_price_m2) %>/m²" tabindex="0"
-          aria-label="Ce bien, <%= eur(pp.listing_price_m2) %> par m²"></span>
+        <span class="pricem2__gauge-marker pricepos__marker--price" style="left: <%= gaugePos(ref.index) %>%"
+          data-tooltip="Prix affiché · <%= eur(pp.listing_price_m2) %>/m² · indice <%= ref.index %>" tabindex="0"
+          aria-label="Prix affiché, <%= eur(pp.listing_price_m2) %> par m²"></span>
       <% } %>
     </div>
     <div class="pricepos__gauge-scale" aria-hidden="true">
       <span>−50 %</span><span>Prix du marché</span><span>+50 %</span>
     </div>
+    <ul class="pricepos__legend" aria-label="Légende de la jauge">
+      <li><span class="pricepos__legend-dot pricepos__legend-dot--price" aria-hidden="true"></span>Prix affiché</li>
+      <% if (ww) { %>
+        <li><span class="pricepos__legend-dot pricepos__legend-dot--works" aria-hidden="true"></span>Prix + travaux</li>
+      <% } %>
+      <li><span class="pricepos__legend-dot pricepos__legend-dot--ref" aria-hidden="true"></span>Estimation marché</li>
+      <% if (hasBand) { %>
+        <li><span class="pricepos__legend-dot pricepos__legend-dot--band" aria-hidden="true"></span>Ventes P25–P75</li>
+      <% } %>
+    </ul>
   </div>
 
-  <% if (ref.index > 103) { %>
-    <p class="pricem2__advice pricem2__advice--negotiate">
-      <strong>Négociation conseillée.</strong>
-      D'après <%= basisAdvice %>, ce bien vaudrait environ
-      <strong class="pricem2__advice-amount"><%= eur(ref.estimate) %></strong>,
-      soit <strong class="pricem2__advice-amount"><%= eur(absDelta) %></strong> (<%= absPct %>) de moins que le prix affiché.
+  <div class="pricepos__advice pricepos__advice--<%= advice.tone %>">
+    <p class="pricepos__advice-main" title="<%= advice.help %>">
+      <strong><%= advice.title %></strong>
+      <span class="pricepos__advice-sep" aria-hidden="true">·</span>
+      <span><%= advice.text %></span>
     </p>
-  <% } else if (ref.index <= 97) { %>
-    <p class="pricem2__advice pricem2__advice--good">
-      <strong>Prix attractif.</strong>
-      Ce bien est affiché <strong><%= eur(absDelta) %></strong> (<%= absPct %>) sous l'estimation
-      par rapport à <%= basisAdvice %>.
-    </p>
-  <% } else { %>
-    <p class="pricem2__advice">
-      <strong>Prix aligné.</strong>
-      Le prix affiché est aligné sur <%= basisAdvice %> (écart de <%= eur(absDelta) %>).
-    </p>
-  <% } %>
-
-  <% if (caveats.length) { %>
-    <p class="pricepos__caveat">
-      <strong>À pondérer :</strong> <%= caveats.join(' · ') %>.
-      Les références mélangent des biens de tous états ; un bien énergivore ou à rénover
-      se vend généralement en dessous.
-    </p>
-  <% } %>
+    <% if (ww) { %>
+      <p class="pricepos__advice-works">
+        <span class="pricepos__advice-works-dot" aria-hidden="true"></span>
+        Travaux compris : <strong style="color: <%= toneColor(ww.tone) %>"><%= ww.label %></strong>
+        <span class="pricepos__advice-works-delta">(<%= signedPct(ww.delta_pct) %>, <%= ww.delta_amount >= 0 ? '+\u00a0' : '−\u00a0' %><%= eur(Math.abs(ww.delta_amount)) %>)</span>
+      </p>
+    <% } %>
+    <% if (caveats.length) { %>
+      <ul class="pricepos__caveats" aria-label="Points à pondérer">
+        <% caveats.forEach(function (c) { %>
+          <li class="pricepos__chip pricepos__chip--warn pricepos__tip--wrap" data-tooltip="<%= c.help %>" tabindex="0">
+            <span aria-hidden="true">⚠</span> <%= c.label %>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+  </div>
 
   <div class="pricepos__refs">
-    <p class="pricepos__refs-title"><%= pp.references.length > 1 ? 'Références comparées' : 'Référence utilisée' %></p>
-    <ul class="pricepos__ref-list">
-      <% pp.references.forEach(function (r) { %>
-        <li class="pricepos__ref<%= r.primary ? ' is-primary' : '' %>">
-          <div class="pricepos__ref-main">
-            <span class="pricepos__ref-scope">
-              <%= r.scope_label %>
-              <% if (r.primary) { %><span class="pricepos__ref-badge">Retenue</span><% } %>
-            </span>
-            <span class="pricepos__ref-meta">
-              <% if (r.key === 'radius' && radiusDetail) { %>
-                <% if (radiusDetail.sales && radiusDetail.sales.length) { %>
-                  <%- include('./dvf-radius-meta', { radius: radiusDetail, dvfTypeLabel: pp.type_plural, modalId: dvfModalId }) %>
-                <% } else { %>
-                  <%= fmt.number(r.count) %> vente<%= r.count > 1 ? 's' : '' %><% if (r.widened) { %> (rayon élargi)<% } %>
-                <% } %>
-                · DVF, <%= r.years %> dernières années
-                <% if (r.surface_comparable && r.surface_comparable.surface_filtered) { %>
-                  · <strong><%= fmt.number(r.surface_comparable.count_in_band) %></strong> vente<%= r.surface_comparable.count_in_band > 1 ? 's' : '' %> en surface comparable (±<%= r.surface_comparable.tolerance_pct %> %)
-                <% } else if (r.surface_comparable && !r.surface_comparable.surface_filtered) { %>
-                  · <em>peu de ventes en surface comparable (±<%= r.surface_comparable.tolerance_pct %> %) : médiane sur toutes les surfaces du rayon</em>
-                <% } %>
-                <% if (!r.reliable) { %>· <em>échantillon trop faible</em><% } %>
-                <% if (r.adjustment) { %>
-                  <span class="pricepos__adjust">
-                    Corrigé de l'évolution des prix à <%= r.adjustment.label %> :
-                    <% r.adjustment.year_factors.forEach(function (f, i) { %><%= i ? ' · ' : '' %><%= f.year %> <span class="pricepos__adjust-pct<%= f.pct < 0 ? ' is-down' : f.pct > 0 ? ' is-up' : '' %>"><%= signedPct(f.pct) %></span><% }); %>.
-                  </span>
-                <% } %>
-              <% } else { %>
-                Prix de marché<% if (r.period) { %> · <%= r.period %><% } %>
-              <% } %>
-            </span>
-          </div>
-        </li>
-      <% }); %>
+    <ul class="pricepos__chips" aria-label="Détails de la référence retenue">
+      <% if (ref.key === 'radius') { %>
+        <% if (radiusDetail && radiusDetail.sales && radiusDetail.sales.length) { %>
+          <li>
+            <button type="button" class="pricepos__chip pricepos__chip--link"
+              data-dvf-sales-open="<%= modalId %>" aria-haspopup="dialog" aria-controls="<%= modalId %>"
+              title="Voir les ventes utilisées">
+              <%= fmt.number(ref.count) %> vente<%= ref.count > 1 ? 's' : '' %> · rayon <%= fmt.number(ref.meters) %> m
+              <span class="pricepos__chip-arrow" aria-hidden="true">↗</span>
+            </button>
+          </li>
+        <% } else { %>
+          <li class="pricepos__chip"><%= fmt.number(ref.count) %> vente<%= ref.count > 1 ? 's' : '' %> · rayon <%= fmt.number(ref.meters) %> m</li>
+        <% } %>
+        <li class="pricepos__chip" data-tooltip="Demandes de valeurs foncières (Etalab), <%= ref.years %> dernières années" tabindex="0">DVF · <%= ref.years %> ans</li>
+        <% if (surfaceComp && surfaceComp.surface_filtered) { %>
+          <li class="pricepos__chip pricepos__tip--wrap"
+            data-tooltip="<%= fmt.number(surfaceComp.count_in_band) %> vente<%= surfaceComp.count_in_band > 1 ? 's' : '' %> entre <%= fmt.number(surfaceComp.min) %> et <%= fmt.number(surfaceComp.max) %> m²"
+            tabindex="0">Surface comparable ±<%= surfaceComp.tolerance_pct %> %</li>
+        <% } else if (surfaceComp) { %>
+          <li class="pricepos__chip pricepos__chip--warn pricepos__tip--wrap"
+            data-tooltip="Peu de ventes en surface comparable (±<%= surfaceComp.tolerance_pct %> %) : médiane sur toutes les surfaces du rayon"
+            tabindex="0">Toutes surfaces</li>
+        <% } %>
+        <% if (adj) { %>
+          <li class="pricepos__chip pricepos__tip--wrap" data-tooltip="<%= adjTooltip %>" tabindex="0">Corrigé marché <%= adj.reference_period %></li>
+        <% } %>
+        <% if (ref.widened) { %>
+          <li class="pricepos__chip pricepos__chip--warn" data-tooltip="Rayon élargi faute de ventes suffisantes" tabindex="0">Rayon élargi</li>
+        <% } %>
+        <% if (!ref.reliable) { %>
+          <li class="pricepos__chip pricepos__chip--warn" data-tooltip="Trop peu de ventes pour une référence fiable" tabindex="0">Échantillon faible</li>
+        <% } %>
+      <% } else { %>
+        <li class="pricepos__chip"><%= ref.key === 'quartier' ? 'Grand quartier' : 'Commune entière' %></li>
+        <% if (ref.period) { %><li class="pricepos__chip">Prix de marché · <%= ref.period %></li><% } %>
+      <% } %>
     </ul>
+
+    <% if (otherRefs.length) { %>
+      <details class="pricepos__more">
+        <summary class="pricepos__more-summary">
+          <span class="pricepos__more-chevron" aria-hidden="true"></span>
+          Autres références comparées
+          <span class="pricepos__more-count"><%= otherRefs.length %></span>
+        </summary>
+        <ul class="pricepos__more-list">
+          <% otherRefs.forEach(function (r) { %>
+            <li class="pricepos__more-item">
+              <span class="pricepos__more-scope"><%= r.scope_label %></span>
+              <span class="pricepos__more-meta">
+                <% if (r.key === 'radius') { %>
+                  <%= fmt.number(r.count) %> vente<%= r.count > 1 ? 's' : '' %><% if (!r.reliable) { %> · <em>échantillon faible</em><% } %>
+                <% } else { %>
+                  <%= eur(r.price_m2) %>/m²<% if (r.period) { %> · <%= r.period %><% } %>
+                <% } %>
+                · estimation ≈ <%= eur(r.estimate) %>
+              </span>
+              <% if (r.index != null) { %>
+                <span class="pricepos__more-index" style="color: <%= toneColor(r.tone) %>"
+                  title="<%= askingPriceLabel(r.label) %>"><%= r.index %><small>/100</small></span>
+              <% } %>
+            </li>
+          <% }); %>
+        </ul>
+      </details>
+    <% } %>
 
     <% if (!pp.has_address) { %>
       <p class="pricepos__hint">
-        Estimation à l'échelle de la commune. Renseignez ou validez l'adresse exacte
-        dans « Aide à la localisation » pour la comparer aux ventes autour du bien.
+        Estimation à l'échelle de la commune.
+        <a href="#listing-location" data-listing-address-open-from-hint>Renseignez l'adresse</a> pour la comparer aux ventes autour du bien.
       </p>
     <% } else if (!radiusRef) { %>
       <p class="pricepos__hint">
-        Ventes DVF autour de l'adresse pas encore disponibles : la commune sert de référence en attendant.
+        Ventes autour de l'adresse pas encore disponibles : la commune sert de référence en attendant.
       </p>
-    <% } else if (!radiusRef.reliable) { %>
+    <% } else if (!radiusRef.reliable && ref.key !== 'radius') { %>
       <p class="pricepos__hint">
-        Trop peu de ventes autour de l'adresse (<%= fmt.number(radiusRef.count) %>) pour servir de référence fiable :
-        l'estimation retenue est celle « <%= ref.scope_label %> ».
+        Trop peu de ventes autour de l'adresse (<%= fmt.number(radiusRef.count) %>) : référence « <%= ref.scope_label %> » retenue.
       </p>
     <% } %>
   </div>

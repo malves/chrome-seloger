@@ -233,3 +233,11 @@
   <%- include("financing-amortization-modal", { r: r, amortization: amortization }) %>
 <% } %>
 </div>
+<% if (typeof pricePositionOob !== "undefined" && pricePositionOob) { %>
+  <%- include("enrichment/price-position", {
+    position: pricePositionOob.position,
+    listing: listing,
+    dvfRadius: pricePositionOob.dvfRadius,
+    hxSwapOob: true,
+  }) %>
+<% } %>

@@ -1,4 +1,7 @@
 <%- include("listing-location-block", { listing: listing, userAddressMapsHref: userAddressMapsHref }) %>
+<% if (typeof extensionPanel !== 'undefined' && extensionPanel) { %>
+<%- include("listing-extension-panel", { ...extensionPanel, hxSwapOob: true }) %>
+<% } %>
 <% if (typeof photos !== "undefined" && photos && photos.length) { %>
 <%- include("listing-works-dpe-template", {
   linkedDpeInsights: typeof linkedDpeInsights !== "undefined" ? linkedDpeInsights : null,

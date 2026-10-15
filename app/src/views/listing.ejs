@@ -27,6 +27,7 @@
     ],
     ["Identifiant source", listing.source_id],
   ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+  const hasEnergyData = listing.dpe || listing.ges;
 %>
 
 <div class="detail">
@@ -131,36 +132,46 @@
     <% } %>
 
     <% if (listing.description) { %>
-      <% const descriptionPreviewLength = 200; %>
+      <% const descriptionPreviewLength = 160; %>
       <% const descriptionLong = listing.description.length > descriptionPreviewLength; %>
-      <div
-        class="listing-description<%= descriptionLong ? ' listing-description--collapsible' : '' %>"
-        <%= descriptionLong ? 'data-listing-description' : '' %>
-      >
-        <h2 class="panel__title listing-description__title">Description</h2>
-        <p class="description listing-description__text<%= descriptionLong ? ' is-clamped' : '' %>"><%= listing.description %></p>
-        <% if (descriptionLong) { %>
-          <button
-            type="button"
-            class="listing-description__toggle"
-            data-listing-description-toggle
-            aria-expanded="false"
+      <div class="listing-description" data-listing-description>
+        <h2 class="panel__title listing-description__title" id="listing-description-title">
+          Description
+        </h2>
+        <div class="listing-description__card">
+          <div
+            id="listing-description-body"
+            class="listing-description__body"
+            role="region"
+            aria-labelledby="listing-description-title"
           >
-            <span class="listing-description__toggle-label">Voir plus</span>
-            <svg
-              class="listing-description__toggle-chevron"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
+            <div
+              class="listing-description__excerpt<%= descriptionLong ? ' listing-description__excerpt--truncated' : '' %>"
+              data-listing-description-excerpt
+              <%= descriptionLong ? 'data-listing-description-clamp="2"' : '' %>
             >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-        <% } %>
+              <div class="description listing-description__text"><%= listing.description %></div>
+              <% if (descriptionLong) { %>
+                <button
+                  type="button"
+                  class="listing-description__toggle"
+                  data-listing-description-toggle
+                  aria-expanded="false"
+                  aria-controls="listing-description-body"
+                >
+                  <span class="listing-description__toggle-label">Voir plus</span>
+                </button>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (hasEnergyData) { %>
+      <div class="listing-description">
+        <h2 class="panel__title listing-description__title">Performance énergétique</h2>
+        <%- include("partials/energy-performance", { listing: listing }) %>
       </div>
     <% } %>
   </section>
@@ -208,46 +219,18 @@
     }) %>
   <% } %>
 
-  <%
-    const hasExtensionData =
-      listing.extension_data && Object.keys(listing.extension_data).length;
-    const hasEnergyData = listing.dpe || listing.ges;
-  %>
-  <% if (hasEnergyData) { %>
-    <section class="panel">
-      <div class="panel__head">
-        <div>
-          <p class="panel__eyebrow">Énergie</p>
-          <h2 class="panel__title">Performance énergétique</h2>
-        </div>
-      </div>
-      <%- include("partials/energy-performance", { listing: listing }) %>
-    </section>
-  <% } %>
-
-  <% if (hasExtensionData) { %>
-    <section class="panel">
-      <div class="panel__head">
-        <div>
-          <p class="panel__eyebrow">Extension</p>
-          <h2 class="panel__title">Données du navigateur</h2>
-        </div>
-      </div>
-      <%
-        const travelProjects = listing.projects || [];
-        const travelConfigProject =
-          travelProjects[0] ||
-          (Array.isArray(projects) ? projects.find((p) => p.is_default) : null);
-        const projectConfigHref = travelConfigProject
-          ? `/projects/${travelConfigProject.id}`
-          : null;
-      %>
-      <%- include("partials/extension-data", {
-        data: listing.extension_data,
-        projectConfigHref,
-      }) %>
-    </section>
-  <% } %>
+  <%- include("partials/listing-extension-panel", {
+    listing: listing,
+    displayData: typeof displayData !== "undefined" ? displayData : null,
+    travelHint: typeof travelHint !== "undefined" ? travelHint : null,
+    showExtensionPanel: typeof showExtensionPanel !== "undefined" ? showExtensionPanel : false,
+    travelPoll: typeof travelPoll !== "undefined" ? travelPoll : false,
+    travelError: typeof travelError !== "undefined" ? travelError : null,
+    travelConfigProject:
+      typeof travelConfigProject !== "undefined" ? travelConfigProject : null,
+    travelProjectAddresses:
+      typeof travelProjectAddresses !== "undefined" ? travelProjectAddresses : [],
+  }) %>
 
   <!-- Analyse de marché + territoire (enrichissement auto + polling si cache vide) -->
   <%- include("partials/listing-enrichment-live", {

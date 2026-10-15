@@ -1,7 +1,12 @@
 <%
   // Données calculées par l'extension, affichées telles qu'elles sont reçues.
   const d = data || {};
-  const known = new Set(["travel_times", "political_leaning", "property_tax_index"]);
+  const known = new Set([
+    "travel_times",
+    "travel_times_meta",
+    "political_leaning",
+    "property_tax_index",
+  ]);
   const rest = Object.entries(d).filter(([key]) => !known.has(key));
   const modes = { car: "voiture", transit: "transports", bike: "vélo", foot: "à pied" };
 
@@ -33,35 +38,70 @@
     politics.gauche + politics.centre + politics.droite > 0;
 
   const taxIndex = Number(d.property_tax_index);
+  const trips = Array.isArray(d.travel_times) ? d.travel_times : [];
+  const travelOriginHint = typeof travelHint !== 'undefined' ? travelHint : null;
+  const hasTax = Number.isFinite(taxIndex) && taxIndex >= 1 && taxIndex <= 5;
+  const showTravelCol = trips.length > 0;
+  const showMetaCol = hasShares || Boolean(leaningLabel) || hasTax;
+  const extensionSplit = showTravelCol && showMetaCol;
+  const projectAddresses = Array.isArray(travelProjectAddresses) ? travelProjectAddresses : [];
+
+  function tripMapsHref(trip) {
+    if (trip.maps_url) return trip.maps_url;
+    const label = String(trip.label || "").trim();
+    const fromBook = projectAddresses.find((row) => String(row.label || "").trim() === label);
+    const source = fromBook || trip;
+    const lat = fromBook ? fromBook.lat : trip.lat;
+    const lng = fromBook ? fromBook.lng : trip.lon;
+    const query = (fromBook && fromBook.address) || trip.address || null;
+    const hasCoords =
+      lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+    if (!hasCoords && !String(query || "").trim()) return null;
+    return fmt.googleMapsListingUrl({ lat: hasCoords ? lat : null, lng: hasCoords ? lng : null, query });
+  }
 %>
 
 <div class="kv">
-  <% (Array.isArray(d.travel_times) ? d.travel_times : []).forEach(function (trip) { %>
-    <div class="kv__row">
-      <% if (projectConfigHref) { %>
-        <a
-          class="kv__travel-config"
-          href="<%= projectConfigHref %>"
-          data-tooltip="Configurer les adresses de référence"
-          aria-label="Configurer le trajet vers <%= trip.label || 'destination' %>"
-        >
-          <span class="kv__key">
-            Trajet — <%= trip.label || 'destination' %>
-            <% if (trip.mode) { %>(<%= modes[trip.mode] || trip.mode %>)<% } %>
-          </span>
-          <span class="project-rename kv__travel-config__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-            </svg>
-          </span>
-        </a>
-      <% } else { %>
+  <div
+    class="kv__extension-split<%= extensionSplit ? '' : ' kv__extension-split--single' %>"
+  >
+    <% if (showTravelCol) { %>
+    <div class="kv__extension-col kv__extension-col--travel">
+      <div class="politics__head kv__extension-section-head">
+        <span class="politics__label">Distances calculées&nbsp;:</span>
+      </div>
+      <% if (travelOriginHint) { %>
+        <p class="field__hint kv__travel-hint"><%= travelOriginHint %></p>
+      <% } %>
+  <% trips.forEach(function (trip) {
+       const tripLabel = trip.label || "destination";
+       const mapsHref = tripMapsHref(trip);
+  %>
+    <div class="kv__row kv__row--travel">
+      <div class="kv__travel-key">
         <span class="kv__key">
-          Trajet — <%= trip.label || 'destination' %>
+          Trajet —
+          <% if (projectConfigHref) { %>
+            <a
+              class="kv__travel-name"
+              href="<%= projectConfigHref %>"
+              data-tooltip="Modifier les adresses de référence du projet"
+            ><%= tripLabel %></a>
+          <% } else { %>
+            <%= tripLabel %>
+          <% } %>
           <% if (trip.mode) { %>(<%= modes[trip.mode] || trip.mode %>)<% } %>
         </span>
-      <% } %>
+        <% if (mapsHref) { %>
+          <a
+            class="address-book__map kv__travel-map"
+            href="<%= mapsHref %>"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Voir « <%= tripLabel %> » dans Google Maps (nouvel onglet)"
+          >Google Maps <span class="link-exit-arrow" aria-hidden="true">↗</span></a>
+        <% } %>
+      </div>
       <span class="kv__value">
         <% if (trip.minutes !== undefined && trip.minutes !== null) { %>
           <%= trip.minutes %> min
@@ -70,7 +110,11 @@
       </span>
     </div>
   <% }); %>
+    </div>
+    <% } %>
 
+    <% if (showMetaCol) { %>
+    <div class="kv__extension-col kv__extension-col--meta">
   <% if (hasShares) { %>
     <div class="politics">
       <div class="politics__head">
@@ -102,7 +146,7 @@
     </div>
   <% } %>
 
-  <% if (Number.isFinite(taxIndex) && taxIndex >= 1 && taxIndex <= 5) {
+  <% if (hasTax) {
        const taxLabels = { 1: 'Très basse', 2: 'Basse', 3: 'Moyenne', 4: 'Élevée', 5: 'Très élevée' };
        const taxNotes = {
          1: "Cette ville figure parmi les taxes foncières les plus basses de France.",
@@ -135,6 +179,9 @@
       <p class="tax__note"><%= taxNotes[taxIndex] %></p>
     </div>
   <% } %>
+    </div>
+    <% } %>
+  </div>
 
   <% rest.forEach(function ([key, value]) { %>
     <div class="kv__row">

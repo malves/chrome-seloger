@@ -70,6 +70,7 @@ export default function createDvfRepository(db) {
          median_price_m2 = excluded.median_price_m2`
     ),
     countMutations: db.prepare("SELECT COUNT(*) AS n FROM dvf_mutation"),
+    hasMutations: db.prepare("SELECT EXISTS (SELECT 1 FROM dvf_mutation) AS n"),
     countStats: db.prepare("SELECT COUNT(*) AS n FROM dvf_commune_stats"),
     countDeptStats: db.prepare("SELECT COUNT(*) AS n FROM dvf_department_stats"),
     // Parcours ordonné (insee, type, année, prix) pour médiane en flux.
@@ -170,7 +171,7 @@ export default function createDvfRepository(db) {
 
   return {
     hasData() {
-      return statements.countMutations.get().n > 0;
+      return statements.hasMutations.get().n === 1;
     },
 
     countMutations() {

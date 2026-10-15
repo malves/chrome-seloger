@@ -250,16 +250,15 @@ export default function createEnrichmentsRepository(db) {
       return purge();
     },
 
-    listCacheProviders() {
+    listCacheProviders(scope) {
+      const table =
+        scope === "commune"
+          ? "commune_data"
+          : scope === "department"
+            ? "department_data"
+            : "listing_enrichments";
       const rows = db
-        .prepare(
-          `SELECT provider FROM commune_data
-           UNION
-           SELECT provider FROM department_data
-           UNION
-           SELECT provider FROM listing_enrichments
-           ORDER BY provider`
-        )
+        .prepare(`SELECT DISTINCT provider FROM ${table} ORDER BY provider`)
         .all();
       return rows.map((row) => row.provider);
     },

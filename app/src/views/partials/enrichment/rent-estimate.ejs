@@ -1,0 +1,265 @@
+<%
+  const est = typeof estimate !== 'undefined' ? estimate : null;
+  const listingId = listing && listing.id;
+  const panelUrl = listingId ? '/listings/' + listingId + '/rent-estimate/panel' : '';
+  const runUrl = listingId ? '/listings/' + listingId + '/rent-estimate/run' : '';
+  const pending = est && est.status === 'pending';
+  const needsPoll = est && pending;
+  const oob = typeof hxSwapOob !== 'undefined' && hxSwapOob;
+
+  const eur = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    return fmt.euro(v);
+  };
+  const eurM2 = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    return (Math.round(v * 10) / 10).toLocaleString('fr-FR') + '\u00a0€';
+  };
+  const yieldPct = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    return v.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + '\u00a0%';
+  };
+  const confidencePct = function (v) {
+    if (v == null || !isFinite(v)) return null;
+    return Math.round(v * 100) + '\u00a0%';
+  };
+
+  const GRANULARITY_HELP = {
+    address: 'Estimation calée sur le voisinage immédiat de l\'adresse.',
+    street: 'Estimation calée sur la rue, faute de donnée plus fine.',
+    neighborhood: 'Estimation calée sur le quartier.',
+    commune: 'Estimation calée sur la commune entière.',
+  };
+%>
+<div
+  id="listing-rent-estimate"
+  data-rent-estimate
+  <% if (needsPoll && panelUrl) { %>
+  hx-get="<%= panelUrl %>"
+  hx-trigger="every 4s"
+  hx-swap="outerHTML"
+  <% } %>
+  <% if (oob) { %>hx-swap-oob="true"<% } %>
+>
+  <% if (!est || !est.visible) { %>
+  <% } else {
+    const YIELD_GRADE_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const YIELD_GRADE_COLORS = ['#319834', '#5faa32', '#a7c62c', '#f2d307', '#eca40c', '#e2691b'];
+    const ya = est.yield_attractiveness;
+    const yieldGradeIdx =
+      est.status === 'ok' && ya && ya.grade
+        ? YIELD_GRADE_LETTERS.indexOf(String(ya.grade).toUpperCase())
+        : -1;
+    let rentLead = '';
+    let rentDetailsOpen = false;
+    if (pending) {
+      rentLead =
+        'Estimation des loyers au m² en cours (sources officielles et marché).';
+      rentDetailsOpen = true;
+    } else if (est.status === 'error') {
+      rentLead = est.error_label || est.error || 'Estimation locative indisponible.';
+      rentDetailsOpen = true;
+    } else {
+      rentLead =
+        '≈ ' + eurM2(est.rent_m2.mid) + '/m² · rendement ' + yieldPct(est.yield_gross);
+      if (ya && ya.grade_label) {
+        rentLead += ' · ' + ya.grade_label;
+      } else {
+        rentLead += ' · ' + est.granularity_label;
+      }
+    }
+  %>
+    <details
+      class="delinquance__details pricem2__evolution-details rentest__details"
+      <%= rentDetailsOpen ? 'open' : '' %>
+    >
+      <summary class="delinquance__summary">
+        <span class="delinquance__summary-text">
+          <span class="delinquance__summary-label">Valeur locative</span>
+          <span class="delinquance__summary-hint">
+            <span class="delinquance__summary-hint--closed"><%= rentLead %></span>
+            <span class="delinquance__summary-hint--open">Replier le détail</span>
+          </span>
+        </span>
+        <span class="delinquance__summary-aside" aria-hidden="true">
+          <span class="delinquance__summary-chevron"></span>
+        </span>
+      </summary>
+
+      <div class="delinquance__details-body rentest__body">
+  <% if (pending) { %>
+    <div class="pa-pending" role="status">
+      <span class="spinner" aria-hidden="true"></span>
+      <div>
+        <p class="pa-pending__title">Estimation locative en cours</p>
+        <p class="field__hint">Recherche des loyers au m² (sources officielles et marché). Comptez 20 à 60 secondes.</p>
+      </div>
+    </div>
+  <% } else if (est.status === 'error') { %>
+    <div class="rentest__empty">
+      <p class="field__hint">
+        <% if (est.error_label || est.error) { %>
+          <%= est.error_label || est.error %>
+        <% } else { %>
+          Estimation locative indisponible.
+        <% } %>
+      </p>
+      <% if (listingId) { %>
+        <form
+          hx-post="<%= runUrl %>"
+          hx-target="#listing-rent-estimate"
+          hx-swap="outerHTML"
+        >
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <button type="submit" class="btn btn--ghost btn--sm">Réessayer</button>
+        </form>
+      <% } %>
+    </div>
+  <% } else { %>
+    <div class="pricepos__head">
+      <div class="pricepos__intro">
+        <h3 class="pricepos__title">Loyer estimé au m²</h3>
+        <div class="pricepos__scope">
+          <span class="pricepos__scope-text">
+            Référence : <strong><%= est.granularity_label %></strong>
+            <% if (!est.has_address) { %> · commune<% } %>
+            <% if (est.fetched_at) { %> · mise à jour <%= fmt.relative(est.fetched_at) %><% } %>
+          </span>
+          <details class="pricem2__dvf-method pricepos__help">
+            <summary class="pricem2__dvf-method-trigger" aria-label="Comment est estimé le loyer ?">
+              <span class="pricem2__dvf-method-mark" aria-hidden="true">?</span>
+            </summary>
+            <div class="pricem2__dvf-method-panel">
+              <p class="pricem2__dvf-method-title">Comment est estimé le loyer ?</p>
+              <p class="pricem2__dvf-method-lead">
+                Loyer mensuel hors charges, location nue, estimé à partir de sources
+                publiques (observatoires des loyers, encadrement, Clameur, marché).
+                <%= GRANULARITY_HELP[est.granularity] || '' %>
+              </p>
+              <% if (est.sources && est.sources.length) { %>
+                <ul class="pricem2__dvf-method-list">
+                  <% est.sources.forEach(function (source) { %>
+                    <li>
+                      <% if (source.url) { %>
+                        <a href="<%= source.url %>" target="_blank" rel="noreferrer noopener"><%= source.name || source.url %></a>
+                      <% } else { %>
+                        <%= source.name %>
+                      <% } %>
+                      <% if (source.period) { %> · <%= source.period %><% } %>
+                    </li>
+                  <% }); %>
+                </ul>
+              <% } %>
+              <% if (est.notes) { %>
+                <p class="pricem2__dvf-method-lead"><%= est.notes %></p>
+              <% } %>
+            </div>
+          </details>
+        </div>
+      </div>
+      <% if (yieldGradeIdx >= 0) { %>
+        <div class="pricepos__grade"
+          title="Indice <%= ya.index %> / 100 : estimation marché ÷ prix affiché × 100 (même référence que le positionnement du prix). A = excellent rendement, F = rendement faible.">
+          <div class="pricepos__grade-row">
+            <p class="pricepos__grade-eyebrow">Attractivité du rendement :</p>
+            <div class="pricepos__grade-scale-col">
+              <div class="dpe-scale pricepos__grade-scale" role="img"
+                aria-label="Attractivité du rendement : <%= ya.grade %>. <%= ya.grade_label %>">
+                <% YIELD_GRADE_LETTERS.forEach(function (letter, i) {
+                  const isOn = i === yieldGradeIdx;
+                  const darkText = i >= 2 && i <= 4;
+                %>
+                  <span class="dpe-seg<%= isOn ? ' is-active' : '' %><%= isOn && darkText ? ' is-active--dark' : '' %>"
+                    style="background: <%= YIELD_GRADE_COLORS[i] %>"><%= isOn ? letter : '' %></span>
+                <% }); %>
+              </div>
+              <p class="pricepos__grade-caption"><%= ya.grade_label %></p>
+            </div>
+          </div>
+        </div>
+      <% } %>
+    </div>
+
+    <dl class="pricepos__kpis rentest__kpis">
+      <div class="pricepos__kpi">
+        <dt>Loyer au m²</dt>
+        <dd>
+          <span class="pricepos__kpi-row"><strong><%= eurM2(est.rent_m2.mid) %></strong><span class="rentest__unit">/m²</span></span>
+          <span class="pricepos__kpi-sub">
+            Fourchette <%= eurM2(est.rent_m2.low) %> – <%= eurM2(est.rent_m2.high) %>/m²
+          </span>
+        </dd>
+      </div>
+      <div class="pricepos__kpi">
+        <dt>Loyer mensuel estimé</dt>
+        <dd>
+          <span class="pricepos__kpi-row"><strong>≈ <%= eur(est.monthly.mid) %></strong></span>
+          <span class="pricepos__kpi-sub">
+            <%= fmt.number(est.surface) %> m² · <%= eur(est.monthly.low) %> – <%= eur(est.monthly.high) %>
+          </span>
+        </dd>
+      </div>
+      <div class="pricepos__kpi">
+        <dt class="pricepos__kpi-term">
+          <span>Rendement brut</span>
+          <details class="pricem2__dvf-method pricepos__help pricepos__kpi-help">
+            <summary class="pricem2__dvf-method-trigger" aria-label="Comment est calculé le rendement brut ?">
+              <span class="pricem2__dvf-method-mark" aria-hidden="true">?</span>
+            </summary>
+            <div class="pricem2__dvf-method-panel">
+              <p class="pricem2__dvf-method-title">Comment est calculé le rendement brut ?</p>
+              <p class="pricem2__dvf-method-lead">
+                Rendement brut annuel = loyer annuel estimé ÷ prix d'achat affiché.
+                Le loyer part du <strong>loyer mensuel médian</strong>
+                (<%= eur(est.monthly.mid) %>, <%= eurM2(est.rent_m2.mid) %>/m² × <%= fmt.number(est.surface) %> m²),
+                location nue hors charges.
+              </p>
+              <ul class="pricem2__dvf-method-list">
+                <li>(<%= eur(est.monthly.mid) %> × 12) ÷ <%= eur(listing.price) %> = <strong><%= yieldPct(est.yield_gross) %></strong></li>
+                <% if (est.yield_works != null) { %>
+                  <li>« Travaux compris » : même loyer ÷ (prix + <%= eur(est.works) %> au financement) = <strong><%= yieldPct(est.yield_works) %></strong></li>
+                <% } %>
+                <li>Hors taxe foncière, vacance, charges et frais de gestion.</li>
+              </ul>
+            </div>
+          </details>
+        </dt>
+        <dd>
+          <span class="pricepos__kpi-row"><strong><%= yieldPct(est.yield_gross) %></strong></span>
+          <span class="pricepos__kpi-sub">
+            <% if (est.yield_works != null) { %>
+              Travaux compris : <%= yieldPct(est.yield_works) %>
+            <% } else { %>
+              ≈ <%= eur(est.monthly.mid * 12) %> de loyer par an
+            <% } %>
+          </span>
+        </dd>
+      </div>
+    </dl>
+
+    <ul class="pricepos__chips rentest__chips" aria-label="Précision de l'estimation">
+      <li class="pricepos__chip" data-tooltip="<%= GRANULARITY_HELP[est.granularity] || '' %>" tabindex="0"><%= est.granularity_label %></li>
+      <% if (est.rent_control && est.rent_control.applies) { %>
+        <li class="pricepos__chip pricepos__tip--wrap"
+          data-tooltip="Loyer de référence <%= eurM2(est.rent_control.reference_m2) %>/m²<% if (est.rent_control.reference_max_m2) { %>, majoré <%= eurM2(est.rent_control.reference_max_m2) %>/m²<% } %>"
+          tabindex="0">Encadrement des loyers</li>
+      <% } %>
+      <% if (confidencePct(est.confidence)) { %>
+        <li class="pricepos__chip">Confiance <%= confidencePct(est.confidence) %></li>
+      <% } %>
+      <% if (est.web_search) { %>
+        <li class="pricepos__chip">Sources web</li>
+      <% } %>
+    </ul>
+
+    <% if (!est.has_address) { %>
+      <p class="pricepos__hint">
+        Estimation à l'échelle de la commune.
+        <a href="#listing-location" data-listing-address-open-from-hint>Renseignez l'adresse</a> pour une valeur locative plus précise.
+      </p>
+    <% } %>
+  <% } %>
+      </div>
+    </details>
+  <% } %>
+</div>

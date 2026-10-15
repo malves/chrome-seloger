@@ -476,6 +476,15 @@
     </details>
   <% } %>
 
+  <%
+    const rentEst = typeof rentEstimate !== 'undefined'
+      ? rentEstimate
+      : (data && data.rent_estimate);
+  %>
+  <% if (rentEst && rentEst.visible) { %>
+    <%- include('./rent-estimate', { estimate: rentEst, listing: listing }) %>
+  <% } %>
+
   <% if (dvfCmp && dvfCmp.radius && dvfCmp.radius.sales && dvfCmp.radius.sales.length) {
     const ppRadius = data.price_position && data.price_position.references.find(function (r) { return r.key === 'radius'; });
   %>

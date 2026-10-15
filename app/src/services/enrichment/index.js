@@ -14,6 +14,9 @@
  *     display: true,         // facultatif : false = provider cache-only (pas de bloc)
  *     standalone: true,      // facultatif : exclu de la chaîne « tous », lancé à part
  *     resolvesInsee: true,   // facultatif : s'exécute même sans code INSEE
+ *     isListingCacheValid(data, listing) {}, // facultatif (portée listing) :
+ *                            // réutilise le résultat stocké tant qu'il a moins de
+ *                            // `ttlDays` jours et que la fonction renvoie vrai
  *     async fetch(ctx) {}    // ctx = { listing, inseeCode, deptCode, fetchJson, ... }
  *   }
  *
@@ -38,9 +41,18 @@ import {
   marketVerdict,
   needsImmoDataMarketRefresh,
   patchImmoDataMarketHorizons,
+  marketSeriesForListing,
 } from "../../lib/immo-data-market.js";
 import ProviderSkipped from "./skipped.js";
 import { needsDvfLocalRefresh } from "./dvf-local.provider.js";
+import {
+  buildRentEstimateView,
+  RENT_ESTIMATE_PROVIDER,
+} from "../../lib/rent-estimate.js";
+import {
+  LISTING_TRAVEL_PROVIDER,
+  resolveTravelOrigin,
+} from "../../lib/listing-travel.js";
 
 const providersDir = path.dirname(fileURLToPath(import.meta.url));
 const partialsDir = path.join(
@@ -115,8 +127,12 @@ async function loadPartials() {
 
 export default function createEnrichmentService({ repositories, logger }) {
   let registry = null;
-  /** Évite de lancer plusieurs orchestrations identiques en parallèle. */
-  const runsInFlight = new Set();
+  /**
+   * Orchestrations en cours, par clé : une demande identique attend la même
+   * promesse au lieu d'en lancer une seconde (les appelants qui `await` une
+   * étape, ex. la commune, ont ainsi la garantie qu'elle est terminée).
+   */
+  const runsInFlight = new Map();
 
   async function getRegistry() {
     if (!registry) {
@@ -174,6 +190,7 @@ export default function createEnrichmentService({ repositories, logger }) {
       fetchJson,
       logger,
       config,
+      force,
     };
 
     if (provider.scope === "commune") {
@@ -232,6 +249,18 @@ export default function createEnrichmentService({ repositories, logger }) {
       return;
     }
 
+    if (!force && provider.isListingCacheValid) {
+      const row = repositories.enrichments.findOne(listing.id, provider.key);
+      if (
+        row?.status === "ok" &&
+        row.data &&
+        daysSince(row.fetched_at) <= provider.ttlDays &&
+        provider.isListingCacheValid(row.data, listing)
+      ) {
+        return;
+      }
+    }
+
     const data = await provider.fetch(context);
     repositories.enrichments.saveListingResult(listing.id, provider.key, {
       status: "ok",
@@ -243,11 +272,20 @@ export default function createEnrichmentService({ repositories, logger }) {
    * Exécute les providers d'une annonce. Une erreur sur l'un n'empêche pas
    * les suivants : elle est enregistrée et affichée sur la fiche.
    */
-  async function runForListing(userId, listingId, { only = null, force = false } = {}) {
-    const runKey = `${userId}:${listingId}:${only || "*"}`;
-    if (runsInFlight.has(runKey)) return;
-    runsInFlight.add(runKey);
+  function runForListing(userId, listingId, { only = null, force = false } = {}) {
+    // Une relance forcée ne doit pas se contenter d'un calcul déjà en cours sur
+    // le cache.
+    const runKey = `${userId}:${listingId}:${only || "*"}${force ? ":force" : ""}`;
+    const inFlight = runsInFlight.get(runKey);
+    if (inFlight) return inFlight;
+    const run = executeRun(userId, listingId, { only, force }).finally(() => {
+      runsInFlight.delete(runKey);
+    });
+    runsInFlight.set(runKey, run);
+    return run;
+  }
 
+  async function executeRun(userId, listingId, { only, force }) {
     const { providers } = await getRegistry();
     // Les providers « standalone » (lents, ex. vision) ne font pas partie de
     // la chaîne séquentielle : ils sont lancés explicitement par `only`.
@@ -255,29 +293,38 @@ export default function createEnrichmentService({ repositories, logger }) {
       ? providers.filter((provider) => provider.key === only)
       : providers.filter((provider) => !provider.standalone);
 
-    try {
-      for (const provider of selected) {
-        // Relu à chaque tour : un provider peut avoir renseigné le code INSEE.
-        const listing = repositories.listings.findById(userId, listingId);
-        if (!listing) return;
+    for (const provider of selected) {
+      // Relu à chaque tour : un provider peut avoir renseigné le code INSEE.
+      const listing = repositories.listings.findById(userId, listingId);
+      if (!listing) return;
 
-        try {
-          await runProvider(provider, listing, { force });
-        } catch (err) {
-          const skipped = err instanceof ProviderSkipped;
-          repositories.enrichments.saveListingResult(listingId, provider.key, {
-            status: "error",
-            data: null,
-            error: err.message,
-          });
-          logger[skipped ? "debug" : "warn"](
-            { provider: provider.key, listingId, err: err.message },
-            "enrichissement en échec"
-          );
-        }
+      try {
+        await runProvider(provider, listing, { force });
+      } catch (err) {
+        const skipped = err instanceof ProviderSkipped;
+        repositories.enrichments.saveListingResult(listingId, provider.key, {
+          status: "error",
+          data: null,
+          error: err.message,
+        });
+        logger[skipped ? "debug" : "warn"](
+          { provider: provider.key, listingId, err: err.message },
+          "enrichissement en échec"
+        );
       }
-    } finally {
-      runsInFlight.delete(runKey);
+    }
+  }
+
+  /** Recalcule les trajets web des annonces du projet qui ont une adresse réelle. */
+  function scheduleListingTravelForProject(userId, projectId) {
+    if (!projectId) return;
+    const listingIds = repositories.projects.listListingIds(userId, projectId);
+    for (const listingId of listingIds) {
+      repositories.enrichments.removeOne(listingId, LISTING_TRAVEL_PROVIDER);
+      const listing = repositories.listings.findById(userId, listingId);
+      if (listing && resolveTravelOrigin(listing)) {
+        schedule(userId, listingId, { only: LISTING_TRAVEL_PROVIDER });
+      }
     }
   }
 
@@ -289,12 +336,16 @@ export default function createEnrichmentService({ repositories, logger }) {
     const {
       skipProbableLocation = false,
       skipPhotoAnalysis = false,
+      skipRentEstimate = false,
       ...runOptions
     } = options;
     setImmediate(async () => {
       // Un `only` explicite ne lance que ce provider (ex. relance de l'analyse photos).
       if (runOptions.only) {
         try {
+          if (runOptions.only === RENT_ESTIMATE_PROVIDER) {
+            await runForListing(userId, listingId, { only: "commune" });
+          }
           await runForListing(userId, listingId, runOptions);
         } catch (err) {
           logger.error({ err, listingId, only: runOptions.only }, "enrichissement ciblé");
@@ -319,10 +370,29 @@ export default function createEnrichmentService({ repositories, logger }) {
         : runForListing(userId, listingId, { only: "photo-analysis" }).catch((err) => {
             logger.error({ err, listingId }, "analyse des photos (enrichissement)");
           });
-      const chain = runForListing(userId, listingId, runOptions).catch((err) => {
-        logger.error({ err, listingId }, "orchestration d'enrichissement");
-      });
-      await Promise.allSettled([photoAnalysis, chain]);
+      // Le cache communal de la valeur locative est indexé par code INSEE : la
+      // commune est résolue une fois, avant l'estimation et la chaîne (qui
+      // retrouve alors la commune en cache).
+      const communeReady = runForListing(userId, listingId, { only: "commune" }).catch(
+        (err) => {
+          logger.error({ err, listingId }, "commune (enrichissement)");
+        }
+      );
+      const rentEstimate = skipRentEstimate
+        ? Promise.resolve()
+        : communeReady
+            .then(() =>
+              runForListing(userId, listingId, { only: RENT_ESTIMATE_PROVIDER })
+            )
+            .catch((err) => {
+              logger.error({ err, listingId }, "valeur locative (enrichissement)");
+            });
+      const chain = communeReady
+        .then(() => runForListing(userId, listingId, runOptions))
+        .catch((err) => {
+          logger.error({ err, listingId }, "orchestration d'enrichissement");
+        });
+      await Promise.allSettled([photoAnalysis, rentEstimate, chain]);
     });
   }
 
@@ -371,7 +441,7 @@ export default function createEnrichmentService({ repositories, logger }) {
   }
 
   /** Référence la plus précise disponible (rayon DVF > grand quartier > commune). */
-  function applyPricePosition(data, listing) {
+  function applyPricePosition(data, listing, worksOptions = {}) {
     const cmp = data.address_comparison;
     data.price_position = buildPricePosition({
       listing,
@@ -379,26 +449,63 @@ export default function createEnrichmentService({ repositories, logger }) {
       dvf: cmp?.dvf || null,
       quartier: cmp?.quartier || null,
       market: marketSeriesFor(data, listing),
+      works: worksOptions.works || 0,
+      worksRange: worksOptions.worksRange || null,
+    });
+  }
+
+  /**
+   * Positionnement du prix seul, lu uniquement depuis les caches (aucun appel
+   * provider, aucune migration) : sert aux re-rendus partiels fréquents
+   * (budget travaux modifié) sans repasser par `viewModel`.
+   *
+   * @returns {{ position: object|null, dvfRadius: object|null }}
+   */
+  function pricePositionFor(listing, worksOptions = {}) {
+    const inseeCode = listing.insee_code || null;
+    const immo = inseeCode
+      ? repositories.enrichments.findCommune(inseeCode, "immo-data")
+      : null;
+    if (!immo?.data) return { position: null, dvfRadius: null };
+    // Copie superficielle : les fusions ci-dessous mutent le payload.
+    const data = { ...immo.data, evolution: immo.data.evolution ? { ...immo.data.evolution } : null };
+    if (data.evolution?.by_type) {
+      data.evolution.by_type = Object.fromEntries(
+        Object.entries(data.evolution.by_type).map(([k, v]) => [k, v ? { ...v } : v])
+      );
+    }
+    const stored = repositories.enrichments.findByListing(listing.id);
+    mergeImmoDepartment(data, resolveDeptCode(inseeCode));
+    attachAddressComparison(data, stored, listing);
+    applyPricePosition(data, listing, worksOptions);
+    return {
+      position: data.price_position,
+      dvfRadius: data.address_comparison?.dvf?.radius || null,
+    };
+  }
+
+  /**
+   * Vue « valeur locative » lue depuis le cache listing + la série de vente
+   * Immo Data (aucun appel LLM).
+   */
+  function rentEstimateFor(listing, worksOptions = {}) {
+    const stored = repositories.enrichments.findOne(
+      listing.id,
+      RENT_ESTIMATE_PROVIDER
+    );
+    const { position } = pricePositionFor(listing, worksOptions);
+    const marketEstimate = position?.primary?.estimate ?? null;
+    return buildRentEstimateView({
+      listing,
+      record: stored,
+      works: worksOptions.works || 0,
+      marketEstimate,
     });
   }
 
   /** Série mensuelle du type de bien : commune, à défaut département. */
   function marketSeriesFor(data, listing) {
-    const block = data.evolution?.by_type?.[listing.property_type];
-    if (block?.commune?.points?.length >= 2) {
-      return {
-        points: block.commune.points,
-        label: data.evolution.commune_name || data.commune?.name || "la commune",
-      };
-    }
-    if (block?.department?.points?.length >= 2) {
-      const dept = data.evolution.department;
-      return {
-        points: block.department.points,
-        label: dept?.name || (dept?.code ? `le département ${dept.code}` : "le département"),
-      };
-    }
-    return null;
+    return marketSeriesForListing(data, listing);
   }
 
   /** Fusionne le volet départemental de la délinquance (cache département). */
@@ -435,7 +542,12 @@ export default function createEnrichmentService({ repositories, logger }) {
     }
   }
 
-  async function viewModel(listing) {
+  /**
+   * @param {object} listing
+   * @param {{ works?: number, worksRange?: {min:number,max:number}|null }} [options]
+   *   budget travaux retenu, pour le positionnement « prix + travaux »
+   */
+  async function viewModel(listing, options = {}) {
     const { providers, partials } = await getRegistry();
     const inseeCode = listing.insee_code || null;
     const deptCode = resolveDeptCode(inseeCode);
@@ -489,12 +601,24 @@ export default function createEnrichmentService({ repositories, logger }) {
           fetchedAt = record?.fetched_at || null;
         }
 
-        if (provider.key === "immo-data" && data) {
-          mergeImmoDepartment(data, deptCode);
-          applyImmoVerdict(data, listing);
-          attachAddressComparison(data, stored, listing);
-          applyPricePosition(data, listing);
-          patchImmoDataMarketHorizons(data);
+        let rentEstimate = null;
+        if (provider.key === "immo-data") {
+          if (data) {
+            mergeImmoDepartment(data, deptCode);
+            applyImmoVerdict(data, listing);
+            attachAddressComparison(data, stored, listing);
+            applyPricePosition(data, listing, options);
+            patchImmoDataMarketHorizons(data);
+          }
+          rentEstimate = buildRentEstimateView({
+            listing,
+            record: stored[RENT_ESTIMATE_PROVIDER] || null,
+            works: options.works || 0,
+            marketEstimate: data?.price_position?.primary?.estimate ?? null,
+          });
+          if (data) {
+            data.rent_estimate = rentEstimate;
+          }
         } else if (provider.key === "delinquance" && data) {
           mergeDelinquanceDepartment(data, deptCode);
         }
@@ -519,6 +643,7 @@ export default function createEnrichmentService({ repositories, logger }) {
           error: record?.error || null,
           fetchedAt,
           data,
+          rentEstimate,
         };
       });
   }
@@ -548,7 +673,10 @@ export default function createEnrichmentService({ repositories, logger }) {
   return {
     runForListing,
     schedule,
+    scheduleListingTravelForProject,
     viewModel,
+    pricePositionFor,
+    rentEstimateFor,
     isEnrichmentPending,
     listProviders,
     fetchJson,

@@ -41,7 +41,36 @@ function addressSourceLabel(listing) {
     : "adresse saisie";
 }
 
-function buildReference(base, listing, listingM2) {
+/** Montant travaux exploitable : nombre fini positif, sinon 0. */
+function normalizeWorks(works) {
+  const n = Number(works);
+  return Number.isFinite(n) && n > 0 ? round(n) : 0;
+}
+
+/**
+ * Positionnement « prix + travaux » face à la même référence : le coût réel
+ * d'entrée dans le bien (prix affiché + budget travaux) comparé au marché.
+ */
+function withWorks(listing, priceM2, estimate, works) {
+  if (!works) return null;
+  const price = round(listing.price + works);
+  const priceM2WithWorks = price / listing.surface;
+  const verdict = priceVerdict(priceM2WithWorks, priceM2);
+  return {
+    works,
+    price,
+    price_m2: round(priceM2WithWorks),
+    delta_amount: round(price - estimate),
+    delta_pct: Math.round(((priceM2WithWorks - priceM2) / priceM2) * 1000) / 10,
+    index: verdict ? verdict.index : null,
+    tone: verdict ? verdict.tone : "neutral",
+    label: verdict ? verdict.label : null,
+    grade: verdict ? verdict.grade : null,
+    grade_label: verdict ? verdict.grade_label : null,
+  };
+}
+
+function buildReference(base, listing, listingM2, works) {
   const priceM2 = base.price_m2;
   const estimate = round(priceM2 * listing.surface);
   const estimate_p25 =
@@ -59,6 +88,9 @@ function buildReference(base, listing, listingM2) {
     index: verdict ? verdict.index : null,
     tone: verdict ? verdict.tone : "neutral",
     label: verdict ? verdict.label : null,
+    grade: verdict ? verdict.grade : null,
+    grade_label: verdict ? verdict.grade_label : null,
+    with_works: withWorks(listing, priceM2, estimate, works),
   };
 }
 
@@ -70,12 +102,25 @@ function buildReference(base, listing, listingM2) {
  * @param {object} [args.quartier] payload `immo-data-quartier`
  * @param {{ points: object[], label: string }} [args.market] série mensuelle du
  *   même type de bien servant à ramener les ventes DVF au prix d'aujourd'hui
+ * @param {number} [args.works] budget travaux retenu (€) : ajoute un second
+ *   positionnement « prix + travaux » à chaque référence
+ * @param {{ min: number, max: number }|null} [args.worksRange] fourchette du
+ *   plan des pièces, pour information
  * @returns {object|null}
  */
-export function buildPricePosition({ listing, commune, dvf, quartier, market }) {
+export function buildPricePosition({
+  listing,
+  commune,
+  dvf,
+  quartier,
+  market,
+  works = 0,
+  worksRange = null,
+}) {
   const listingM2 = listingPricePerM2(listing);
   const type = listingRealtyType(listing);
   if (listingM2 == null || !type) return null;
+  const worksAmount = normalizeWorks(works);
 
   const typePlural = TYPE_PLURAL[type];
   const address = listing.user_address ? String(listing.user_address).trim() : null;
@@ -174,7 +219,9 @@ export function buildPricePosition({ listing, commune, dvf, quartier, market }) 
 
   if (!candidates.length) return null;
 
-  let references = candidates.map((c) => buildReference(c, listing, listingM2));
+  let references = candidates.map((c) =>
+    buildReference(c, listing, listingM2, worksAmount)
+  );
   const primary = references.find((r) => r.reliable) || references[0];
   primary.primary = true;
   // Les prix varient trop d'un quartier à l'autre : la moyenne communale
@@ -182,6 +229,11 @@ export function buildPricePosition({ listing, commune, dvf, quartier, market }) 
   if (primary.key !== "commune") {
     references = references.filter((r) => r.key !== "commune");
   }
+
+  const range =
+    worksRange && Number.isFinite(Number(worksRange.max)) && Number(worksRange.max) > 0
+      ? { min: round(Math.max(0, Number(worksRange.min) || 0)), max: round(Number(worksRange.max)) }
+      : null;
 
   return {
     listing_price: listing.price,
@@ -191,6 +243,8 @@ export function buildPricePosition({ listing, commune, dvf, quartier, market }) 
     type_plural: typePlural,
     primary,
     references,
+    works: worksAmount,
+    works_range: range,
     has_address: Boolean(address),
     has_radius: references.some((r) => r.key === "radius"),
   };

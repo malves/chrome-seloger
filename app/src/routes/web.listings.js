@@ -33,6 +33,16 @@ import createPhotoAnalysisRunService from "../services/photo-analysis/photo-anal
 import { photoAnalysisViewModel } from "../lib/photo-analysis/view-model.js";
 import * as photoLabels from "../lib/photo-analysis/labels.js";
 import { PHOTO_ANALYSIS_PROVIDER } from "../lib/photo-analysis-cache.js";
+import { RENT_ESTIMATE_PROVIDER } from "../lib/rent-estimate.js";
+import { findCommuneRentEstimate } from "../services/enrichment/rent-estimate.provider.js";
+import {
+  LISTING_TRAVEL_PROVIDER,
+  resolveTravelProject,
+  resolveTravelOrigin,
+  destinationsFromProject,
+  needsListingTravelRefresh,
+  webTravelTimesFor,
+} from "../lib/listing-travel.js";
 import createWorksPlanService from "../services/works-plan.service.js";
 import { plannerOptions } from "../lib/works/works-plan.js";
 import { financingWorksDefault } from "../lib/works/financing-works-default.js";
@@ -140,6 +150,69 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       enrichment.schedule(listing.user_id, listing.id, { only: PHOTO_ANALYSIS_PROVIDER });
     }
     return photoAnalysisViewModel(stored, photos, dpeInsights);
+  }
+
+  /**
+   * État du calcul web des trajets. Sans adresse réelle géocodée, il n'y a rien
+   * à calculer : la fiche affiche les trajets envoyés par l'extension.
+   */
+  function listingTravelState(listing, userId) {
+    const project = resolveTravelProject(listing, projectsService, userId);
+    const destinations = project?.id
+      ? destinationsFromProject(repositories, project.id)
+      : [];
+    const row = repositories.enrichments.findOne(listing.id, LISTING_TRAVEL_PROVIDER);
+    const active = resolveTravelOrigin(listing) != null && destinations.length > 0;
+    const stale =
+      row?.status === "ok" &&
+      needsListingTravelRefresh(row.data, listing, project?.id, destinations);
+    return {
+      project,
+      destinations,
+      row,
+      pending: active && (!row || stale),
+      stale,
+      error: active && row?.status === "error" ? row.error || null : null,
+      webTrips: webTravelTimesFor(listing, row, project?.id, destinations),
+    };
+  }
+
+  function maybeScheduleListingTravel(listing, userId) {
+    const state = listingTravelState(listing, userId);
+    if (!state.pending) return;
+    if (state.stale) {
+      repositories.enrichments.removeOne(listing.id, LISTING_TRAVEL_PROVIDER);
+    }
+    enrichment.schedule(userId, listing.id, { only: LISTING_TRAVEL_PROVIDER });
+  }
+
+  function extensionPanelLocals(listing, userId) {
+    const accountProjects = projectsService.list(userId);
+    const travelConfigProject =
+      (listing.projects && listing.projects[0]) ||
+      accountProjects.find((project) => project.is_default) ||
+      null;
+    const travelProjectAddresses = travelConfigProject
+      ? projectsService.listAddresses(userId, travelConfigProject.id)
+      : [];
+    const state = listingTravelState(listing, userId);
+    const extensionData = listing.extension_data || {};
+    const displayData = state.webTrips
+      ? { ...extensionData, travel_times: state.webTrips }
+      : extensionData;
+    const showExtensionPanel =
+      Object.keys(displayData).length > 0 || state.pending || Boolean(state.error);
+
+    return {
+      listing,
+      displayData,
+      travelHint: state.webTrips ? "Depuis l'adresse enregistrée du bien." : null,
+      travelConfigProject,
+      travelProjectAddresses,
+      travelPoll: state.pending,
+      travelError: state.error,
+      showExtensionPanel,
+    };
   }
 
   function linkedDpeInsightsForListing(listing, fmt) {
@@ -266,6 +339,47 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       edited: Array.isArray(stored?.data?.edited) ? stored.data.edited : [],
       amortization: buildAmortizationSchedule(result),
     };
+  }
+
+  /**
+   * Budget travaux retenu pour le positionnement « prix + travaux » : montant
+   * « Travaux » du financement (par défaut le milieu de la fourchette du plan
+   * des pièces, modifiable par l'utilisateur) et fourchette du plan.
+   *
+   * @param {object} listing
+   * @param {object} fmt
+   * @param {{ works?: number, financing?: object|null, worksSummary?: object|null }} [known]
+   *   valeurs déjà calculées par la route appelante (évite de recalculer)
+   */
+  function worksOptionsFor(listing, fmt, known = {}) {
+    if (listing.transaction_type === "rent") return { works: 0, worksRange: null };
+    const works =
+      known.works != null
+        ? Number(known.works) || 0
+        : Number((known.financing || financingFor(listing)).params.works) || 0;
+    let summary = known.worksSummary;
+    if (summary === undefined) {
+      summary = repositories.listings.listPhotos(listing.id).length
+        ? worksSummaryForListing(listing, fmt)
+        : null;
+    }
+    const worksRange =
+      summary && !summary.unavailableReason && Number(summary.max) > 0
+        ? { min: summary.min, max: summary.max }
+        : null;
+    return { works, worksRange };
+  }
+
+  /**
+   * Fragment « Positionnement du prix » à renvoyer hors cible (OOB) quand le
+   * budget travaux change. `null` tant que l'analyse de marché n'est pas en cache.
+   */
+  function pricePositionOobFor(listing, fmt, known = {}) {
+    const { position, dvfRadius } = enrichment.pricePositionFor(
+      listing,
+      worksOptionsFor(listing, fmt, known)
+    );
+    return position ? { position, dvfRadius } : null;
   }
 
   /* ------------------------------ Liste ------------------------------ */
@@ -422,8 +536,8 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   });
 
   /** Découpe le viewModel enrichissement pour la fiche annonce. */
-  async function listingEnrichmentPanels(listing) {
-    const providers = await enrichment.viewModel(listing);
+  async function listingEnrichmentPanels(listing, worksOptions = {}) {
+    const providers = await enrichment.viewModel(listing, worksOptions);
     const communeProviders = providers.filter((p) => p.group === "territory");
     const otherProviders = providers.filter(
       (p) =>
@@ -431,6 +545,35 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     );
     const enrichmentPoll = enrichment.isEnrichmentPending(providers);
     return { communeProviders, otherProviders, enrichmentPoll };
+  }
+
+  /** Lance l'estimation locative si aucun résultat exploitable n'est en cache. */
+  function maybeScheduleRentEstimate(listing) {
+    if (listing.transaction_type === "rent") return;
+    if (!(listing.surface > 0)) return;
+    const row = repositories.enrichments.findOne(
+      listing.id,
+      RENT_ESTIMATE_PROVIDER
+    );
+    if (row?.status === "ok" && row.data?.rent_m2) return;
+    if (row?.status === "error") return;
+    enrichment.schedule(listing.user_id, listing.id, {
+      only: RENT_ESTIMATE_PROVIDER,
+      force: Boolean(row),
+    });
+  }
+
+  function renderRentEstimatePanel(req, res, listing) {
+    const estimate = enrichment.rentEstimateFor(
+      listing,
+      worksOptionsFor(listing, res.locals.fmt)
+    );
+    res.set("Cache-Control", "no-store");
+    return res.render("partials/enrichment/rent-estimate", {
+      layout: false,
+      listing,
+      estimate,
+    });
   }
 
   function requireAdminForEnrichmentRefresh(req, _res, next) {
@@ -447,20 +590,33 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   router.get("/listings/:id", async (req, res, next) => {
     try {
       const listing = loadListing(req);
+      const photos = repositories.listings.listPhotos(listing.id);
+      const linkedDpeInsights = linkedDpeInsightsForListing(listing, res.locals.fmt);
+      const worksSummary = photos.length
+        ? worksSummaryForListing(listing, res.locals.fmt, linkedDpeInsights)
+        : null;
+      const financing = financingFor(listing, linkedDpeInsights);
+
       const { communeProviders, otherProviders, enrichmentPoll } =
-        await listingEnrichmentPanels(listing);
+        await listingEnrichmentPanels(
+          listing,
+          worksOptionsFor(listing, res.locals.fmt, { financing, worksSummary })
+        );
       if (enrichmentPoll) {
         enrichment.schedule(listing.user_id, listing.id);
       }
+      maybeScheduleRentEstimate(listing);
       const postalInseeCode = await repositories.postalInsee.resolveInsee(
         listing.postal_code,
         listing.city,
         { fetchJson: enrichment.fetchJson }
       );
-      const photos = repositories.listings.listPhotos(listing.id);
-      const linkedDpeInsights = linkedDpeInsightsForListing(listing, res.locals.fmt);
 
       const userAddressMapsHrefValue = await userAddressMapsHref(listing);
+
+      const accountProjects = projectsService.list(req.user.id);
+      maybeScheduleListingTravel(listing, req.user.id);
+      const extensionPanel = extensionPanelLocals(listing, req.user.id);
 
       res.render("listing", {
         title: listing.title || "Annonce",
@@ -471,7 +627,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         photos,
         photoAnalysis: photoAnalysisForListing(listing, photos, linkedDpeInsights),
         photoLabels,
-        worksSummary: photos.length ? worksSummaryForListing(listing, res.locals.fmt, linkedDpeInsights) : null,
+        worksSummary,
         scripts: photos.length ? ["/public/js/works-planner.js"] : [],
         priceHistory: repositories.listings.listPriceHistory(listing.id),
         // Le financement a son propre bloc ; les autres providers sont groupés
@@ -480,21 +636,41 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         communeProviders,
         otherProviders,
         enrichmentPoll,
-        financing: financingFor(listing, linkedDpeInsights),
-        projects: projectsService.list(req.user.id),
+        financing,
+        projects: accountProjects,
+        ...extensionPanel,
       });
     } catch (err) {
       next(err);
     }
   });
 
+  router.get("/listings/:id/extension-panel", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const fresh = repositories.listings.findById(req.user.id, listing.id);
+      const panel = extensionPanelLocals(fresh, req.user.id);
+      res.set("Cache-Control", "no-store");
+      return res.render("partials/listing-extension-panel", {
+        layout: false,
+        ...panel,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
   router.get("/listings/:id/enrichment-live", async (req, res, next) => {
     try {
       const listing = loadListing(req);
-      const panels = await listingEnrichmentPanels(listing);
+      const panels = await listingEnrichmentPanels(
+        listing,
+        worksOptionsFor(listing, res.locals.fmt)
+      );
       if (panels.enrichmentPoll) {
         enrichment.schedule(listing.user_id, listing.id);
       }
+      maybeScheduleRentEstimate(listing);
       return res.render("partials/listing-enrichment-live", {
         layout: false,
         listing,
@@ -565,6 +741,15 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     photos = null
   ) {
     const gallery = photos ?? repositories.listings.listPhotos(listing.id);
+    const worksSummary = gallery.length
+      ? worksSummaryForListing(listing, res.locals.fmt)
+      : null;
+    // Le budget travaux vient d'être chiffré : le financement et le
+    // positionnement « prix + travaux » le reprennent.
+    const financingOob =
+      photoAnalysis?.ready && listing.transaction_type !== "rent"
+        ? financingFor(listing)
+        : null;
     res.set("Cache-Control", "no-store");
     return res.render("partials/listing-photo-analysis", {
       layout: false,
@@ -572,14 +757,16 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       photos: gallery,
       photoAnalysis,
       photoLabels,
-      worksSummary: gallery.length ? worksSummaryForListing(listing, res.locals.fmt) : null,
+      worksSummary,
       worksHasPhotos: gallery.length > 0,
       refreshWorksHeadAside: true,
-      // Le budget travaux vient d'être chiffré : le financement le reprend.
-      financingOob:
-        photoAnalysis?.ready && listing.transaction_type !== "rent"
-          ? financingFor(listing)
-          : null,
+      financingOob,
+      pricePositionOob: financingOob
+        ? pricePositionOobFor(listing, res.locals.fmt, {
+            financing: financingOob,
+            worksSummary,
+          })
+        : null,
     });
   }
 
@@ -620,6 +807,40 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       }
     }
   );
+
+  /* ----------------------- Valeur locative --------------------------- */
+
+  router.get("/listings/:id/rent-estimate/panel", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      maybeScheduleRentEstimate(listing);
+      return renderRentEstimatePanel(req, res, listing);
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  router.post("/listings/:id/rent-estimate/run", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      repositories.enrichments.removeOne(listing.id, RENT_ESTIMATE_PROVIDER);
+      enrichment.schedule(listing.user_id, listing.id, {
+        only: RENT_ESTIMATE_PROVIDER,
+        force: true,
+      });
+      logActivity(logger, req, "estimation locative relancée", {
+        listingId: listing.id,
+        status: "pending",
+      });
+
+      if (!req.get("hx-request")) {
+        return res.redirect(`/listings/${listing.id}`);
+      }
+      return renderRentEstimatePanel(req, res, listing);
+    } catch (err) {
+      return next(err);
+    }
+  });
 
   /* ------------------------- Plan de travaux ------------------------- */
 
@@ -671,11 +892,17 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     try {
       const listing = loadListing(req);
       res.set("Cache-Control", "no-store");
+      const worksSummary = worksSummaryForListing(listing, res.locals.fmt);
+      const financing =
+        listing.transaction_type === "rent" ? null : financingFor(listing);
       return res.render("partials/listing-works-summary", {
         layout: false,
         listing,
-        worksSummary: worksSummaryForListing(listing, res.locals.fmt),
-        financing: listing.transaction_type === "rent" ? null : financingFor(listing),
+        worksSummary,
+        financing,
+        pricePositionOob: financing
+          ? pricePositionOobFor(listing, res.locals.fmt, { financing, worksSummary })
+          : null,
       });
     } catch (err) {
       return next(err);
@@ -941,6 +1168,8 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         "immo-data",
         "immo-data-quartier",
         "dvf-local",
+        RENT_ESTIMATE_PROVIDER,
+        LISTING_TRAVEL_PROVIDER,
       ]) {
         repositories.enrichments.removeOne(listing.id, key);
       }
@@ -952,12 +1181,26 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         await enrichment.runForListing(req.user.id, listing.id, {
           only: "commune",
         });
+        // Sans appel LLM, la valeur locative communale est copiée tout de
+        // suite : la fiche n'affiche pas d'état « en cours ».
+        const resolved = repositories.listings.findById(req.user.id, listing.id);
+        if (resolved && findCommuneRentEstimate(repositories, resolved)) {
+          await enrichment.runForListing(req.user.id, listing.id, {
+            only: RENT_ESTIMATE_PROVIDER,
+          });
+        }
       }
       enrichment.schedule(req.user.id, listing.id, {
         skipProbableLocation: true,
       });
-
+      // Adresse effacée : le cache web est supprimé ci-dessus, la fiche
+      // réaffiche les trajets envoyés par l'extension.
       const updated = repositories.listings.findById(req.user.id, listing.id);
+      if (resolveTravelOrigin(updated)) {
+        enrichment.schedule(req.user.id, listing.id, {
+          only: LISTING_TRAVEL_PROVIDER,
+        });
+      }
 
       if (!req.get("hx-request")) {
         return res.redirect(`/listings/${listing.id}`);
@@ -972,6 +1215,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         photoAnalysis: addressLocals.photoAnalysis,
         worksSummary: addressLocals.worksSummary,
         photoLabels,
+        extensionPanel: extensionPanelLocals(updated, req.user.id),
       });
     } catch (err) {
       return next(err);
@@ -1035,6 +1279,10 @@ export default function createListingsRouter({ repositories, enrichment, logger 
           result,
           amortization: buildAmortizationSchedule(result),
         },
+        // Le montant « Travaux » pilote aussi le positionnement « prix + travaux ».
+        pricePositionOob: pricePositionOobFor(listing, res.locals.fmt, {
+          works: params.works,
+        }),
       });
     } catch (err) {
       return next(err);
@@ -1109,7 +1357,10 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     try {
       const listing = loadListing(req);
       const refreshed = await refreshMarketProviders(listing.user_id, listing);
-      const blocks = await enrichment.viewModel(refreshed);
+      const blocks = await enrichment.viewModel(
+        refreshed,
+        worksOptionsFor(refreshed, res.locals.fmt)
+      );
       const otherProviders = marketEnrichmentProviders(blocks);
 
       if (!req.get("hx-request")) {
@@ -1164,7 +1415,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       // entraîne son complément départemental (prix / délinquance).
       const siblings = { "immo-data": "immo-data-dept", delinquance: "delinquance-dept" };
       const withListingScope = {
-        "immo-data": ["dvf-local", "immo-data-quartier"],
+        "immo-data": ["dvf-local", "immo-data-quartier", RENT_ESTIMATE_PROVIDER],
       };
       const toRunAll = [
         key,
@@ -1182,7 +1433,10 @@ export default function createListingsRouter({ repositories, enrichment, logger 
 
       const refreshed = repositories.listings.findById(listing.user_id, listing.id)
         || repositories.listings.findByIdOnly(listing.id);
-      const blocks = await enrichment.viewModel(refreshed);
+      const blocks = await enrichment.viewModel(
+        refreshed,
+        key === "immo-data" ? worksOptionsFor(refreshed, res.locals.fmt) : {}
+      );
       const block = blocks.find((provider) => provider.key === key);
       const inlineCommuneHead =
         block?.group === "territory" &&

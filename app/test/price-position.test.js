@@ -118,6 +118,41 @@ test("prix : surface comparable ±20 % pour l'estimation rayon", () => {
   assert.match(pos.primary.basis, /ventes comparables \(96–144 m²\)/);
 });
 
+test("prix + travaux : second positionnement sur chaque référence", () => {
+  // Référence rayon : 7107 €/m² × 120 m² = 852 840 €. Prix 750 000 + 60 000 travaux.
+  const pos = buildPricePosition({
+    listing,
+    commune,
+    dvf,
+    works: 60000,
+    worksRange: { min: 40000, max: 80000 },
+  });
+  assert.equal(pos.works, 60000);
+  assert.deepEqual(pos.works_range, { min: 40000, max: 80000 });
+  const ww = pos.primary.with_works;
+  assert.equal(ww.price, 810000);
+  assert.equal(ww.price_m2, 6750);
+  assert.equal(ww.index, 95);
+  assert.equal(ww.tone, "ok");
+  assert.equal(ww.delta_amount, 810000 - 852840);
+  assert.equal(ww.delta_pct, -5);
+  // Le positionnement « prix seul » reste inchangé.
+  assert.equal(pos.primary.index, 88);
+  // Les travaux peuvent faire basculer le verdict.
+  const heavy = buildPricePosition({ listing, commune, dvf, works: 200000 });
+  assert.equal(heavy.primary.with_works.index, 111);
+  assert.equal(heavy.primary.with_works.tone, "high");
+});
+
+test("prix + travaux : sans budget, pas de second positionnement", () => {
+  for (const works of [0, null, undefined, -5, "abc"]) {
+    const pos = buildPricePosition({ listing, commune, dvf, works });
+    assert.equal(pos.works, 0);
+    assert.equal(pos.works_range, null);
+    assert.equal(pos.primary.with_works, null);
+  }
+});
+
 test("prix : location ou type inconnu → pas de positionnement", () => {
   assert.equal(
     buildPricePosition({ listing: { ...listing, transaction_type: "rent" }, commune }),

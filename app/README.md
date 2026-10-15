@@ -47,6 +47,9 @@ Toutes les variables sont décrites dans [`.env.example`](.env.example).
 | `EXTENSION_ORIGINS` | Origines autorisées sur `/api/v1/*`, ex. `chrome-extension://abcdef…`. Restreint aussi les extensions autorisées à recevoir un code d'autorisation |
 | `ORS_API_KEY` | Clé OpenRouteService partagée : géocodage des adresses de projet et calcul des temps de trajet (`POST /api/v1/travel-time`). Vide = itinéraires indisponibles |
 | `SSMSI_COMMUNE_URL` / `SSMSI_DEP_URL` | Fichiers communaux (csv.gz) et départementaux (csv) SSMSI ; défaut = ressources data.gouv juillet 2026 |
+| `LLM_API_KEY` | Clé OpenAI (ou compatible) pour la zone probable, l'analyse photos et la valeur locative |
+| `RENT_API_KEY` / `RENT_MODEL` | Surcharge optionnelle pour l'estimation locative (défaut : `LLM_API_KEY`, `gpt-5-mini`) |
+| `RENT_WEB_SEARCH` | `true` (défaut) : API Responses + recherche web ; `false` : chat/completions sans web |
 
 Les taux forfaitaires du tableau de financement se règlent dans **Administration → Paramétrage financement** (valeurs par défaut dans `config.js`, persistance SQLite).
 
@@ -134,6 +137,15 @@ Le calcul s'appuie sur **OpenRouteService avec une clé partagée**
 jamais. Sans clé configurée, l'endpoint répond `503 { code: "travel_unavailable" }`.
 Un garde-fou limite ce calcul à 20 appels par minute et par session pour
 préserver le quota de la clé.
+
+Sur la fiche du **site web**, les trajets affichés par défaut sont ceux envoyés
+par l'extension (`extension_data.travel_times`), qui ne sont jamais modifiés.
+Quand une adresse réelle est enregistrée (saisie manuelle ou outil IA) et
+géocodée, le carnet recalcule les trajets depuis cette adresse (provider
+`listing-travel`, cache `listing_enrichments`) et les affiche à la place. Si
+l'adresse est effacée, ce cache est supprimé et la fiche réaffiche les trajets
+de l'extension. Une modification des adresses de référence du projet ou du
+carnet relance le calcul pour les annonces qui ont une adresse réelle.
 
 ### Exemple
 
@@ -228,7 +240,9 @@ essai. Les providers de portée `commune` lisent le cache partagé
 `commune_data` et n'appellent l'extérieur qu'en cas d'absence ou d'expiration.
 
 Providers livrés : `commune` (résolution INSEE via `geo.api.gouv.fr`), `financing`
-(calcul local) et `delinquance` (SSMSI, lieu de commission à l'échelle communale).
+(calcul local), `delinquance` (SSMSI, lieu de commission à l'échelle communale),
+`immo-data` (prix de marché) et `rent-estimate` (valeur locative via OpenAI,
+affiché sous l'évolution des prix).
 
 **Territoire des enrichissements communaux** : tant qu'aucune adresse réelle n'est
 renseignée, on utilise la ville / le code postal de l'annonce ; dès qu'une adresse

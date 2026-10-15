@@ -83,7 +83,19 @@
   <% if (provider.status === 'ok' && provider.data) { %>
     <%- include(provider.partial, { data: provider.data, listing: listing, provider: provider }) %>
   <% } else if (provider.status === 'pending') { %>
-    <p class="field__hint">Donnée en cours de récupération…</p>
+    <div class="pa-pending pa-pending--compact" role="status" aria-live="polite">
+      <span class="spinner spinner--sm" aria-hidden="true"></span>
+      <div>
+        <p class="pa-pending__title">Analyse de marché en cours</p>
+        <p class="field__hint">Prix au m², évolution et comparatifs Immo Data. Mise à jour automatique.</p>
+      </div>
+    </div>
+    <% if (provider.key === 'immo-data' && provider.rentEstimate && provider.rentEstimate.visible) { %>
+      <%- include('enrichment/rent-estimate', {
+        estimate: provider.rentEstimate,
+        listing: listing
+      }) %>
+    <% } %>
   <% } else { %>
     <p class="field__hint">
       Donnée indisponible.

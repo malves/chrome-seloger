@@ -63,6 +63,12 @@ export default {
   source: "Immo Data",
   sourceUrl: SOURCE_URL,
 
+  // Appels Immo Data payants : le résultat ne dépend que de l'adresse (cache
+  // supprimé quand elle change) et du type de bien.
+  isListingCacheValid(data, listing) {
+    return data.property_type === listingRealtyType(listing);
+  },
+
   async fetch({ listing, inseeCode, fetchJson, config }) {
     if (!config?.immoData?.apiKey) {
       throw new ProviderSkipped(

@@ -1352,6 +1352,35 @@ withApp("l'admin parcourt et révoque le cache départemental", async ({
   assert.equal(repositories.enrichments.findDepartment("92", "immo-data-dept"), null);
 });
 
+withApp("l'admin ne voit que les providers de la portée choisie", async ({
+  app,
+  repositories,
+}) => {
+  await createUser(repositories, config.adminEmails[0]);
+  repositories.enrichments.saveCommune("92063", "rent-estimate-commune", {
+    by_type: {},
+  });
+  repositories.enrichments.saveDepartment("92", "immo-data-dept", {
+    by_type: {},
+  });
+
+  const agent = await loginAgent(app, config.adminEmails[0]);
+  const page = await agent.get("/admin/enrichment-cache").expect(200);
+  assert.match(page.text, /<option value="rent-estimate-commune"/);
+  assert.doesNotMatch(page.text, /<option value="immo-data-dept"/);
+
+  const browse = await agent
+    .get(
+      "/admin/enrichment-cache/browse?cache_scope=department&cache_provider=rent-estimate-commune"
+    )
+    .set("HX-Request", "true")
+    .expect(200);
+  assert.match(browse.text, /id="enrichment-cache-provider" hx-swap-oob="innerHTML"/);
+  assert.match(browse.text, /<option value="immo-data-dept"/);
+  assert.doesNotMatch(browse.text, /<option value="rent-estimate-commune"/);
+  assert.match(browse.text, /\b92\b/);
+});
+
 withApp("l'admin peut vider tout le cache enrichissement", async ({
   app,
   repositories,

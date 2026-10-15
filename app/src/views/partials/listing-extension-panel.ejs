@@ -1,0 +1,47 @@
+<%
+  const data = (typeof displayData !== 'undefined' && displayData) || listing.extension_data || {};
+  const hasData = Object.keys(data).length > 0;
+  const trips = Array.isArray(data.travel_times) ? data.travel_times : [];
+  const poll = typeof travelPoll !== 'undefined' && travelPoll;
+  const panelUrl = "/listings/" + listing.id + "/extension-panel";
+  const projectConfigHref =
+    typeof travelConfigProject !== 'undefined' && travelConfigProject
+      ? `/projects/${travelConfigProject.id}`
+      : null;
+%>
+<div
+  id="listing-extension-panel"
+  class="listing-extension-panel"
+  <% if (typeof hxSwapOob !== 'undefined' && hxSwapOob) { %>hx-swap-oob="true"<% } %>
+  <% if (poll) { %>
+  hx-get="<%= panelUrl %>"
+  hx-trigger="every 2s"
+  hx-swap="outerHTML"
+  <% } %>
+>
+<% if (typeof showExtensionPanel !== 'undefined' && showExtensionPanel) { %>
+<section class="panel">
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Extension</p>
+      <h2 class="panel__title">Données du navigateur</h2>
+    </div>
+  </div>
+  <% if (typeof travelError !== 'undefined' && travelError) { %>
+    <p class="field__hint kv__travel-hint"><%= travelError %></p>
+  <% } %>
+  <% if (poll) { %>
+    <p class="field__hint">Calcul des trajets depuis l'adresse du bien…</p>
+  <% } %>
+  <% if (hasData) { %>
+    <%- include("extension-data", {
+      data: data,
+      projectConfigHref,
+      travelHint: poll ? null : (typeof travelHint !== 'undefined' ? travelHint : null),
+      travelProjectAddresses:
+        typeof travelProjectAddresses !== 'undefined' ? travelProjectAddresses : [],
+    }) %>
+  <% } %>
+</section>
+<% } %>
+</div>

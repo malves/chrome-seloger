@@ -57,10 +57,10 @@
           <div class="field">
             <label class="field__label" for="enrichment-cache-provider">Provider</label>
             <select class="input input--sm" id="enrichment-cache-provider" name="cache_provider">
-              <option value="">Tous</option>
-              <% enrichmentCacheProviders.forEach(function (key) { %>
-                <option value="<%= key %>" <%= enrichmentCacheBrowse.filters.provider === key ? 'selected' : '' %>><%= key %></option>
-              <% }); %>
+              <%- include("../partials/admin/enrichment-cache-provider-options", {
+                providers: enrichmentCacheBrowse.providers,
+                selected: enrichmentCacheBrowse.filters.provider,
+              }) %>
             </select>
           </div>
           <div class="field admin-cache-filters__search">

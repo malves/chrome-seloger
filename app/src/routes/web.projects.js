@@ -10,7 +10,7 @@ import createProjectsService from "../services/projects.service.js";
 import createTravelService from "../services/travel.service.js";
 import { logActivity } from "../lib/activity.js";
 
-export default function createProjectsRouter({ repositories, logger }) {
+export default function createProjectsRouter({ repositories, enrichment, logger }) {
   const router = express.Router();
   const projects = createProjectsService({ repositories });
   const travel = createTravelService({ logger });
@@ -149,6 +149,7 @@ export default function createProjectsRouter({ repositories, logger }) {
       );
       if (!error) {
         logActivity(logger, req, "adresse de référence ajoutée", { projectId: id });
+        enrichment.scheduleListingTravelForProject(req.user.id, id);
       }
       const localized = address?.lat != null && address?.lng != null;
       req.session.flash = error
@@ -175,6 +176,7 @@ export default function createProjectsRouter({ repositories, logger }) {
         projectId: id,
         addressId,
       });
+      enrichment.scheduleListingTravelForProject(req.user.id, id);
     }
     req.session.flash = error
       ? { type: "error", message: error }

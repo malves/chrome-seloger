@@ -38,6 +38,14 @@
   <span><strong><%= fmt.number(s.listing) %></strong> par annonce</span>
 </p>
 <% } %>
+<% if (typeof providersOob !== 'undefined' && providersOob) { %>
+<select id="enrichment-cache-provider" hx-swap-oob="innerHTML">
+  <%- include("./enrichment-cache-provider-options", {
+    providers: providers,
+    selected: filters.provider,
+  }) %>
+</select>
+<% } %>
 <div class="admin-users-results" id="enrichment-cache-results">
   <% if (typeof cacheRevokeNotice !== 'undefined' && cacheRevokeNotice) { %>
     <p class="admin-users-notice admin-users-notice--success" role="status"><%= cacheRevokeNotice %></p>

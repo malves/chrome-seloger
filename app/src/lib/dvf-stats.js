@@ -232,6 +232,30 @@ export function recencyWeightedMedian(sales, { now = new Date(), halfLifeDays = 
   return items[items.length - 1].price;
 }
 
+/** Seuils de la note prix A–F (A = meilleure affaire pour l'acheteur). */
+const PRICE_GRADE_BANDS = [
+  { max: 85, grade: "A", grade_label: "Excellente affaire" },
+  { max: 92, grade: "B", grade_label: "Très bon prix" },
+  { max: 97, grade: "C", grade_label: "Légèrement sous le marché" },
+  { max: 103, grade: "D", grade_label: "Au prix du marché" },
+  { max: 115, grade: "E", grade_label: "Au-dessus du marché" },
+  { max: Infinity, grade: "F", grade_label: "Prix élevé" },
+];
+
+/**
+ * Note A–F à partir de l'indice 100 = marché (plus bas = meilleure affaire).
+ * @param {number} index
+ */
+export function priceGradeFromIndex(index) {
+  if (!Number.isFinite(index)) return { grade: null, grade_label: null };
+  for (const band of PRICE_GRADE_BANDS) {
+    if (index <= band.max) {
+      return { grade: band.grade, grade_label: band.grade_label };
+    }
+  }
+  return { grade: "F", grade_label: "Prix élevé" };
+}
+
 /**
  * Verdict de positionnement du prix d'un bien par rapport à une référence
  * locale (médiane rayon ou commune). `index` = bien / référence × 100.
@@ -263,7 +287,8 @@ export function priceVerdict(listingPricePerM2, referencePricePerM2) {
     tone = "high";
     label = "Nettement au-dessus du marché";
   }
-  return { index, tone, label };
+  const { grade, grade_label } = priceGradeFromIndex(index);
+  return { index, tone, label, grade, grade_label };
 }
 
 /** Variation en pourcentage (une décimale), ou null. */

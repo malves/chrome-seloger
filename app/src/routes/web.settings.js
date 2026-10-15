@@ -11,7 +11,7 @@ import createAddressbookService from "../services/addressbook.service.js";
 import createTravelService from "../services/travel.service.js";
 import { logActivity } from "../lib/activity.js";
 
-export default function createSettingsRouter({ repositories, logger }) {
+export default function createSettingsRouter({ repositories, enrichment, logger }) {
   const router = express.Router();
   const travel = createTravelService({ logger });
   const addressbook = createAddressbookService({ repositories, travel });
@@ -81,6 +81,12 @@ export default function createSettingsRouter({ repositories, logger }) {
       });
       if (!error) {
         logActivity(logger, req, "adresse du carnet modifiée", { addressId: id });
+        for (const projectId of repositories.projects.listProjectIdsForAddress(
+          req.user.id,
+          id
+        )) {
+          enrichment.scheduleListingTravelForProject(req.user.id, projectId);
+        }
       }
       return respondAddressbook(
         req,
@@ -96,9 +102,16 @@ export default function createSettingsRouter({ repositories, logger }) {
 
   router.post("/settings/addresses/:id/delete", (req, res) => {
     const id = Number(req.params.id);
+    const projectIds = repositories.projects.listProjectIdsForAddress(
+      req.user.id,
+      id
+    );
     const { error } = addressbook.remove(req.user.id, id);
     if (!error) {
       logActivity(logger, req, "adresse supprimée du carnet", { addressId: id });
+      for (const projectId of projectIds) {
+        enrichment.scheduleListingTravelForProject(req.user.id, projectId);
+      }
     }
     return respondAddressbook(
       req,

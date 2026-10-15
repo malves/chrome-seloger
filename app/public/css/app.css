@@ -1641,6 +1641,11 @@ body.is-modal-open {
   margin-top: 0;
 }
 
+/* Conteneur htmx du panneau Extension : sans boîte, pour ne pas créer de case vide dans la grille. */
+.listing-extension-panel {
+  display: contents;
+}
+
 .detail-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2574,81 +2579,48 @@ body.is-modal-open {
 }
 
 .listing-description__title {
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-2);
 }
 
-.listing-description__text.is-clamped {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
+.listing-description__card {
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  transition: box-shadow 0.15s ease;
 }
 
-.listing-description__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35em;
-  margin-top: var(--space-2);
+.listing-description__card:has(.listing-description__toggle:hover),
+.listing-description__card:has(.listing-description__toggle:focus-visible) {
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.listing-description__body {
+  padding: var(--space-3) var(--space-4);
+}
+
+.listing-description__text {
+  margin: 0;
+}
+
+.listing-description__ellipsis {
+  color: var(--ink-soft);
+}
+
+.listing-description__text .listing-description__toggle {
+  display: inline;
+  margin: 0 0 0 0.4em;
   padding: 0;
   border: 0;
   background: none;
   font: inherit;
-  font-size: 14px;
+  font-size: inherit;
+  line-height: inherit;
   font-weight: 600;
   color: var(--green-700);
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  vertical-align: baseline;
+  white-space: nowrap;
+  text-decoration: none;
   transition: color 0.15s ease;
-}
-
-.listing-description__toggle-chevron {
-  width: 1em;
-  height: 1em;
-  flex: 0 0 auto;
-  margin-top: 0.1em;
-  transform-origin: 50% 45%;
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.listing-description__toggle[aria-expanded="true"] .listing-description__toggle-chevron {
-  transform: rotate(180deg);
-}
-
-.listing-description__toggle[aria-expanded="false"]:hover .listing-description__toggle-chevron,
-.listing-description__toggle[aria-expanded="false"]:focus-visible .listing-description__toggle-chevron {
-  animation: listing-description-chevron-nudge-down 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.listing-description__toggle[aria-expanded="true"]:hover .listing-description__toggle-chevron,
-.listing-description__toggle[aria-expanded="true"]:focus-visible .listing-description__toggle-chevron {
-  animation: listing-description-chevron-nudge-up 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes listing-description-chevron-nudge-down {
-  0%,
-  100% {
-    transform: rotate(0deg) translateY(0);
-  }
-  40% {
-    transform: rotate(0deg) translateY(2px);
-  }
-  70% {
-    transform: rotate(0deg) translateY(-1px);
-  }
-}
-
-@keyframes listing-description-chevron-nudge-up {
-  0%,
-  100% {
-    transform: rotate(180deg) translateY(0);
-  }
-  40% {
-    transform: rotate(180deg) translateY(-2px);
-  }
-  70% {
-    transform: rotate(180deg) translateY(1px);
-  }
 }
 
 .listing-description__toggle:hover,
@@ -2660,19 +2632,6 @@ body.is-modal-open {
   outline: 2px solid var(--green-600);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .listing-description__toggle-chevron {
-    transition: none;
-  }
-
-  .listing-description__toggle[aria-expanded="false"]:hover .listing-description__toggle-chevron,
-  .listing-description__toggle[aria-expanded="false"]:focus-visible .listing-description__toggle-chevron,
-  .listing-description__toggle[aria-expanded="true"]:hover .listing-description__toggle-chevron,
-  .listing-description__toggle[aria-expanded="true"]:focus-visible .listing-description__toggle-chevron {
-    animation: none;
-  }
 }
 
 .tags {
@@ -2707,34 +2666,112 @@ body.is-modal-open {
   color: var(--ink-muted);
 }
 
-.kv__travel-config {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
+.kv__travel-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.5rem;
+  min-width: 0;
   max-width: min(100%, 70%);
+}
+
+.kv__travel-name {
+  font-weight: 600;
+  color: var(--green-800);
   text-decoration: none;
-  color: inherit;
+}
+
+.kv__travel-name:hover,
+.kv__travel-name:focus-visible {
+  text-decoration: underline;
+}
+
+.kv__travel-name:focus-visible {
+  outline: 2px solid var(--green-600);
+  outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
 
-.kv__travel-config:hover .kv__key,
-.kv__travel-config:focus-visible .kv__key {
-  color: var(--green-800);
-}
-
-.kv__travel-config:focus-visible {
-  outline: 2px solid var(--green-600);
-  outline-offset: 2px;
-}
-
-.kv__travel-config__icon {
-  flex: 0 0 auto;
-  pointer-events: none;
+.kv__travel-map {
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .kv__value {
   font-weight: 600;
   text-align: right;
+}
+
+/* Données extension (fiche annonce) : trajets à gauche, commune à droite. */
+.kv__extension-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4) var(--space-6);
+  align-items: start;
+}
+
+.kv__extension-split--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.kv__extension-col {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.kv__extension-section-head {
+  margin: 0;
+}
+
+.kv__extension-section-head .politics__label {
+  color: var(--ink);
+}
+
+/* Même ligne de titre que « Orientation politique » (baseline, pas centré sur la valeur). */
+.kv__extension-col--travel > .kv__row {
+  align-items: baseline;
+}
+
+.kv__extension-split:not(.kv__extension-split--single) .kv__extension-col--meta {
+  padding-left: var(--space-6);
+  border-left: 1px solid var(--border);
+}
+
+.kv__extension-col--travel > .kv__row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.kv__extension-col--meta > .politics:last-child,
+.kv__extension-col--meta > .kv__row:last-child,
+.kv__extension-col--meta > .tax:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .kv__extension-split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .kv__extension-split:not(.kv__extension-split--single) .kv__extension-col--meta {
+    padding-left: 0;
+    border-left: 0;
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border);
+  }
+
+  .kv__extension-col--travel > .kv__row:last-child {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--space-2);
+  }
+
+  .kv__extension-split--single .kv__extension-col--travel > .kv__row:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
 }
 
 /*
@@ -4024,7 +4061,7 @@ body.is-modal-open {
 }
 
 .pricem2__dvf-method-title {
-  margin: 0 0 var(--space-1);
+  margin: 0 0 var(--space-3);
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
@@ -4256,10 +4293,14 @@ body.is-modal-open {
   }
 }
 
-/* Positionnement du prix : verdict, estimation et références comparées. */
+/* Positionnement du prix : verdict, repères chiffrés (prix seul / prix +
+   travaux / estimation), jauge à deux curseurs, conseil et référence en puces.
+   `--tone` suit le verdict du prix affiché, `--tone-works` celui du prix
+   travaux compris (posée en inline par le partial). */
 .pricepos {
   --tone: var(--ink-muted);
   --tone-soft: var(--surface-sunken);
+  --tone-works: var(--ink-muted);
   display: grid;
   gap: var(--space-4);
   padding: var(--space-4);
@@ -4307,108 +4348,278 @@ body.is-modal-open {
   letter-spacing: -0.01em;
   color: var(--tone);
 }
-.pricepos__basis {
-  margin: var(--space-1) 0 0;
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--ink-soft);
-}
-.pricepos__basis strong {
-  color: var(--ink);
-}
-.pricepos__address {
-  display: block;
+.pricepos__scope {
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
   font-size: 13px;
+  line-height: 1.45;
   color: var(--ink-muted);
 }
-.pricepos__address-source {
-  font-style: italic;
+.pricepos__scope strong {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.pricepos__help {
+  flex-shrink: 0;
+  margin-top: 0.15em;
+  line-height: 0;
+}
+.pricepos__help .pricem2__dvf-method-panel {
+  width: min(22rem, calc(100vw - 2rem));
 }
 
-.pricepos__score {
-  display: grid;
-  grid-template-columns: auto auto;
-  align-items: baseline;
-  column-gap: 4px;
+.pricepos__grade {
+  flex-shrink: 0;
+  width: min(24rem, 58vw);
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
   text-align: right;
-  white-space: nowrap;
   cursor: help;
 }
-.pricepos__score-value {
-  font-size: 30px;
+.pricepos__grade-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  width: 100%;
+}
+.pricepos__grade-eyebrow {
+  margin: 0;
+  flex-shrink: 0;
+  padding-top: 5px;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 1;
-  color: var(--tone);
-  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  white-space: nowrap;
 }
-.pricepos__score-unit {
+.pricepos__grade-scale-col {
+  flex: 1 1 8rem;
+  min-width: 0;
+  max-width: 11rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.pricepos__grade-scale {
+  min-height: 32px;
+}
+.pricepos__grade-scale .dpe-seg {
+  height: 16px;
+}
+.pricepos__grade-scale .dpe-seg.is-active {
+  height: 32px;
+  font-size: 15px;
+}
+.pricepos__grade-scale .dpe-seg.is-active.is-active--dark {
+  color: #1c1c1c;
+  text-shadow: none;
+}
+.pricepos__grade-caption {
+  margin: 0;
   font-size: 13px;
-  color: var(--ink-muted);
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--tone);
 }
-.pricepos__score-hint {
-  grid-column: 1 / -1;
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--ink-muted);
+/* Infobulles : au-dessus de l'élément, centrées (la version générique s'affiche
+   à droite et déborderait sur les puces). Même géométrie que la jauge. */
+.pricepos [data-tooltip]::after,
+.pricepos [data-tooltip]::before {
+  top: auto;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, 4px);
+}
+.pricepos [data-tooltip]:hover::after,
+.pricepos [data-tooltip]:focus-visible::after {
+  transform: translate(-50%, 0);
+}
+.pricepos [data-tooltip]::before {
+  bottom: calc(100% + 4px);
+  transform: translate(-50%, 4px) rotate(45deg);
+}
+.pricepos [data-tooltip]:hover::before,
+.pricepos [data-tooltip]:focus-visible::before {
+  transform: translate(-50%, 0) rotate(45deg);
+}
+/* Variante multi-lignes (facteurs de correction, explications). */
+.pricepos [data-tooltip].pricepos__tip--wrap::after {
+  white-space: normal;
+  width: max-content;
+  max-width: 17rem;
+  text-align: left;
+  line-height: 1.35;
 }
 
-.pricepos__figures {
+/* Trois repères chiffrés : prix affiché, prix + travaux, estimation. */
+.pricepos__kpis {
   margin: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
 }
-.pricepos__figure {
+.pricepos__kpi {
   display: grid;
-  gap: 2px;
+  align-content: start;
+  gap: var(--space-2);
   padding: var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--surface);
   border: 1px solid var(--border);
 }
-.pricepos__figure dt {
+.pricepos__kpi--works {
+  box-shadow: inset 0 3px 0 var(--tone-works);
+}
+.pricepos__kpi--muted {
+  background: var(--surface-muted);
+  border-style: dashed;
+}
+.pricepos__kpi dt {
   font-size: 12px;
   font-weight: 600;
   color: var(--ink-muted);
 }
-.pricepos__figure dd {
+.pricepos__kpi-term {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pricepos__kpi-term .pricepos__kpi-help {
+  flex-shrink: 0;
+  margin-top: 0;
+  line-height: 0;
+}
+.pricepos__kpis .pricepos__kpi:last-child .pricepos__kpi-help .pricem2__dvf-method-panel {
+  right: 0;
+  left: auto;
+}
+.pricepos__kpi dd {
   margin: 0;
   display: grid;
   gap: 2px;
   font-variant-numeric: tabular-nums;
 }
-.pricepos__figure dd strong {
-  font-size: 19px;
+.pricepos__kpi-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.pricepos__kpi-row strong {
+  font-size: 26px;
   font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
   color: var(--ink);
 }
-.pricepos__figure dd span {
-  font-size: 12px;
+.pricepos__kpi--muted .pricepos__kpi-row strong {
   color: var(--ink-muted);
 }
-.pricepos__estimate-range {
-  display: block;
-  margin-top: 4px;
+.pricepos__kpi-sub {
   font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-muted);
+}
+.pricepos__kpi-sub a {
   color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
-.pricepos__delta strong {
-  color: var(--ink);
+.pricepos__kpi-sub[data-tooltip] {
+  cursor: help;
+  width: fit-content;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
-.pricepos__delta--below strong {
-  color: var(--green-800);
-}
-.pricepos__delta--above strong {
-  color: var(--ink);
-}
-.pricepos__delta--near strong {
-  color: var(--ink);
+.pricepos__kpi-range {
+  white-space: nowrap;
+  color: var(--ink-soft);
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
 
+/* Écart au marché : badge tonal (vert sous, rouge au-dessus, neutre aligné). */
+.pricepos__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-sunken);
+  color: var(--ink-soft);
+}
+.pricepos__badge--below {
+  background: var(--green-100);
+  color: var(--green-800);
+}
+.pricepos__badge--above {
+  background: var(--danger-vivid-soft);
+  color: var(--danger-vivid);
+}
+
+/* Jauge : bande P25–P75, repère marché, curseurs prix seul / prix + travaux. */
 .pricepos__gauge {
   display: grid;
   gap: 6px;
   padding-top: var(--space-2);
+}
+.pricepos__gauge-bar {
+  margin-top: 4px;
+}
+.pricepos__gauge-bar .pricepos__band {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  z-index: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(17, 24, 39, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.12);
+  cursor: default;
+}
+/* Curseur « prix + travaux » : losange dans une zone de survol droite (la
+   rotation est portée par l'enfant pour ne pas pencher l'infobulle). */
+.pricepos__gauge-bar .pricepos__marker-wrap {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  cursor: default;
+}
+.pricepos__marker--works {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--surface);
+  border: 2.5px solid var(--tone-works);
+  box-shadow: 0 0 0 1px var(--surface);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.pricepos__gauge-bar .pricepos__marker--price {
+  z-index: 3;
 }
 .pricepos__gauge-scale {
   display: flex;
@@ -4416,91 +4627,274 @@ body.is-modal-open {
   font-size: 11px;
   color: var(--ink-muted);
 }
-
-.pricepos__caveat {
+.pricepos__legend {
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-left: 3px solid #c98a00;
-  font-size: 13px;
-  color: var(--ink-soft);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.pricepos__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pricepos__legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+.pricepos__legend-dot--price {
+  background: var(--tone);
+}
+.pricepos__legend-dot--works {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
   background: var(--surface);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border: 2px solid var(--tone-works);
+  transform: rotate(45deg);
+}
+.pricepos__legend-dot--ref {
+  background: var(--ink);
+  opacity: 0.8;
+}
+.pricepos__legend-dot--band {
+  width: 14px;
+  border-radius: 3px;
+  background: rgba(17, 24, 39, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.16);
 }
 
+/* Conseil : une ligne tonale, plus la lecture « travaux compris » et les
+   points à pondérer en puces. */
+.pricepos__advice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
+}
+.pricepos__advice--negotiate {
+  background: var(--danger-vivid-soft);
+  border-color: transparent;
+  color: var(--danger-vivid);
+}
+.pricepos__advice--negotiate strong {
+  color: var(--danger-vivid);
+}
+.pricepos__advice--good {
+  background: var(--green-100);
+  border-color: transparent;
+  color: var(--green-800);
+}
+.pricepos__advice-main {
+  margin: 0;
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  cursor: help;
+}
+.pricepos__advice-sep {
+  opacity: 0.6;
+}
+.pricepos__advice-works {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.pricepos__advice--negotiate .pricepos__advice-works,
+.pricepos__advice--good .pricepos__advice-works {
+  color: inherit;
+  opacity: 0.9;
+}
+.pricepos__advice-works-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 2px;
+  border-radius: 2px;
+  background: var(--surface);
+  border: 2px solid var(--tone-works);
+  transform: rotate(45deg);
+}
+.pricepos__advice-works-delta {
+  font-variant-numeric: tabular-nums;
+}
+.pricepos__caveats {
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* Référence retenue : métadonnées en puces, autres références repliées. */
 .pricepos__refs {
   display: grid;
   gap: var(--space-2);
 }
-.pricepos__refs-title {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--ink-muted);
-}
-.pricepos__ref-list {
+.pricepos__chips {
   margin: 0;
   padding: 0;
   list-style: none;
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.pricepos__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pricepos__chip[data-tooltip] {
+  cursor: help;
+}
+.pricepos__chip--warn {
+  background: var(--gold-soft);
+  border-color: transparent;
+  color: #7a5200;
+}
+.pricepos__chip--link {
+  cursor: pointer;
+  color: var(--ink);
+  border-color: var(--border-strong);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.pricepos__chip--link:hover,
+.pricepos__chip--link:focus-visible {
+  background: var(--surface-sunken, #ebe8e0);
+}
+.pricepos__chip--link:focus-visible {
+  outline: 2px solid var(--ink-muted);
+  outline-offset: 2px;
+}
+.pricepos__chip-arrow {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.pricepos__more {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
-.pricepos__ref {
-  padding: var(--space-3);
-}
-.pricepos__ref + .pricepos__ref {
-  border-top: 1px solid var(--border);
-}
-.pricepos__ref.is-primary {
-  box-shadow: inset 3px 0 0 var(--tone);
-}
-.pricepos__ref-main {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.pricepos__ref-scope {
+.pricepos__more-summary {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-2);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink);
-}
-.pricepos__ref-badge {
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--tone);
-  background: var(--tone-soft);
-}
-.pricepos__ref-meta {
-  font-size: 12px;
-  color: var(--ink-muted);
-}
-.pricepos__ref-meta .pricem2__dvf-sales-link {
-  font-size: inherit;
-}
-.pricepos__adjust {
-  display: block;
-  margin-top: 2px;
-  line-height: 1.5;
-}
-.pricepos__adjust-pct {
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ink-soft);
 }
-.pricepos__adjust-pct.is-down {
-  color: var(--danger-vivid);
+.pricepos__more-summary::-webkit-details-marker {
+  display: none;
 }
-.pricepos__adjust-pct.is-up {
-  color: var(--green-600);
+.pricepos__more-summary::marker {
+  content: "";
 }
+.pricepos__more-summary:focus-visible {
+  outline: 2px solid var(--ink-muted);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+.pricepos__more-chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--ink-muted);
+  border-bottom: 2px solid var(--ink-muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex: none;
+}
+.pricepos__more[open] .pricepos__more-chevron {
+  transform: rotate(45deg);
+}
+.pricepos__more-count {
+  margin-left: auto;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.pricepos__more-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+.pricepos__more-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "scope index"
+    "meta index";
+  align-items: center;
+  column-gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+.pricepos__more-item + .pricepos__more-item {
+  border-top: 1px solid var(--border);
+}
+.pricepos__more-scope {
+  grid-area: scope;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.pricepos__more-meta {
+  grid-area: meta;
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.pricepos__more-index {
+  grid-area: index;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.pricepos__more-index small {
+  margin-left: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
 .dvf-sales-table__factor {
   margin-left: 4px;
   font-size: 11px;
@@ -4511,22 +4905,42 @@ body.is-modal-open {
   font-size: 12px;
   color: var(--ink-muted);
 }
+.pricepos__hint a {
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 @media (max-width: 720px) {
   .pricepos__head {
     flex-direction: column;
     gap: var(--space-2);
   }
-  .pricepos__score {
+  .pricepos__grade {
+    width: 100%;
+    max-width: none;
+    align-items: flex-start;
     text-align: left;
-    grid-template-columns: auto auto 1fr;
   }
-  .pricepos__score-hint {
-    grid-column: auto;
-    margin: 0 0 0 var(--space-2);
+  .pricepos__grade-row {
+    justify-content: flex-start;
   }
-  .pricepos__figures {
+  .pricepos__grade-caption {
+    text-align: left;
+    white-space: normal;
+  }
+  .pricepos__grade-scale-col {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+  .pricepos__kpis {
     grid-template-columns: 1fr;
+  }
+  .pricepos__caveats {
+    margin-left: 0;
+  }
+  .pricepos__chip {
+    white-space: normal;
   }
 }
 
@@ -4535,8 +4949,32 @@ body.is-modal-open {
   color: var(--ink-muted);
 }
 
-.pricem2__evolution-details {
-  margin-top: var(--space-2);
+.rentest__body {
+  display: grid;
+  gap: var(--space-4);
+}
+.rentest__empty {
+  display: grid;
+  gap: var(--space-3);
+  align-items: start;
+}
+.rentest__unit {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+.rentest__kpis {
+  margin: 0;
+}
+.rentest__chips {
+  margin: 0;
+}
+
+/* Espacement géré par le gap de .pricem2 (évite gap + margin cumulés). */
+.pricem2 > .pricem2__evolution-details,
+.pricem2 > .rentest__details,
+#listing-rent-estimate > .rentest__details {
+  margin-top: 0;
 }
 
 .pricem2__evolution-details .delinquance__summary {
@@ -6323,6 +6761,7 @@ body.is-modal-open {
 
 .listing-location {
   position: relative;
+  scroll-margin-top: calc(var(--space-4) + 3.5rem);
 }
 
 .listing-location__grid {
@@ -8050,6 +8489,13 @@ body.is-modal-open {
   border: 3px solid var(--border-strong);
   border-top-color: var(--green-600);
   animation: spinner-rotate 0.7s linear infinite;
+}
+
+.spinner--sm {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+  flex: none;
 }
 
 @keyframes spinner-rotate {
@@ -11007,6 +11453,21 @@ body.is-modal-open {
 
 .pa-pending .field__hint {
   margin: 0;
+}
+
+.pa-pending--compact {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  gap: var(--space-3);
+}
+
+.pa-pending--compact .spinner {
+  width: 28px;
+  height: 28px;
+}
+
+.rentest__retry {
+  margin-top: var(--space-3);
 }
 
 .pa-empty {

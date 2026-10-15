@@ -126,5 +126,10 @@
 }) %>
 <% } %>
 <% if (typeof financingOob !== "undefined" && financingOob) { %>
-<%- include("financing", { listing: listing, financing: financingOob, hxSwapOob: true }) %>
+<%- include("financing", {
+  listing: listing,
+  financing: financingOob,
+  hxSwapOob: true,
+  pricePositionOob: typeof pricePositionOob !== "undefined" ? pricePositionOob : null,
+}) %>
 <% } %>

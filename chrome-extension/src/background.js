@@ -377,6 +377,10 @@ async function withExtensionData(listing) {
       mode: "car",
       minutes: Math.round(trip.durationSec / 60),
       distance_km: Math.round(trip.distanceMeter / 1000),
+      maps_url: trip.mapsUrl || null,
+      address: trip.address || null,
+      lat: trip.lat ?? null,
+      lon: trip.lon ?? null,
     }));
   }
   if (lastResult.politics) {
