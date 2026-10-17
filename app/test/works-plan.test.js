@@ -100,16 +100,17 @@ test("rénovation lourde : pires tags par catégorie", () => {
   assert.ok(HEAVY_RENOVATION_WORST_ISSUES.includes("walls_damaged"));
   assert.ok(HEAVY_RENOVATION_WORST_ISSUES.includes("ceiling_damaged"));
   assert.ok(HEAVY_RENOVATION_WORST_ISSUES.includes("mold"));
-  assert.ok(HEAVY_RENOVATION_WORST_ISSUES.includes("electricity"));
+  assert.ok(!HEAVY_RENOVATION_WORST_ISSUES.includes("electricity"), "l'électricité relève du logement entier");
   assert.ok(!HEAVY_RENOVATION_WORST_ISSUES.includes("floor_worn"));
-  const merged = applyHeavyRenovationIssues(["paint", "floor_worn"]);
+  assert.ok(!HEAVY_RENOVATION_WORST_ISSUES.includes("paint"));
+  const merged = applyHeavyRenovationIssues(["paint", "floor_worn", "kitchen_refresh"], "kitchen");
   assert.ok(merged.issues.includes("floor_redo"));
-  assert.ok(merged.issues.includes("paint"));
+  assert.ok(merged.issues.includes("walls_damaged"));
   assert.ok(!merged.issues.includes("floor_worn"));
+  assert.ok(!merged.issues.includes("paint"), "murs à refaire remplace la peinture");
   assert.ok(merged.added.includes("floor_redo"));
-  assert.ok(!merged.added.includes("paint"));
-  const reverted = revertHeavyRenovationAutoIssues(merged.issues, merged.added);
-  assert.deepEqual(reverted, ["paint"]);
+  const reverted = revertHeavyRenovationAutoIssues([...merged.issues, "kitchen_refresh"], merged.added);
+  assert.ok(!reverted.includes("floor_redo") && !reverted.includes("walls_damaged"));
 });
 
 test("rénovation lourde : cuisine et salle d'eau seulement dans leurs pièces", () => {
@@ -200,11 +201,173 @@ test("seed : points à signaler pré-cochés depuis les surfaces, l'ambiance et 
   stored.anomalies = [{ type: "possible_humidity", room_id: "room_01" }, { type: "crack", room_id: "room_99" }];
   stored.rooms[0].windows = { replacement_may_be_relevant: true };
   stored.rooms[0].ceiling_height = "low";
-  const [salon, cuisine] = seedWorksPlan(stored, PHOTOS).rooms;
-  assert.deepEqual(salon.issues, ["floor_worn", "paint", "humidity", "windows"]);
+  const plan = seedWorksPlan(stored, PHOTOS);
+  const [salon, cuisine] = plan.rooms;
+  assert.deepEqual(salon.issues, ["floor_worn", "paint", "humidity"]);
   assert.deepEqual(salon.issues_ai, salon.issues);
   assert.equal(salon.ambiance.ceiling_height, "low", "plafond bas : caractéristique, pas un point à signaler");
   assert.deepEqual(cuisine.issues, []);
+  const windows = plan.global.items.find((i) => i.key === "windows");
+  assert.equal(windows.enabled, true, "fenêtres : chantier du logement entier pré-coché");
+  assert.equal(windows.source, "ai");
+  assert.equal(windows.quantity, 2, "une seule pièce concernée : ses fenêtres seulement");
+  assert.ok(windows.reason);
+});
+
+test("murs : peinture et murs à refaire s'excluent, plus d'option « Fissures »", () => {
+  const options = plannerOptions();
+  assert.ok(!options.issues.some((i) => i.value === "cracks"));
+  assert.deepEqual(options.exclusiveIssues.find((p) => p.includes("walls_damaged")), ["paint", "walls_damaged"]);
+  const room = { ...emptyRoom("r", "bedroom", "Chambre"), photos: [], issues: ["paint", "walls_damaged"] };
+  const parsed = parseWorksPlan({ rooms: [room], groups: { unassigned: [], exterior: [], excluded: [] }, captions: {} });
+  assert.deepEqual(parsed.plan.rooms[0].issues, ["walls_damaged"], "murs à refaire inclut la peinture");
+});
+
+test("fissure relevée par l'IA : « Murs à refaire » coché, avec le constat", () => {
+  const stored = analysis();
+  stored.rooms[0].walls = { condition: "worn" };
+  stored.anomalies = [{ type: "crack", room_id: "room_01", observation: "Fissure en escalier au-dessus de la porte" }];
+  const [salon] = seedWorksPlan(stored, PHOTOS).rooms;
+  assert.ok(salon.issues.includes("walls_damaged"));
+  assert.ok(!salon.issues.includes("paint"), "la peinture est comprise dans les murs à refaire");
+  assert.ok(!salon.issues.includes("cracks"));
+
+  const synth = analysis();
+  synth.rooms[0].issues = ["cracks"];
+  synth.rooms[0].issue_reasons = { cracks: "Fissure verticale sur le mur du séjour" };
+  const [fromSynthesis] = seedWorksPlan(synth, PHOTOS).rooms;
+  assert.ok(fromSynthesis.issues.includes("walls_damaged"));
+  assert.match(fromSynthesis.issue_reasons.walls_damaged, /Fissure verticale/);
+});
+
+test("sol, murs, plafond : définitions pour le « ? », humidité marquée sur une photo → murs à refaire", () => {
+  const hints = Object.fromEntries(plannerOptions().issues.map((i) => [i.value, i.hint]));
+  assert.match(hints.floor_worn, /ponçage|vitrification/i);
+  assert.match(hints.floor_redo, /remplacer|dépose/i);
+  assert.match(hints.paint, /papier peint/);
+  assert.match(hints.walls_damaged, /fissures/);
+  assert.match(hints.ceiling_paint, /peinture/i);
+  assert.match(hints.ceiling_damaged, /fissuré|dégât/i);
+  assert.match(hints.humidity, /Auréoles|humidité/i);
+  assert.match(hints.mold, /Moisissures|ventilation/i);
+  assert.match(hints.kitchen_refresh, /façades|crédence/i);
+  assert.match(hints.bathroom_redo, /sanitaires|faïence/i);
+
+  const stored = analysis();
+  stored.images[0].usable_for_condition_analysis = true;
+  stored.images[0].observations = { walls: { condition: "worn", defects: ["damp_marks"] } };
+  const [salon] = seedWorksPlan(stored, PHOTOS).rooms;
+  assert.ok(salon.issues.includes("walls_damaged"));
+  assert.ok(!salon.issues.includes("paint"));
+});
+
+test("ancien plan avec « Fissures » : converti en « Murs à refaire », raison conservée", () => {
+  const room = {
+    ...emptyRoom("r", "bedroom", "Chambre"),
+    photos: [],
+    issues: ["paint", "cracks"],
+    issues_ai: ["cracks"],
+    issue_reasons: { cracks: "Fissure au plafond du couloir" },
+  };
+  const out = reconcileWorksPlan({ version: 2, rooms: [room], global: { items: [] }, groups: {}, captions: {} }, []);
+  assert.deepEqual(out.rooms[0].issues, ["walls_damaged"]);
+  assert.deepEqual(out.rooms[0].issues_ai, ["walls_damaged"]);
+  assert.equal(out.rooms[0].issue_reasons.walls_damaged, "Fissure au plafond du couloir");
+  assert.equal(parseWorksPlan({ ...out, rooms: [{ ...room }] }).ok, true, "un ancien client qui envoie « cracks » n'est pas rejeté");
+});
+
+/* --------------------------- Logement entier --------------------------- */
+
+function wholeHomeAnalysis() {
+  return {
+    status: "ok",
+    ready: true,
+    images: [],
+    rooms: [
+      { room_id: "r1", room_type: "living_room", label: "Séjour", image_ids: [], condition: "dated" },
+      { room_id: "r2", room_type: "bedroom", label: "Chambre", image_ids: [], condition: "dated" },
+    ],
+    anomalies: [],
+    potential_works: [],
+  };
+}
+
+const globalKeys = (plan) => plan.global.items.map((i) => i.key);
+
+test("seed logement entier : électricité ancienne dans une pièce → mise en sécurité, hors pièce → réfection", () => {
+  const stored = wholeHomeAnalysis();
+  stored.potential_works = [{ work_type: "visible_electrical_modernization", room_id: "r1", necessity: "likely", rationale: "Prises anciennes" }];
+  const local = seedWorksPlan(stored, []).global.items.find((i) => i.key === "electricity");
+  assert.equal(local.variant, "safety");
+  assert.match(local.reason, /Prises anciennes/);
+
+  stored.potential_works.push({ work_type: "visible_electrical_modernization", room_id: null, necessity: "likely", rationale: "Tableau d'origine" });
+  const whole = seedWorksPlan(stored, []).global.items.find((i) => i.key === "electricity");
+  assert.equal(whole.variant, "full");
+  assert.equal(whole.source, "ai");
+});
+
+test("seed logement entier : simple vitrage partout → toutes les fenêtres", () => {
+  const stored = wholeHomeAnalysis();
+  for (const r of stored.rooms) r.windows = { replacement_may_be_relevant: true };
+  const windows = seedWorksPlan(stored, []).global.items.find((i) => i.key === "windows");
+  assert.equal(windows.quantity, null, "« Toutes » : quantité estimée à partir des pièces");
+});
+
+test("seed logement entier : diagnostics selon l'année, préparation et imprévus seulement s'il y a des travaux", () => {
+  assert.deepEqual(globalKeys(seedWorksPlan(wholeHomeAnalysis(), [], { listing: { year_built: 1930 } })), []);
+
+  const stored = wholeHomeAnalysis();
+  stored.rooms[0].windows = { replacement_may_be_relevant: true };
+  const old = seedWorksPlan(stored, [], { listing: { year_built: 1930 } });
+  assert.deepEqual(globalKeys(old), ["windows", "diagnostics", "preparation", "contingency"]);
+  assert.match(old.global.items.find((i) => i.key === "diagnostics").reason, /plomb/);
+
+  const recent = seedWorksPlan(stored, [], { listing: { year_built: 2005 } });
+  assert.ok(!globalKeys(recent).includes("diagnostics"));
+  assert.ok(!globalKeys(recent).includes("project_management"), "maîtrise d'œuvre : jamais proposée d'office");
+});
+
+test("migration v1 : électricité et fenêtres quittent les pièces, raisons conservées", () => {
+  const room = (id, type, issues, reasons = {}) => ({
+    ...emptyRoom(id, type, type), photos: [], issues, issues_ai: issues, issue_reasons: reasons,
+  });
+  const v1 = {
+    version: 1,
+    rooms: [
+      room("a", "living_room", ["paint", "windows", "electricity"], { electricity: "Prises sans terre" }),
+      room("b", "bedroom", ["joinery"]),
+      room("c", "kitchen", []),
+    ],
+    groups: { unassigned: [], exterior: [], excluded: [] },
+    captions: {},
+  };
+  const out = reconcileWorksPlan(v1, []);
+  assert.equal(out.version, 2);
+  assert.deepEqual(out.rooms[0].issues, ["paint"]);
+  assert.deepEqual(out.rooms[1].issues, []);
+  const byKey = Object.fromEntries(out.global.items.map((i) => [i.key, i]));
+  assert.equal(byKey.electricity.variant, "full");
+  assert.equal(byKey.electricity.reason, "Prises sans terre");
+  assert.equal(byKey.windows.quantity, 3, "séjour (2) + chambre (1), la cuisine n'était pas cochée");
+  assert.ok(byKey.preparation && byKey.contingency, "ancien plan avec travaux : frais de chantier ajoutés");
+  assert.equal(parseWorksPlan(out).ok, true);
+
+  const again = reconcileWorksPlan(out, []);
+  assert.deepEqual(again.global, out.global, "migration idempotente");
+});
+
+test("validation logement entier : clés, variantes et quantités contrôlées, choix refusés conservés", () => {
+  const base = { rooms: [], groups: { unassigned: [], exterior: [], excluded: [] }, captions: {} };
+  const item = (over) => ({ key: "windows", enabled: true, variant: "double", quantity: 4, source: "user", reason: "", ...over });
+  const ok = parseWorksPlan({ ...base, global: { items: [item(), item({ key: "electricity", enabled: false, variant: "full", quantity: null })] } });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.plan.global.items.map((i) => [i.key, i.enabled]), [["electricity", false], ["windows", true]]);
+
+  assert.equal(parseWorksPlan({ ...base, global: { items: [item({ key: "piscine" })] } }).ok, false);
+  assert.equal(parseWorksPlan({ ...base, global: { items: [item({ quantity: 0 })] } }).ok, false);
+  assert.equal(parseWorksPlan({ ...base, global: { items: [item({ quantity: 1000 })] } }).ok, false);
+  assert.equal(parseWorksPlan(base).plan.global.items.length, 0, "sans bloc global : liste vide");
 });
 
 test("options : points groupés par catégorie, caractéristiques à part", () => {
@@ -267,7 +430,7 @@ test("validation : plan valide accepté, enums et textes invalides rejetés", ()
   const base = { rooms: [room], groups: { unassigned: [], exterior: [], excluded: [] }, captions: {} };
   const ok = parseWorksPlan(base);
   assert.equal(ok.ok, true);
-  assert.equal(ok.plan.version, 1);
+  assert.equal(ok.plan.version, 2);
 
   assert.equal(parseWorksPlan({ ...base, rooms: [{ ...room, type: "piscine" }] }).ok, false);
   assert.equal(

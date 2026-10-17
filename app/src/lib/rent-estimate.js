@@ -79,6 +79,20 @@ export function grossYield(annualRent, price) {
   return Math.round((annualRent / price) * 10000) / 100;
 }
 
+/**
+ * Rendement brut affiché dans le financement : loyer annuel estimé ÷ (prix
+ * retenu + travaux).
+ */
+export function financingGrossYield({ monthlyRentMid, price, works = 0 }) {
+  if (!(monthlyRentMid > 0)) return null;
+  const annualRent = monthlyRentMid * 12;
+  const acquisition =
+    Math.max(0, Number(price) || 0) + Math.max(0, Number(works) || 0);
+  const pct = grossYield(annualRent, acquisition);
+  if (pct == null) return null;
+  return { annualRent, pct };
+}
+
 /** Seuils de la note rendement A–F (A = meilleur rendement pour l'acheteur). */
 const YIELD_GRADE_BANDS = [
   { min: 118, grade: "A", grade_label: "Excellent rendement" },
@@ -105,11 +119,12 @@ export function yieldGradeFromIndex(index) {
 
 /**
  * Attractivité du rendement brut face à l'estimation marché (même référence
- * que le positionnement du prix). Indice = estimation ÷ prix affiché × 100.
+ * que le positionnement du prix). Indice = estimation ÷ coût d'entrée × 100
+ * (prix affiché + travaux retenus).
  */
-export function yieldAttractiveness(listingPrice, marketEstimate) {
-  if (!(listingPrice > 0) || !(marketEstimate > 0)) return null;
-  const index = Math.round((marketEstimate / listingPrice) * 100);
+export function yieldAttractiveness(acquisitionPrice, marketEstimate) {
+  if (!(acquisitionPrice > 0) || !(marketEstimate > 0)) return null;
+  const index = Math.round((marketEstimate / acquisitionPrice) * 100);
   let tone;
   if (index >= 103) tone = "ok";
   else if (index >= 97) tone = "mid";
@@ -221,10 +236,14 @@ export function buildRentEstimateView({
   const annual = monthly.mid != null ? monthly.mid * 12 : null;
   const price = listing.price > 0 ? Number(listing.price) : null;
   const worksAmount = works > 0 ? Number(works) : 0;
+  const acquisitionPrice =
+    price != null ? price + worksAmount : null;
   const marketValue =
     marketEstimate > 0 ? Math.round(Number(marketEstimate)) : null;
   const yield_attractiveness =
-    price && marketValue ? yieldAttractiveness(price, marketValue) : null;
+    acquisitionPrice && marketValue
+      ? yieldAttractiveness(acquisitionPrice, marketValue)
+      : null;
 
   return {
     visible: true,
@@ -241,9 +260,10 @@ export function buildRentEstimateView({
     notes: data.notes || "",
     surface,
     monthly,
-    yield_gross: grossYield(annual, price),
-    yield_works: worksAmount ? grossYield(annual, price + worksAmount) : null,
+    yield_gross: grossYield(annual, acquisitionPrice),
+    yield_listing: worksAmount > 0 ? grossYield(annual, price) : null,
     works: worksAmount,
+    acquisition_price: acquisitionPrice,
     yield_attractiveness,
     has_address: listingTerritory(listing).source === "user",
     web_search: Boolean(data.web_search),

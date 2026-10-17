@@ -54,18 +54,16 @@ test("listings.service.save : une nouvelle liste de photos invalide le cache d'a
   service.save(user, listingPayload({ photos: PHOTOS }));
   assert.ok(ctx.repositories.enrichments.findOne(id, PHOTO_ANALYSIS_PROVIDER));
 
-  // Photos modifiées : cache supprimé.
+  // Mise à jour : galerie et description déjà stockées ne sont pas réécrites,
+  // le cache d'analyse est conservé.
   service.save(user, listingPayload({ photos: [...PHOTOS, "https://p.example.com/3.jpg"] }));
-  assert.equal(ctx.repositories.enrichments.findOne(id, PHOTO_ANALYSIS_PROVIDER), null);
+  assert.ok(ctx.repositories.enrichments.findOne(id, PHOTO_ANALYSIS_PROVIDER));
 
-  // Description modifiée : cache supprimé aussi.
-  ctx.repositories.enrichments.saveListingResult(id, PHOTO_ANALYSIS_PROVIDER, {
-    status: "ok",
-    data: { inputFingerprint: "x", result: { status: "ok" } },
-  });
   service.save(
     user,
     listingPayload({ photos: [...PHOTOS, "https://p.example.com/3.jpg"], description: "Nouveau texte" })
   );
-  assert.equal(ctx.repositories.enrichments.findOne(id, PHOTO_ANALYSIS_PROVIDER), null);
+  assert.ok(ctx.repositories.enrichments.findOne(id, PHOTO_ANALYSIS_PROVIDER));
+  assert.equal(ctx.repositories.listings.findById(user.id, id).description, "Belle maison familiale.");
+  assert.deepEqual(ctx.repositories.listings.listPhotos(id), PHOTOS);
 });

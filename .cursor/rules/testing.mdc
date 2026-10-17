@@ -1,0 +1,18 @@
+---
+description: Conventions de tests du serveur (node:test, supertest, base en mémoire)
+globs: app/src/**,app/test/**
+alwaysApply: false
+---
+
+# Tests
+
+Stack : `node:test` + `node:assert/strict` + `supertest`. Lancer avec `npm test` depuis `app/`.
+
+## Règles
+
+- Utiliser les helpers de `app/test/helpers.js` : `createTestApp()` (base `:memory:`), `createUser`, `loginAgent`, `extractCsrf`, `listingPayload`. Jamais la base réelle de `app/data/`.
+- Chaque correction de bug s'accompagne d'un test qui échoue sans le correctif.
+- Chaque nouvelle route est testée au minimum sur : cas nominal, entrée invalide (400/422), accès à la ressource d'un autre compte (404), absence d'authentification ou de CSRF.
+- La logique pure de `lib/` se teste directement, sans passer par HTTP.
+- **Aucun appel réseau réel** : simuler `fetch` et les providers externes.
+- Exécuter `npm test` avant de déclarer une tâche terminée, et signaler tout test en échec.

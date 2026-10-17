@@ -16,7 +16,7 @@ import {
   filterPotentialWorks,
   usableForWorks,
 } from "../../lib/photo-analysis/works.js";
-import { ROOM_ISSUE_KEYS } from "../../lib/works/works-issues.js";
+import { ANALYSIS_ISSUE_KEYS } from "../../lib/works/works-issues.js";
 
 const { coerceEnum, clampConfidence, clampScore, cleanText, cleanTextList } = E;
 
@@ -66,9 +66,9 @@ function compactRecord(record) {
   };
 }
 
-/** Points à refaire d'une pièce, filtrés sur le vocabulaire de la modale. */
+/** Points à refaire d'une pièce, filtrés sur le vocabulaire de l'analyse. */
 export function normalizeRoomIssues(rawIssues, rawReasons) {
-  const issues = [...new Set(arr(rawIssues).filter((k) => ROOM_ISSUE_KEYS.includes(k)))];
+  const issues = [...new Set(arr(rawIssues).filter((k) => ANALYSIS_ISSUE_KEYS.includes(k)))];
   const reasons = {};
   const source = obj(rawReasons) || {};
   for (const key of issues) {

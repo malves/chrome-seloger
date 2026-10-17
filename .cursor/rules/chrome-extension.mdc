@@ -1,0 +1,28 @@
+---
+description: Contraintes de l'extension Chrome MV3 (permissions, scripts injectés, scraping)
+globs: chrome-extension/**
+alwaysApply: false
+---
+
+# Extension Chrome (MV3)
+
+Pas d'étape de build : les fichiers de `chrome-extension/` sont chargés tels quels par Chrome.
+
+## Permissions
+
+Ne jamais ajouter de `permissions`, `host_permissions` ou `matches` de content script sans accord explicite : chaque ajout relance la revue du Chrome Web Store et peut inquiéter les utilisateurs.
+
+## Scripts injectés
+
+- `inject.js` tourne dans le monde `MAIN` de la page : aucun accès aux API `chrome.*`, et il ne doit exposer aucune donnée sensible (jeton, clé) à la page.
+- Les autres content scripts ne doivent jamais casser la page hôte : toute erreur est interceptée.
+
+## Scraping (SeLoger, Bellesdemeures, Leboncoin)
+
+Le DOM de ces sites change sans prévenir. Le parsing est tolérant : un champ introuvable vaut `null`, sans exception. Privilégier les données structurées (JSON embarqué) aux sélecteurs CSS fragiles.
+
+## Configuration et publication
+
+- `src/config.local.js` n'est jamais versionné ; seul `config.local.example.js` l'est.
+- Toute modification de comportement publiée s'accompagne d'une montée de `version` dans `manifest.json` (voir `package.sh`).
+- `src/data/*.js` est généré par `scripts/build-*.js` : modifier le script, pas le fichier généré.

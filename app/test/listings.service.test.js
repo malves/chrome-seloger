@@ -98,3 +98,21 @@ test("deux URL SeLoger différentes donnent la même clé de déduplication", ()
   );
   assert.equal(dedupKey("seloger", id, withSerp), "seloger:26Q9YCW4ZDUN");
 });
+
+test("URL galerie SeLoger : identifiant de la fiche, pas « images »", () => {
+  const gallery =
+    "https://www.seloger.com/annonce/achat/ile-de-france/yvelines-78/magnanville-78200/267TPPDTXTE6/medias/images?search=foo";
+  assert.equal(sourceIdFromUrl("seloger", gallery), "267TPPDTXTE6");
+});
+
+test("fiche et galerie SeLoger : même clé après canonisation", () => {
+  const base =
+    "https://www.seloger.com/annonce/achat/ile-de-france/yvelines-78/magnanville-78200/267TPPDTXTE6";
+  const fiche = canonicalizeUrl(`${base}?search=foo`);
+  const galerie = canonicalizeUrl(`${base}/medias/images?search=foo`);
+  assert.equal(fiche, galerie);
+  assert.equal(
+    dedupKey("seloger", sourceIdFromUrl("seloger", fiche), fiche),
+    dedupKey("seloger", sourceIdFromUrl("seloger", galerie), galerie)
+  );
+});

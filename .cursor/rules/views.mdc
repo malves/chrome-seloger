@@ -1,0 +1,28 @@
+---
+description: Vues EJS, htmx et front-end du site (échappement, CSP, accessibilité)
+globs: app/src/views/**,app/public/**
+alwaysApply: false
+---
+
+# Vues et front-end
+
+## Échappement EJS
+
+- `<%= %>` par défaut pour toute valeur.
+- `<%- %>` réservé à `include()` et à du HTML produit par le serveur et déjà échappé. Jamais pour une donnée d'annonce ou saisie par l'utilisateur (risque XSS).
+
+## CSP (helmet, `app/src/app.js`)
+
+- `script-src 'self'` : **aucun** `<script>` inline ni attribut `onclick`/`onchange`… Le JavaScript va dans `app/public/js/`.
+- Aucun script ou CDN externe : les bibliothèques sont servies localement.
+
+## htmx
+
+- Une réponse htmx rend un partial de `views/partials/`, pas une page complète.
+- Les formulaires et requêtes htmx mutantes envoient le jeton CSRF (`csrfToken`).
+
+## Accessibilité minimale
+
+- Chaque champ a un `<label>`, chaque image informative un `alt`.
+- Actions cliquables en `<button>` ou `<a>`, jamais en `<div>`.
+- Textes d'interface en français.

@@ -1,6 +1,6 @@
 <%
   // Positionnement du prix : lecture « en un coup d'œil » (verdict, trois
-  // repères chiffrés, jauge à deux curseurs, conseil, référence en puces).
+  // repères chiffrés, jauge à deux curseurs, référence en puces).
   // Re-rendable seul (OOB) quand le budget travaux change : `hxSwapOob`.
   const pp = position;
   const ref = pp.primary;
@@ -53,45 +53,6 @@
   const bandP25 = ref.p25_price_m2 != null ? gaugePos(indexOfM2(ref.p25_price_m2)) : null;
   const bandP75 = ref.p75_price_m2 != null ? gaugePos(indexOfM2(ref.p75_price_m2)) : null;
   const hasBand = bandP25 != null && bandP75 != null && bandP75 > bandP25;
-
-  const absDelta = Math.abs(ref.delta_amount);
-  let advice;
-  if (ref.index > 103) {
-    advice = {
-      tone: 'negotiate',
-      title: 'Négociation conseillée',
-      text: '≈ ' + eur(absDelta) + ' (' + pct1(ref.delta_pct) + ') au-dessus de l\'estimation',
-      help: 'D\'après ' + (ref.basis_advice || 'cette référence') + ', ce bien vaudrait environ ' + eur(ref.estimate) + ', soit ' + eur(absDelta) + ' de moins que le prix affiché.',
-    };
-  } else if (ref.index <= 97) {
-    advice = {
-      tone: 'good',
-      title: 'Prix attractif',
-      text: eur(absDelta) + ' (' + pct1(ref.delta_pct) + ') sous l\'estimation',
-      help: 'Ce bien est affiché sous l\'estimation calculée d\'après ' + (ref.basis_advice || 'cette référence') + '.',
-    };
-  } else {
-    advice = {
-      tone: 'neutral',
-      title: 'Prix aligné',
-      text: 'écart de ' + eur(absDelta) + ' avec l\'estimation',
-      help: 'Le prix affiché est aligné sur ' + (ref.basis_advice || 'cette référence') + '.',
-    };
-  }
-
-  const caveats = [];
-  if (listing.dpe === 'F' || listing.dpe === 'G') {
-    caveats.push({
-      label: 'DPE ' + listing.dpe,
-      help: 'Bien énergivore : les références mélangent tous les états, un logement classé ' + listing.dpe + ' se vend généralement en dessous.',
-    });
-  }
-  if (listing.property_condition && /r[ée]nov|travaux/i.test(listing.property_condition)) {
-    caveats.push({
-      label: listing.property_condition,
-      help: 'Les références mélangent des biens de tous états ; un bien à rénover se vend généralement en dessous.',
-    });
-  }
 
   const surfaceComp = radiusRef && radiusRef.surface_comparable;
   const adj = ref.adjustment || null;
@@ -285,30 +246,6 @@
         <li><span class="pricepos__legend-dot pricepos__legend-dot--band" aria-hidden="true"></span>Ventes P25–P75</li>
       <% } %>
     </ul>
-  </div>
-
-  <div class="pricepos__advice pricepos__advice--<%= advice.tone %>">
-    <p class="pricepos__advice-main" title="<%= advice.help %>">
-      <strong><%= advice.title %></strong>
-      <span class="pricepos__advice-sep" aria-hidden="true">·</span>
-      <span><%= advice.text %></span>
-    </p>
-    <% if (ww) { %>
-      <p class="pricepos__advice-works">
-        <span class="pricepos__advice-works-dot" aria-hidden="true"></span>
-        Travaux compris : <strong style="color: <%= toneColor(ww.tone) %>"><%= ww.label %></strong>
-        <span class="pricepos__advice-works-delta">(<%= signedPct(ww.delta_pct) %>, <%= ww.delta_amount >= 0 ? '+\u00a0' : '−\u00a0' %><%= eur(Math.abs(ww.delta_amount)) %>)</span>
-      </p>
-    <% } %>
-    <% if (caveats.length) { %>
-      <ul class="pricepos__caveats" aria-label="Points à pondérer">
-        <% caveats.forEach(function (c) { %>
-          <li class="pricepos__chip pricepos__chip--warn pricepos__tip--wrap" data-tooltip="<%= c.help %>" tabindex="0">
-            <span aria-hidden="true">⚠</span> <%= c.label %>
-          </li>
-        <% }); %>
-      </ul>
-    <% } %>
   </div>
 
   <div class="pricepos__refs">

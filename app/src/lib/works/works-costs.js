@@ -1,13 +1,14 @@
 /**
  * Barème du chiffrage des travaux (TTC, indicatif). Les montants sont
- * calculés dans works-estimate.js à partir de la surface du bien.
+ * calculés dans works-estimate.js à partir de la surface du bien, et dans
+ * works-global.js pour les chantiers du logement entier.
  */
 
 import {
   ENERGY_SURFACE_REF_M2,
-  FULL_RENOVATION_EUR_M2,
   INTERIOR_POST_SHARES,
   ISSUE_INTENSITY,
+  ROOM_RENOVATION_EUR_M2,
   estimateWorksCosts,
   roundCost,
   roomSurfaceShares,
@@ -16,7 +17,7 @@ import {
 import { ISSUE_PRIORITY, ROOM_ISSUES } from "./works-issues.js";
 
 export {
-  FULL_RENOVATION_EUR_M2,
+  ROOM_RENOVATION_EUR_M2,
   INTERIOR_POST_SHARES,
   ISSUE_INTENSITY,
   ENERGY_SURFACE_REF_M2,
@@ -31,13 +32,16 @@ export const COST_POSTS = [
   { key: "floor", label: "Sols" },
   { key: "walls", label: "Murs et peintures" },
   { key: "ceiling", label: "Plafonds" },
-  { key: "humidity", label: "Humidité" },
+  { key: "humidity", label: "Humidité et ventilation" },
   { key: "kitchen", label: "Cuisine" },
   { key: "bathroom", label: "Salle d'eau" },
-  { key: "joinery", label: "Menuiseries" },
   { key: "electricity", label: "Électricité" },
+  { key: "plumbing", label: "Plomberie et eau chaude" },
+  { key: "joinery", label: "Fenêtres et volets" },
+  { key: "doors", label: "Portes" },
   { key: "heating", label: "Chauffage" },
   { key: "energy", label: "Énergie (DPE)" },
+  { key: "site", label: "Frais de chantier" },
 ];
 
 /** Postes concentrés dans certaines pièces (cuisine, salles d'eau). */
@@ -99,7 +103,7 @@ export function costsOptions() {
     posts: COST_POSTS,
     issueIntensity: ISSUE_INTENSITY,
     interiorPostShares: INTERIOR_POST_SHARES,
-    renovationRates: FULL_RENOVATION_EUR_M2,
+    renovationRates: ROOM_RENOVATION_EUR_M2,
     roomTypeFactors: ROOM_TYPE_FACTORS,
     concentratedPosts: concentratedPosts(),
     issuePriority: ISSUE_PRIORITY,

@@ -19,6 +19,7 @@ import SqliteSessionStore from "./session-store.js";
 import createLogger from "./lib/logger.js";
 import { logActivity } from "./lib/activity.js";
 import fmt from "./lib/format.js";
+import { ICONS } from "./lib/icons.js";
 import { patchPrixM2EvolutionHorizons } from "./lib/dvf-stats.js";
 import {
   MARKET_VARIATION_HORIZONS,
@@ -35,6 +36,7 @@ import createExtensionRouter from "./routes/web.extension.js";
 import createListingsRouter from "./routes/web.listings.js";
 import createProjectsRouter from "./routes/web.projects.js";
 import createSettingsRouter from "./routes/web.settings.js";
+import createDebtRouter from "./routes/web.debt.js";
 import createAdminRouter from "./routes/web.admin.js";
 import createApiRouter from "./routes/api.v1.js";
 import createEnrichmentService from "./services/enrichment/index.js";
@@ -50,13 +52,21 @@ const hexasmalUpload = multer({
 
 /**
  * Version des assets statiques (CSS/JS) pour le cache-busting : date de
- * modification du bundle CSS. Évite qu'un navigateur serve un ancien CSS en
- * cache après une mise à jour (mauvais positionnement d'éléments, etc.).
+ * modification la plus récente des feuilles de style et scripts publics, y
+ * compris ceux propres à une page. Évite qu'un navigateur serve un ancien
+ * fichier en cache après une mise à jour.
  */
 function computeAssetVersion() {
   try {
-    const cssPath = path.join(rootDir, "public", "css", "app.css");
-    return String(Math.trunc(fs.statSync(cssPath).mtimeMs));
+    let latest = 0;
+    for (const dir of ["css", "js"]) {
+      const abs = path.join(rootDir, "public", dir);
+      for (const file of fs.readdirSync(abs)) {
+        if (!/\.(css|js)$/.test(file)) continue;
+        latest = Math.max(latest, fs.statSync(path.join(abs, file)).mtimeMs);
+      }
+    }
+    return String(Math.trunc(latest || Date.now()));
   } catch {
     return String(Date.now());
   }
@@ -84,6 +94,7 @@ export default function createApp(options = {}) {
   const app = express();
   app.locals.config = config;
   app.locals.assetVersion = STARTUP_ASSET_VERSION;
+  app.locals.iconSprite = ICONS;
   app.set("trust proxy", config.isProduction ? 1 : false);
   app.set("views", path.join(rootDir, "src", "views"));
   app.set("view engine", "ejs");
@@ -117,15 +128,18 @@ export default function createApp(options = {}) {
   });
 
   // Modules de chiffrage et de cohérence partagés avec le navigateur (sans dépendance serveur).
-  for (const file of [
-    "works-estimate.js",
-    "works-coherence.js",
-    "works-issues.js",
-    "phone-format.js",
-  ]) {
+  const sharedLibs = {
+    "works-estimate.js": path.join("lib", "works"),
+    "works-global.js": path.join("lib", "works"),
+    "works-coherence.js": path.join("lib", "works"),
+    "works-issues.js": path.join("lib", "works"),
+    "phone-format.js": "lib",
+    "debt-ratio.js": "lib",
+    "visit-insights.js": path.join("lib", "visit"),
+  };
+  for (const [file, libDir] of Object.entries(sharedLibs)) {
     app.get(`/public/js/${file}`, (req, res) => {
       res.type("application/javascript");
-      const libDir = file === "phone-format.js" ? "lib" : path.join("lib", "works");
       res.sendFile(path.join(rootDir, "src", libDir, file));
     });
   }
@@ -239,6 +253,7 @@ export default function createApp(options = {}) {
   app.use(createExtensionRouter({ repositories, logger }));
   app.use(createProjectsRouter({ repositories, enrichment, logger }));
   app.use(createSettingsRouter({ repositories, enrichment, logger }));
+  app.use(createDebtRouter({ repositories, logger }));
   app.use(createAdminRouter({ repositories, enrichment, logger }));
   app.use(createListingsRouter({ repositories, enrichment, logger }));
 
@@ -246,5 +261,6 @@ export default function createApp(options = {}) {
   app.use(errorHandler(logger));
 
   app.locals.db = db;
+  app.locals.enrichment = enrichment;
   return app;
 }

@@ -1,0 +1,20 @@
+<%#
+  Spécimen du design system : aperçu rendu + code copiable, tirés du même
+  extrait `html` (balisage statique écrit dans design-system.ejs, jamais une
+  donnée utilisateur). `demoClass` ajoute une variante de fond (--stack, --dark).
+%>
+<article class="ds-spec"<% if (locals.patternId) { %> id="pattern-<%= patternId %>"<% } else if (locals.id) { %> id="<%= id %>"<% } %>>
+  <header class="ds-spec__head">
+    <h3 class="ds-spec__title">
+      <% if (locals.patternId) { %><code class="ds-spec__pattern-id"><%= patternId %></code> <% } %><%= title %><% if (locals.cls) { %> <code><%= cls %></code><% } %>
+    </h3>
+    <% if (locals.usage) { %><p class="ds-spec__usage"><%= usage %></p><% } %>
+  </header>
+  <div class="ds-spec__demo <%= locals.demoClass || '' %>">
+    <%- html %>
+  </div>
+  <div class="ds-spec__code dpe-cmd">
+    <pre class="dpe-cmd__code"><%= html.trim() %></pre>
+    <button type="button" class="btn btn--ghost btn--sm dpe-cmd__copy" data-copy>Copier</button>
+  </div>
+</article>

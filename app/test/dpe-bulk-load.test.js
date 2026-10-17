@@ -47,6 +47,13 @@ test("un import massif retire les index secondaires puis les recrée", () => {
         etiquette_dpe: "D",
         code_postal_ban: "75011",
         nom_commune_ban: "Paris",
+        adresse_ban: "12 Rue de la Roquette",
+      },
+      {
+        numero_dpe: "DPE-BULK-2",
+        date_derniere_modification_dpe: "2025-12-18",
+        code_postal_ban: "75011",
+        adresse_brut: "5 avenue Voltaire",
       },
     ]);
 
@@ -57,13 +64,19 @@ test("un import massif retire les index secondaires puis les recrée", () => {
     assert.ok(after.includes("idx_dpe_records_date_mod"));
 
     const found = repositories.dpe.search({ codePostal: "75011" });
-    assert.equal(found.length, 1);
-    assert.equal(found[0].numero_dpe, "DPE-BULK-1");
+    assert.equal(found.length, 2);
+
+    const byBan = repositories.dpe.search({ adresse: "Roquette", codePostal: "75011" });
+    assert.equal(byBan.length, 1);
+    assert.equal(byBan[0].numero_dpe, "DPE-BULK-1");
+
+    const byBrut = repositories.dpe.search({ adresse: "voltaire", codePostal: "75011" });
+    assert.equal(byBrut.length, 1);
+    assert.equal(byBrut[0].numero_dpe, "DPE-BULK-2");
 
     const onDay = repositories.dpe.search({ dateModif: "2025-12-18" });
-    assert.equal(onDay.length, 1);
-    assert.equal(onDay[0].numero_dpe, "DPE-BULK-1");
-    assert.equal(repositories.dpe.countSearch({ dateModif: "2025-12-18" }), 1);
+    assert.equal(onDay.length, 2);
+    assert.equal(repositories.dpe.countSearch({ dateModif: "2025-12-18" }), 2);
 
     assert.equal(repositories.dpe.getLatestJob(), null);
   } finally {

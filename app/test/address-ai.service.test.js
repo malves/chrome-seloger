@@ -75,12 +75,16 @@ test("search : filtres stricts transmis au repo (appartement + immeuble, surface
       },
     },
   });
-  service.search(APARTMENT);
+  const result = service.search(APARTMENT);
   assert.equal(capture.calls[0].codePostal, "75011");
   assert.deepEqual(capture.calls[0].typeBatiments, ["appartement", "immeuble"]);
   assert.equal(capture.calls[0].surfaceMin, 50 * 0.97);
   assert.equal(capture.calls[0].surfaceMax, 50 * 1.03);
   assert.equal(capture.calls[1].departement, "75");
+  assert.equal(result.recherches.length, 2);
+  assert.equal(result.recherches[0].champ_territoire, "code_postal_ban");
+  assert.equal(result.recherches[1].champ_territoire, "code_departement_ban");
+  assert.ok(result.champsDpeParCritere["Surface (m²)"].includes("surface_habitable"));
 });
 
 test("search : regroupement par adresse, meilleur score retenu, tri décroissant", () => {

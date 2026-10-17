@@ -104,6 +104,9 @@
           Estimation locative indisponible.
         <% } %>
       </p>
+      <% if (typeof rentNotice !== 'undefined' && rentNotice) { %>
+        <p class="field__hint" role="status"><%= rentNotice %></p>
+      <% } %>
       <% if (listingId) { %>
         <form
           hx-post="<%= runUrl %>"
@@ -159,7 +162,7 @@
       </div>
       <% if (yieldGradeIdx >= 0) { %>
         <div class="pricepos__grade"
-          title="Indice <%= ya.index %> / 100 : estimation marché ÷ prix affiché × 100 (même référence que le positionnement du prix). A = excellent rendement, F = rendement faible.">
+          title="Indice <%= ya.index %> / 100 : estimation marché ÷ (prix affiché<% if (est.works > 0) { %> + travaux<% } %>) × 100 (même référence que le positionnement du prix). A = excellent rendement, F = rendement faible.">
           <div class="pricepos__grade-row">
             <p class="pricepos__grade-eyebrow">Attractivité du rendement :</p>
             <div class="pricepos__grade-scale-col">
@@ -209,15 +212,24 @@
             <div class="pricem2__dvf-method-panel">
               <p class="pricem2__dvf-method-title">Comment est calculé le rendement brut ?</p>
               <p class="pricem2__dvf-method-lead">
-                Rendement brut annuel = loyer annuel estimé ÷ prix d'achat affiché.
+                Rendement brut annuel = loyer annuel estimé ÷ coût d'entrée
+                (prix affiché<% if (est.works > 0) { %> + budget travaux retenu au financement<% } %>).
                 Le loyer part du <strong>loyer mensuel médian</strong>
                 (<%= eur(est.monthly.mid) %>, <%= eurM2(est.rent_m2.mid) %>/m² × <%= fmt.number(est.surface) %> m²),
                 location nue hors charges.
               </p>
               <ul class="pricem2__dvf-method-list">
-                <li>(<%= eur(est.monthly.mid) %> × 12) ÷ <%= eur(listing.price) %> = <strong><%= yieldPct(est.yield_gross) %></strong></li>
-                <% if (est.yield_works != null) { %>
-                  <li>« Travaux compris » : même loyer ÷ (prix + <%= eur(est.works) %> au financement) = <strong><%= yieldPct(est.yield_works) %></strong></li>
+                <li>
+                  (<%= eur(est.monthly.mid) %> × 12) ÷
+                  <% if (est.works > 0) { %>
+                    (<%= eur(listing.price) %> + <%= eur(est.works) %>) =
+                  <% } else { %>
+                    <%= eur(listing.price) %> =
+                  <% } %>
+                  <strong><%= yieldPct(est.yield_gross) %></strong>
+                </li>
+                <% if (est.yield_listing != null) { %>
+                  <li>Hors travaux : même loyer ÷ <%= eur(listing.price) %> = <strong><%= yieldPct(est.yield_listing) %></strong></li>
                 <% } %>
                 <li>Hors taxe foncière, vacance, charges et frais de gestion.</li>
               </ul>
@@ -227,8 +239,8 @@
         <dd>
           <span class="pricepos__kpi-row"><strong><%= yieldPct(est.yield_gross) %></strong></span>
           <span class="pricepos__kpi-sub">
-            <% if (est.yield_works != null) { %>
-              Travaux compris : <%= yieldPct(est.yield_works) %>
+            <% if (est.yield_listing != null) { %>
+              Hors travaux : <%= yieldPct(est.yield_listing) %>
             <% } else { %>
               ≈ <%= eur(est.monthly.mid * 12) %> de loyer par an
             <% } %>
@@ -263,3 +275,10 @@
     </details>
   <% } %>
 </div>
+<% if (typeof financingOob !== "undefined" && financingOob) { %>
+<%- include('../financing', {
+  listing: listing,
+  financing: financingOob,
+  hxSwapOob: true,
+}) %>
+<% } %>

@@ -226,11 +226,20 @@
       var fontFamily = getComputedStyle(document.documentElement)
         .getPropertyValue("--font")
         .trim();
+      var xLinear = Boolean(config.xLinear);
+      var toPoints = function (values) {
+        if (!xLinear) return values;
+        return config.labels.map(function (year, i) {
+          return { x: Number(year), y: values[i] };
+        });
+      };
+      var cityValues = config.cityValues || config.cityPrices || [];
+      var deptValues = config.deptValues || config.deptPrices || [];
       var datasets = [
         {
           label: config.cityLabel,
-          data: config.cityIndex,
-          medianPrices: config.cityPrices,
+          data: toPoints(config.cityIndex),
+          medianPrices: cityValues,
           borderColor: colors.city,
           backgroundColor: colors.city + "1a",
           pointBackgroundColor: colors.surface,
@@ -251,8 +260,8 @@
       ) {
         datasets.push({
           label: config.deptLabel,
-          data: config.deptIndex,
-          medianPrices: config.deptPrices,
+          data: toPoints(config.deptIndex),
+          medianPrices: deptValues,
           borderColor: colors.dept,
           backgroundColor: "transparent",
           pointBackgroundColor: colors.surface,
@@ -291,21 +300,28 @@
               callbacks: {
                 title: function (items) {
                   if (!items.length) return "";
-                  var label = String(items[0].label);
+                  var label = xLinear
+                    ? String(items[0].parsed.x)
+                    : String(items[0].label);
                   if (/^\d{4}-\d{2}$/.test(label)) return formatMonthLabel(label);
                   return "Année " + label;
                 },
                 label: function (ctx) {
                   var idx = ctx.parsed.y;
                   if (idx == null || !isFinite(idx)) return null;
-                  var price = ctx.dataset.medianPrices[ctx.dataIndex];
+                  var value = ctx.dataset.medianPrices[ctx.dataIndex];
+                  var formatted =
+                    config.valueKind === "population"
+                      ? value != null && isFinite(value)
+                        ? value.toLocaleString("fr-FR") + " hab."
+                        : "—"
+                      : formatEuroPrice(value) + "/m²";
                   return (
                     ctx.dataset.label +
                     " · indice " +
                     idx.toLocaleString("fr-FR") +
                     " · " +
-                    formatEuroPrice(price) +
-                    "/m²"
+                    formatted
                   );
                 },
               },
@@ -313,13 +329,18 @@
           },
           scales: {
             x: {
+              type: xLinear ? "linear" : "category",
+              min: xLinear ? Number(config.labels[0]) : undefined,
+              max: xLinear ? Number(config.labels[config.labels.length - 1]) : undefined,
               grid: { display: false },
               border: { display: false },
               ticks: {
                 color: colors.muted,
                 font: { size: 11, family: fontFamily },
+                precision: 0,
                 maxTicksLimit: config.interval === "monthly" ? 8 : 12,
                 callback: function (value) {
+                  if (xLinear) return String(value);
                   var label = this.getLabelForValue
                     ? this.getLabelForValue(value)
                     : value;
@@ -582,7 +603,11 @@
       refreshListingPrixM2Block();
       return;
     }
-    if (target.id === "listing-enrichment-live") {
+    if (
+      target.id === "listing-enrichment-live" ||
+      target.id === "listing-territory" ||
+      target.id === "provider-population"
+    ) {
       bootPricem2Charts();
       return;
     }
@@ -776,6 +801,7 @@
       form.hasAttribute("hx-post") ||
       form.hasAttribute("hx-get") ||
       form.hasAttribute("hx-put") ||
+      form.hasAttribute("hx-patch") ||
       form.hasAttribute("hx-delete")
     ) {
       return;
@@ -939,6 +965,216 @@
       : null;
     if (!input) return;
     commitRename(input);
+  });
+
+  // Caractéristiques de la fiche annonce : édition inline avec validation avant envoi.
+  function listingFieldRoot(node) {
+    return node && node.closest ? node.closest("[data-listing-field-edit]") : null;
+  }
+
+  function listingFieldDisplay(root) {
+    return root.querySelector("[data-listing-field-label]");
+  }
+
+  function listingFieldRaw(display) {
+    if (!display) return "";
+    var raw = display.getAttribute("data-listing-field-raw");
+    return raw !== null && raw !== undefined ? raw : display.textContent.trim();
+  }
+
+  function listingFieldShowError(root, message) {
+    var err = root.querySelector(".listing-spec-value__error");
+    var input = root.querySelector("[data-listing-field-input]");
+    if (err) {
+      err.textContent = message || "";
+      err.hidden = !message;
+    }
+    if (input) input.setAttribute("aria-invalid", message ? "true" : "false");
+  }
+
+  function parseListingFieldClient(input) {
+    var kind = input.getAttribute("data-input-kind") || "text";
+    var raw = input.value.trim();
+    if (!raw) {
+      return { ok: false, message: "Saisissez une valeur." };
+    }
+    if (kind === "letter") {
+      var letter = raw.toUpperCase();
+      if (!/^[A-G]$/.test(letter)) {
+        return { ok: false, message: "Saisissez une lettre de A à G." };
+      }
+      return { ok: true, value: letter };
+    }
+    if (kind === "int" || kind === "decimal") {
+      var normalized = raw.replace(/\s/g, "").replace(",", ".");
+      var n = Number(normalized);
+      if (!Number.isFinite(n)) {
+        return { ok: false, message: "Saisissez un nombre valide." };
+      }
+      if (n < 0) {
+        return { ok: false, message: "La valeur ne peut pas être négative." };
+      }
+      if (kind === "int") {
+        return { ok: true, value: String(Math.round(n)) };
+      }
+      var decimals = Number(input.getAttribute("data-input-decimals"));
+      if (!Number.isFinite(decimals)) decimals = 2;
+      var factor = Math.pow(10, decimals);
+      return { ok: true, value: String(Math.round(n * factor) / factor) };
+    }
+    return { ok: true, value: raw };
+  }
+
+  function listingFieldChrome(root, hidden) {
+    if (!root) return;
+    root.querySelectorAll(
+      ".listing-spec-value__hover-hint, .listing-spec-value__source, .listing-spec-value__prev"
+    ).forEach(function (node) {
+      node.hidden = hidden;
+    });
+    if (hidden) root.classList.add("listing-spec-value--editing");
+    else root.classList.remove("listing-spec-value--editing");
+  }
+
+  function closeListingFieldEdit(root) {
+    var display = listingFieldDisplay(root);
+    var form = root.querySelector("[data-listing-field-form]");
+    if (display) display.hidden = false;
+    if (form) form.hidden = true;
+    listingFieldChrome(root, false);
+    listingFieldShowError(root, null);
+  }
+
+  function openListingFieldEdit(root) {
+    if (!root) return;
+    var display = listingFieldDisplay(root);
+    var form = root.querySelector("[data-listing-field-form]");
+    var input = form && form.querySelector("[data-listing-field-input]");
+    if (!display || !form || !input) return;
+    input.value = listingFieldRaw(display);
+    display.hidden = true;
+    form.hidden = false;
+    listingFieldChrome(root, true);
+    listingFieldShowError(root, null);
+    input.focus();
+    input.select();
+  }
+
+  function commitListingFieldEdit(input) {
+    if (input.dataset.skipCommit === "1") {
+      delete input.dataset.skipCommit;
+      return;
+    }
+    if (input.dataset.committing === "1") return;
+
+    var root = listingFieldRoot(input);
+    if (!root) return;
+    var display = listingFieldDisplay(root);
+    var current = listingFieldRaw(display);
+    var parsed = parseListingFieldClient(input);
+
+    if (!parsed.ok) {
+      listingFieldShowError(root, parsed.message);
+      input.focus();
+      return;
+    }
+
+    if (parsed.value === current) {
+      closeListingFieldEdit(root);
+      return;
+    }
+
+    input.value = parsed.value;
+    input.dataset.committing = "1";
+    listingFieldShowError(root, null);
+    var form = input.form;
+    if (form && typeof form.requestSubmit === "function") form.requestSubmit();
+    else if (form) form.submit();
+  }
+
+  function listingFieldEditRootFromTarget(target) {
+    if (!target || !target.closest) return null;
+    if (!target.closest("#listing-specs")) return null;
+    var key = target.closest(".kv__key--editable");
+    if (key) {
+      var sibling = key.nextElementSibling;
+      if (sibling && sibling.matches("[data-listing-field-edit]")) {
+        return sibling;
+      }
+    }
+    return target.closest("[data-listing-field-edit]");
+  }
+
+  document.addEventListener("dblclick", function (event) {
+    var root = listingFieldEditRootFromTarget(event.target);
+    if (!root) return;
+    var display = listingFieldDisplay(root);
+    if (!display || display.hidden) return;
+    event.preventDefault();
+    openListingFieldEdit(root);
+  });
+
+  document.addEventListener("keydown", function (event) {
+    var label = event.target.closest
+      ? event.target.closest("[data-listing-field-label]")
+      : null;
+    if (!label || label.hidden) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openListingFieldEdit(listingFieldRoot(label));
+    }
+  });
+
+  document.addEventListener("focusout", function (event) {
+    var input = event.target.closest
+      ? event.target.closest("[data-listing-field-input]")
+      : null;
+    if (!input) return;
+    commitListingFieldEdit(input);
+  });
+
+  document.addEventListener("keydown", function (event) {
+    var input = event.target.closest
+      ? event.target.closest("[data-listing-field-input]")
+      : null;
+    if (input) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        var root = listingFieldRoot(input);
+        var display = root && listingFieldDisplay(root);
+        input.dataset.skipCommit = "1";
+        input.value = listingFieldRaw(display);
+        if (root) closeListingFieldEdit(root);
+        if (display) display.focus();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        input.blur();
+        return;
+      }
+    }
+  });
+
+  document.body.addEventListener("htmx:beforeSwap", function (event) {
+    var xhr = event.detail.xhr;
+    var elt = event.detail.requestConfig && event.detail.requestConfig.elt;
+    if (
+      xhr &&
+      xhr.status === 422 &&
+      elt &&
+      elt.hasAttribute("data-listing-field-form")
+    ) {
+      event.detail.shouldSwap = true;
+      event.detail.isError = false;
+    }
+  });
+
+  document.body.addEventListener("htmx:afterSwap", function (event) {
+    var target = event.detail.target;
+    if (!target || !target.querySelector) return;
+    var input = target.querySelector("[data-listing-field-input]");
+    if (input) delete input.dataset.committing;
   });
 
   document.addEventListener("keydown", function (event) {
@@ -1739,6 +1975,12 @@
       var open = false;
 
       function setOpen(next) {
+        if (open && !next) {
+          var form = picker.closest(".dpe-search-form");
+          if (form && typeof htmx !== "undefined") {
+            htmx.trigger(form, "submit");
+          }
+        }
         open = next;
         popover.hidden = !open;
         trigger.setAttribute("aria-expanded", open ? "true" : "false");
@@ -1777,18 +2019,24 @@
     });
   })();
 
-  function resetDpeFilterSelect(root) {
-    if (!root) return;
-    var defaultLabel = root.getAttribute("data-default-label") || "Tous";
-    var hidden = root.querySelector('input[type="hidden"]');
-    var label = root.querySelector(".project-select__label");
-    if (hidden) hidden.value = "";
-    if (label) label.textContent = defaultLabel;
-    root.querySelectorAll("[data-dpe-filter-option]").forEach(function (opt) {
-      var match = (opt.getAttribute("data-value") || "") === "";
+  function setDpeTypePickerActive(picker, value) {
+    if (!picker) return;
+    picker.querySelectorAll("[data-dpe-type-option]").forEach(function (opt) {
+      var match = (opt.getAttribute("data-value") || "") === value;
       opt.classList.toggle("is-active", match);
       opt.setAttribute("aria-selected", match ? "true" : "false");
     });
+  }
+
+  function resetDpeTypePicker(picker) {
+    if (!picker) return;
+    var hidden = picker.querySelector('input[type="hidden"]');
+    if (hidden) hidden.value = "";
+    setDpeTypePickerActive(picker, "");
+    var popover = picker.querySelector("[data-dpe-type-popover]");
+    if (popover) popover.hidden = true;
+    var trigger = picker.querySelector("[data-dpe-type-trigger]");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
   }
 
   function syncDpeEtiquetteTriggerLabel(picker) {
@@ -1836,6 +2084,51 @@
     if (!label || !input) return;
     var value = String(input.value || "").trim();
     label.textContent = value || "Code postal";
+  }
+
+  function syncDpeAdresseTriggerLabel(picker) {
+    if (!picker) return;
+    var label = picker.querySelector("[data-dpe-adresse-trigger-label]");
+    var hidden = picker.querySelector("[data-dpe-adresse-hidden]");
+    if (!label || !hidden) return;
+    var value = String(hidden.value || "").trim();
+    if (!value) {
+      label.textContent = "Adresse";
+      return;
+    }
+    label.textContent = value.length > 28 ? value.slice(0, 28) + "…" : value;
+  }
+
+  function commitDpeAdressePicker(picker, options) {
+    if (!picker) return false;
+    var hidden = picker.querySelector("[data-dpe-adresse-hidden]");
+    var draft = picker.querySelector("[data-dpe-adresse-draft]");
+    if (!hidden || !draft) return false;
+    var next = String(draft.value || "").trim();
+    var prev = String(hidden.value || "").trim();
+    var changed = next !== prev;
+    hidden.value = next;
+    syncDpeAdresseTriggerLabel(picker);
+    if (options && options.submit && changed) {
+      var form = picker.closest(".dpe-search-form");
+      if (form && typeof htmx !== "undefined") {
+        htmx.trigger(form, "submit");
+      }
+    }
+    return changed;
+  }
+
+  function resetDpeAdressePicker(picker) {
+    if (!picker) return;
+    var hidden = picker.querySelector("[data-dpe-adresse-hidden]");
+    var draft = picker.querySelector("[data-dpe-adresse-draft]");
+    if (hidden) hidden.value = "";
+    if (draft) draft.value = "";
+    syncDpeAdresseTriggerLabel(picker);
+    var popover = picker.querySelector("[data-dpe-adresse-popover]");
+    if (popover) popover.hidden = true;
+    var trigger = picker.querySelector("[data-dpe-adresse-trigger]");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
   }
 
   function resetDpePostalPicker(picker) {
@@ -1941,11 +2234,84 @@
       }
     });
 
+    var postalSubmitTimer = null;
+
     if (input) {
       input.addEventListener("input", function () {
         syncDpePostalTriggerLabel(picker);
+        if (postalSubmitTimer) clearTimeout(postalSubmitTimer);
+        postalSubmitTimer = setTimeout(function () {
+          postalSubmitTimer = null;
+          var form = picker.closest(".dpe-search-form");
+          if (form && typeof htmx !== "undefined") {
+            htmx.trigger(form, "submit");
+          }
+        }, 500);
       });
     }
+  })();
+
+  // Admin DPE : adresse (contient) — recherche au commit, pas à chaque frappe.
+  (function initDpeAdressePicker() {
+    var picker = document.querySelector("[data-dpe-adresse-picker]");
+    if (!picker) return;
+
+    var trigger = picker.querySelector("[data-dpe-adresse-trigger]");
+    var popover = picker.querySelector("[data-dpe-adresse-popover]");
+    var hidden = picker.querySelector("[data-dpe-adresse-hidden]");
+    var draft = picker.querySelector("[data-dpe-adresse-draft]");
+    if (!trigger || !popover || !hidden || !draft) return;
+
+    var open = false;
+
+    function setOpen(next, options) {
+      if (open && !next) {
+        commitDpeAdressePicker(picker, { submit: true });
+      }
+      if (!open && next && hidden) {
+        draft.value = String(hidden.value || "");
+      }
+      open = next;
+      popover.hidden = !open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) {
+        draft.focus();
+        draft.select();
+      } else if (options && options.focusTrigger) {
+        trigger.focus();
+      }
+    }
+
+    trigger.addEventListener("click", function () {
+      setOpen(!open);
+    });
+
+    picker.querySelectorAll("[data-dpe-adresse-dismiss]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setOpen(false, { focusTrigger: true });
+      });
+    });
+
+    document.addEventListener("click", function (event) {
+      if (open && !picker.contains(event.target)) {
+        setOpen(false);
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (!open) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false, { focusTrigger: true });
+      }
+      if (event.key === "Enter" && event.target === draft) {
+        event.preventDefault();
+        commitDpeAdressePicker(picker, { submit: true });
+        setOpen(false, { focusTrigger: true });
+      }
+    });
+
+    syncDpeAdresseTriggerLabel(picker);
   })();
 
   // Admin DPE : date de dernière modification (jour exact).
@@ -2065,46 +2431,58 @@
     });
   })();
 
-  // Admin DPE : filtres pilule + menu (type de bâtiment).
-  (function initDpeFilterSelects() {
-    document.querySelectorAll("[data-dpe-filter-select]").forEach(function (root) {
-      bindLinkMenu(root, "[data-dpe-filter-trigger]", "[data-dpe-filter-menu]");
+  // Admin DPE : type de bâtiment (popover, libellé fixe sur le déclencheur).
+  (function initDpeTypePicker() {
+    var picker = document.querySelector("[data-dpe-type-picker]");
+    if (!picker) return;
 
-      var hidden = root.querySelector('input[type="hidden"]');
-      var label = root.querySelector(".project-select__label");
-      var trigger = root.querySelector("[data-dpe-filter-trigger]");
-      var menu = root.querySelector("[data-dpe-filter-menu]");
-      var defaultLabel = root.getAttribute("data-default-label") || "Tous";
-      if (!hidden || !label || !menu) return;
+    var trigger = picker.querySelector("[data-dpe-type-trigger]");
+    var popover = picker.querySelector("[data-dpe-type-popover]");
+    var hidden = picker.querySelector('input[type="hidden"]');
+    if (!trigger || !popover || !hidden) return;
 
-      function closeMenu() {
-        menu.hidden = true;
-        if (trigger) trigger.setAttribute("aria-expanded", "false");
+    var open = false;
+
+    function setOpen(next, options) {
+      open = next;
+      popover.hidden = !open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      if (!open && options && options.focusTrigger) {
+        trigger.focus();
       }
+    }
 
-      function setActive(value) {
-        menu.querySelectorAll("[data-dpe-filter-option]").forEach(function (opt) {
-          var match = (opt.getAttribute("data-value") || "") === value;
-          opt.classList.toggle("is-active", match);
-          opt.setAttribute("aria-selected", match ? "true" : "false");
-        });
-      }
+    trigger.addEventListener("click", function () {
+      setOpen(!open);
+    });
 
-      menu.addEventListener("click", function (event) {
-        var opt = event.target.closest("[data-dpe-filter-option]");
-        if (!opt) return;
-        event.preventDefault();
-
-        var value = opt.getAttribute("data-value") || "";
-        hidden.value = value;
-        var nameEl = opt.querySelector(".project-select__option-name");
-        label.textContent = nameEl ? nameEl.textContent : defaultLabel;
-        setActive(value);
-        closeMenu();
-        if (trigger) trigger.focus();
-
-        hidden.dispatchEvent(new Event("change", { bubbles: true }));
+    picker.querySelectorAll("[data-dpe-type-dismiss]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setOpen(false, { focusTrigger: true });
       });
+    });
+
+    document.addEventListener("click", function (event) {
+      if (open && !picker.contains(event.target)) setOpen(false);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (open && event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false, { focusTrigger: true });
+      }
+    });
+
+    popover.addEventListener("click", function (event) {
+      var opt = event.target.closest("[data-dpe-type-option]");
+      if (!opt) return;
+      event.preventDefault();
+
+      var value = opt.getAttribute("data-value") || "";
+      hidden.value = value;
+      setDpeTypePickerActive(picker, value);
+      setOpen(false, { focusTrigger: true });
+      hidden.dispatchEvent(new Event("change", { bubbles: true }));
     });
   })();
 
@@ -2840,6 +3218,137 @@
     });
   })();
 
+  // Financement : rendement brut locatif (prix retenu + travaux) mis à jour
+  // en direct pendant la saisie, comme l'écart au prix officiel.
+  (function initFinancingGrossYield() {
+    var yieldFmt = new Intl.NumberFormat("fr-FR", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 2,
+    });
+    var YIELD_GRADE_LETTERS = ["A", "B", "C", "D", "E", "F"];
+    var YIELD_GRADE_COLORS = [
+      "#319834",
+      "#5faa32",
+      "#a7c62c",
+      "#f2d307",
+      "#eca40c",
+      "#e2691b",
+    ];
+    var YIELD_GRADE_BANDS = [
+      { min: 118, grade: "A", grade_label: "Excellent rendement" },
+      { min: 109, grade: "B", grade_label: "Très bon rendement" },
+      { min: 103, grade: "C", grade_label: "Légèrement au-dessus du marché" },
+      { min: 97, grade: "D", grade_label: "Rendement du marché" },
+      { min: 87, grade: "E", grade_label: "En dessous du marché" },
+      { min: -Infinity, grade: "F", grade_label: "Rendement faible" },
+    ];
+
+    function parseAmount(value) {
+      var digits = String(value).replace(/\D/g, "");
+      if (!digits) return 0;
+      return Number(digits);
+    }
+
+    function yieldGradeFromIndex(index) {
+      if (!Number.isFinite(index)) return null;
+      for (var i = 0; i < YIELD_GRADE_BANDS.length; i += 1) {
+        if (index >= YIELD_GRADE_BANDS[i].min) return YIELD_GRADE_BANDS[i];
+      }
+      return YIELD_GRADE_BANDS[YIELD_GRADE_BANDS.length - 1];
+    }
+
+    function renderYieldGrade(block, acquisition) {
+      var col = block.querySelector("[data-financing-yield-grade]");
+      var scale = block.querySelector("[data-financing-yield-scale]");
+      if (!col || !scale) return;
+
+      var market = Number(block.getAttribute("data-financing-market-estimate"));
+      if (!(market > 0) || !(acquisition > 0)) {
+        col.hidden = true;
+        return;
+      }
+
+      var index = Math.round((market / acquisition) * 100);
+      var band = yieldGradeFromIndex(index);
+      if (!band) {
+        col.hidden = true;
+        return;
+      }
+
+      var gradeIdx = YIELD_GRADE_LETTERS.indexOf(band.grade);
+      col.hidden = false;
+      scale.setAttribute(
+        "aria-label",
+        "Attractivité du rendement : " + band.grade + ". " + band.grade_label
+      );
+
+      var segs = scale.querySelectorAll(".financing__yield-seg");
+      for (var i = 0; i < YIELD_GRADE_LETTERS.length; i += 1) {
+        var seg = segs[i];
+        if (!seg) continue;
+        var isOn = i === gradeIdx;
+        var darkText = isOn && i >= 2 && i <= 4;
+        seg.className =
+          "financing__yield-seg" +
+          (isOn ? " is-active" : "") +
+          (darkText ? " is-active--dark" : "");
+        seg.style.background = YIELD_GRADE_COLORS[i];
+        seg.textContent = isOn ? YIELD_GRADE_LETTERS[i] : "";
+        if (isOn && band) {
+          seg.title = band.grade_label;
+        } else {
+          seg.removeAttribute("title");
+        }
+      }
+    }
+
+    function renderYield(block) {
+      var annual = Number(block.getAttribute("data-financing-annual-rent"));
+      var out = block.querySelector("[data-financing-gross-yield]");
+      if (!out) return;
+
+      var priceEl = block.querySelector("#financing-negotiated-price");
+      var worksEl = block.querySelector("#financing-works");
+      if (!priceEl || !worksEl) return;
+
+      var acquisition = parseAmount(priceEl.value) + parseAmount(worksEl.value);
+
+      if (!(annual > 0) || !(acquisition > 0)) {
+        out.textContent = "—";
+        renderYieldGrade(block, 0);
+        return;
+      }
+
+      var pct = Math.round((annual / acquisition) * 10000) / 100;
+      out.textContent = yieldFmt.format(pct) + " %";
+      renderYieldGrade(block, acquisition);
+    }
+
+    document.addEventListener("input", function (event) {
+      var block = document.getElementById("financing-block");
+      if (!block) return;
+      var id = event.target && event.target.id;
+      if (id === "financing-negotiated-price" || id === "financing-works") {
+        renderYield(block);
+      }
+    });
+
+    document.body.addEventListener("htmx:afterSettle", function () {
+      var block = document.getElementById("financing-block");
+      if (block) renderYield(block);
+    });
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () {
+        var block = document.getElementById("financing-block");
+        if (block) renderYield(block);
+      });
+    } else {
+      var block = document.getElementById("financing-block");
+      if (block) renderYield(block);
+    }
+  })();
+
   // Les photos sont servies par les sites d'origine : une URL peut expirer.
   document.addEventListener(
     "error",
@@ -3349,9 +3858,12 @@
       if (!form) return;
       event.preventDefault();
 
-      form.querySelectorAll("[data-dpe-filter-select]").forEach(resetDpeFilterSelect);
+      var typePicker = form.querySelector("[data-dpe-type-picker]");
+      if (typePicker) resetDpeTypePicker(typePicker);
       var etiquettePicker = form.querySelector("[data-dpe-etiquette-picker]");
       if (etiquettePicker) resetDpeEtiquettePicker(etiquettePicker);
+      var adressePicker = form.querySelector("[data-dpe-adresse-picker]");
+      if (adressePicker) resetDpeAdressePicker(adressePicker);
       var postalPicker = form.querySelector("[data-dpe-postal-picker]");
       if (postalPicker) resetDpePostalPicker(postalPicker);
       var dateModPicker = form.querySelector("[data-dpe-date-mod-picker]");
@@ -4772,16 +5284,22 @@
       { critere: "Date visite diagnostiqueur", key: "date_visite_diagnostiqueur" },
     ];
 
-    function dpeDateDebugTableRows(source) {
+    function dpeDateDebugTableRows(source, champsDpe) {
       var dates = (source && source.dates) || {};
       return DPE_DEBUG_DATE_ROWS.map(function (def) {
         return {
           critere: def.critere,
+          champ_dpe: (champsDpe && champsDpe[def.critere]) || def.key,
           annonce: null,
           base: dates[def.key] ?? null,
           resultat: "Exclu de la recherche (debug)",
         };
       });
+    }
+
+    function champDpeForCritere(champsDpe, critereLabel) {
+      if (champsDpe && champsDpe[critereLabel]) return champsDpe[critereLabel];
+      return "—";
     }
 
     /**
@@ -4796,6 +5314,8 @@
       var candidates = payload.candidates || [];
       var mode = payload.mode || "?";
       var missing = payload.champsRequisManquants || [];
+      var champsDpe = payload.champsDpeParCritere || null;
+      var recherches = payload.recherches || [];
       var fallbackNote = payload.fallbackFrom
         ? " (repli depuis " + payload.fallbackFrom + ")"
         : "";
@@ -4809,18 +5329,66 @@
 
       function criteriaRows() {
         return [
-          { critere: "Code postal", valeur: crit.codePostal ?? "(vide)" },
-          { critere: "Département", valeur: crit.departement ?? "(vide)" },
-          { critere: "Type (annonce)", valeur: crit.typeBien ?? "(vide)" },
-          { critere: "Type DPE", valeur: crit.typeBatiment ?? "(vide)" },
-          { critere: "DPE", valeur: crit.dpe ?? "(vide)" },
-          { critere: "GES", valeur: crit.ges ?? "(vide)" },
-          { critere: "Conso (kWhEP/m².an)", valeur: crit.consoM2 ?? "(vide)" },
-          { critere: "Émissions (kg CO₂/m².an)", valeur: crit.emissionsM2 ?? "(vide)" },
-          { critere: "Surface (m²)", valeur: crit.surfaceM2 ?? "(vide)" },
-          { critere: "Étage", valeur: crit.etage ?? "(vide)" },
-          { critere: "Année", valeur: crit.anneeConstruction ?? "(vide)" },
-          { critere: "Énergie chauffage", valeur: crit.sourceEnergie ?? "(vide)" },
+          {
+            critere: "Code postal",
+            champ_dpe: champDpeForCritere(champsDpe, "Code postal"),
+            valeur: crit.codePostal ?? "(vide)",
+          },
+          {
+            critere: "Département",
+            champ_dpe: champDpeForCritere(champsDpe, "Département"),
+            valeur: crit.departement ?? "(vide)",
+          },
+          {
+            critere: "Type (annonce)",
+            champ_dpe: champDpeForCritere(champsDpe, "Type (annonce)"),
+            valeur: crit.typeBien ?? "(vide)",
+          },
+          {
+            critere: "Type DPE",
+            champ_dpe: champDpeForCritere(champsDpe, "Type DPE"),
+            valeur: crit.typeBatiment ?? "(vide)",
+          },
+          {
+            critere: "DPE",
+            champ_dpe: champDpeForCritere(champsDpe, "DPE"),
+            valeur: crit.dpe ?? "(vide)",
+          },
+          {
+            critere: "GES",
+            champ_dpe: champDpeForCritere(champsDpe, "GES"),
+            valeur: crit.ges ?? "(vide)",
+          },
+          {
+            critere: "Conso (kWhEP/m².an)",
+            champ_dpe: champDpeForCritere(champsDpe, "Conso (kWhEP/m².an)"),
+            valeur: crit.consoM2 ?? "(vide)",
+          },
+          {
+            critere: "Émissions (kg CO₂/m².an)",
+            champ_dpe: champDpeForCritere(champsDpe, "Émissions (kg CO₂/m².an)"),
+            valeur: crit.emissionsM2 ?? "(vide)",
+          },
+          {
+            critere: "Surface (m²)",
+            champ_dpe: champDpeForCritere(champsDpe, "Surface (m²)"),
+            valeur: crit.surfaceM2 ?? "(vide)",
+          },
+          {
+            critere: "Étage",
+            champ_dpe: champDpeForCritere(champsDpe, "Étage"),
+            valeur: crit.etage ?? "(vide)",
+          },
+          {
+            critere: "Année",
+            champ_dpe: champDpeForCritere(champsDpe, "Année"),
+            valeur: crit.anneeConstruction ?? "(vide)",
+          },
+          {
+            critere: "Énergie chauffage",
+            champ_dpe: champDpeForCritere(champsDpe, "Énergie chauffage"),
+            valeur: crit.sourceEnergie ?? "(vide)",
+          },
         ];
       }
 
@@ -4836,6 +5404,30 @@
       if (console.groupCollapsed) console.groupCollapsed(rootLabel);
       else console.log(rootLabel);
 
+      if (recherches.length) {
+        if (console.groupCollapsed) console.groupCollapsed("Recherches DPE");
+        console.table(
+          recherches.map(function (r, i) {
+            return {
+              "#": i + 1,
+              mode: r.mode,
+              retenue: r.utilise === false ? "non (repli)" : "oui",
+              champ_territoire: r.champ_territoire,
+              territoire: r.territoire,
+              champ_type: r.champ_type,
+              types: (r.types || []).join(", "),
+              champ_surface: r.champ_surface,
+              surface: r.surface_min != null
+                ? r.surface_min.toFixed(2) + " – " + r.surface_max.toFixed(2)
+                : "—",
+              lignes_dpe: r.lignes_dpe,
+              candidats: r.adresses_candidates,
+            };
+          })
+        );
+        if (console.groupEnd) console.groupEnd();
+      }
+
       if (console.groupCollapsed) console.groupCollapsed("Critères annonce");
       console.table(criteriaRows());
       if (missing.length) {
@@ -4847,15 +5439,58 @@
         var s = c.source || {};
         var m2 = c.matched || {};
         var rows = [
-          { critere: "Code postal", annonce: crit.codePostal, base: c.postalCode, resultat: "— (filtre strict)" },
-          { critere: "Type bâtiment", annonce: crit.typeBatiment, base: s.typeBatiment, resultat: "— (filtre strict)" },
-          { critere: "Surface (m²)", annonce: crit.surfaceM2, base: s.surface, resultat: matchGlyph(m2.surface) },
-          { critere: "DPE", annonce: crit.dpe, base: s.dpe, resultat: matchGlyph(m2.dpe) },
-          { critere: "GES", annonce: crit.ges, base: s.ges, resultat: matchGlyph(m2.ges) },
-          { critere: "Conso (kWhEP/m².an)", annonce: crit.consoM2, base: s.conso, resultat: matchGlyph(m2.conso) },
-          { critere: "Émissions (kg CO₂/m².an)", annonce: crit.emissionsM2, base: s.emissions, resultat: matchGlyph(m2.emissions) },
+          {
+            critere: "Code postal",
+            champ_dpe: champDpeForCritere(champsDpe, "Code postal"),
+            annonce: crit.codePostal,
+            base: c.postalCode,
+            resultat: "— (filtre strict)",
+          },
+          {
+            critere: "Type bâtiment",
+            champ_dpe: champDpeForCritere(champsDpe, "Type bâtiment"),
+            annonce: crit.typeBatiment,
+            base: s.typeBatiment,
+            resultat: "— (filtre strict)",
+          },
+          {
+            critere: "Surface (m²)",
+            champ_dpe: champDpeForCritere(champsDpe, "Surface (m²)"),
+            annonce: crit.surfaceM2,
+            base: s.surface,
+            resultat: matchGlyph(m2.surface),
+          },
+          {
+            critere: "DPE",
+            champ_dpe: champDpeForCritere(champsDpe, "DPE"),
+            annonce: crit.dpe,
+            base: s.dpe,
+            resultat: matchGlyph(m2.dpe),
+          },
+          {
+            critere: "GES",
+            champ_dpe: champDpeForCritere(champsDpe, "GES"),
+            annonce: crit.ges,
+            base: s.ges,
+            resultat: matchGlyph(m2.ges),
+          },
+          {
+            critere: "Conso (kWhEP/m².an)",
+            champ_dpe: champDpeForCritere(champsDpe, "Conso (kWhEP/m².an)"),
+            annonce: crit.consoM2,
+            base: s.conso,
+            resultat: matchGlyph(m2.conso),
+          },
+          {
+            critere: "Émissions (kg CO₂/m².an)",
+            champ_dpe: champDpeForCritere(champsDpe, "Émissions (kg CO₂/m².an)"),
+            annonce: crit.emissionsM2,
+            base: s.emissions,
+            resultat: matchGlyph(m2.emissions),
+          },
           {
             critere: "Étage",
+            champ_dpe: champDpeForCritere(champsDpe, "Étage"),
             annonce: crit.etage,
             base:
               s.etage != null
@@ -4870,17 +5505,19 @@
           },
           {
             critere: "Année",
+            champ_dpe: champDpeForCritere(champsDpe, "Année"),
             annonce: crit.anneeConstruction,
             base: s.annee != null ? s.annee : s.periode ? "période " + s.periode : null,
             resultat: matchGlyph(m2.year),
           },
           {
             critere: "Énergie chauffage",
+            champ_dpe: champDpeForCritere(champsDpe, "Énergie chauffage"),
             annonce: crit.sourceEnergie,
             base: s.energie,
             resultat: matchGlyph(m2.energy),
           },
-        ].concat(dpeDateDebugTableRows(s));
+        ].concat(dpeDateDebugTableRows(s, champsDpe));
         var label =
           "#" +
           (i + 1) +
@@ -6246,6 +6883,109 @@
           if (btn.isConnected) btn.disabled = false;
         });
     });
+
+    var locDebugModal = document.getElementById("location-probable-debug-modal");
+    var locDebugContent =
+      locDebugModal &&
+      locDebugModal.querySelector("[data-location-probable-debug-content]");
+    var locDebugFetchController = null;
+
+    function closeLocationProbableDebugModal() {
+      if (!locDebugModal) return;
+      if (locDebugFetchController) {
+        locDebugFetchController.abort();
+        locDebugFetchController = null;
+      }
+      locDebugModal.hidden = true;
+      document.body.classList.remove("is-modal-open");
+    }
+
+    function bindLocationProbableDebugPanel(panel) {
+      if (!panel) return;
+      var copyBtn = panel.querySelector("[data-location-probable-debug-copy]");
+      var jsonField = panel.querySelector("[data-location-probable-debug-json]");
+      if (!copyBtn || !jsonField) return;
+      var copyDefaultLabel = copyBtn.textContent.trim() || "Copier";
+      copyBtn.addEventListener("click", function () {
+        var text = jsonField.value;
+        var done = function () {
+          copyBtn.classList.add("is-copied");
+          copyBtn.textContent = "Copié";
+          window.setTimeout(function () {
+            copyBtn.classList.remove("is-copied");
+            copyBtn.textContent = copyDefaultLabel;
+          }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () {
+            jsonField.select();
+            document.execCommand("copy");
+            done();
+          });
+        } else {
+          jsonField.select();
+          document.execCommand("copy");
+          done();
+        }
+      });
+    }
+
+    function openLocationProbableDebugModal(url) {
+      if (!locDebugModal || !locDebugContent || !url) return;
+      locDebugModal.hidden = false;
+      document.body.classList.add("is-modal-open");
+      locDebugContent.innerHTML = '<p class="field__hint">Chargement…</p>';
+      if (locDebugFetchController) locDebugFetchController.abort();
+      locDebugFetchController = new AbortController();
+      fetch(url, {
+        credentials: "same-origin",
+        signal: locDebugFetchController.signal,
+        headers: { Accept: "text/html" },
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.text();
+        })
+        .then(function (html) {
+          locDebugContent.innerHTML = html;
+          bindLocationProbableDebugPanel(
+            locDebugContent.querySelector("[data-location-probable-debug-panel]")
+          );
+        })
+        .catch(function (err) {
+          if (err && err.name === "AbortError") return;
+          locDebugContent.innerHTML =
+            '<p class="field__hint">Impossible de charger le diagnostic (' +
+            (err && err.message ? err.message : "erreur") +
+            ").</p>";
+        })
+        .finally(function () {
+          locDebugFetchController = null;
+        });
+    }
+
+    if (locDebugModal) {
+      locDebugModal.addEventListener("click", function (event) {
+        if (event.target.closest("[data-location-probable-debug-dismiss]")) {
+          event.preventDefault();
+          closeLocationProbableDebugModal();
+        }
+      });
+      document.addEventListener("keydown", function (event) {
+        if (locDebugModal.hidden || event.key !== "Escape") return;
+        event.preventDefault();
+        closeLocationProbableDebugModal();
+      });
+    }
+
+    document.body.addEventListener("click", function (event) {
+      var openBtn = event.target.closest("[data-location-probable-debug-open]");
+      if (!openBtn) return;
+      event.preventDefault();
+      openLocationProbableDebugModal(
+        openBtn.getAttribute("data-location-probable-debug-url")
+      );
+    });
   })();
 
   // Fiche annonce : agrandir la carte (modale plein écran).
@@ -6807,5 +7547,144 @@
     excerpt.classList.toggle("is-expanded");
     clampListingDescriptionExcerpt(excerpt);
   });
+
+  (function initListingToc() {
+    var nav = document.querySelector("[data-listing-toc]");
+    if (!nav) return;
+    var list = nav.querySelector("[data-listing-toc-list]");
+    var rail = nav.querySelector(".listing-toc__rail");
+    var fill = nav.querySelector(".listing-toc__fill");
+    var entries = [];
+    var signature = "";
+    var frame = 0;
+
+    function topOffset() {
+      var topbar = document.querySelector(".topbar");
+      return (topbar ? topbar.offsetHeight : 0) + 16;
+    }
+
+    function visibleSections() {
+      return Array.prototype.filter.call(
+        document.querySelectorAll(".detail [data-toc-label][id]"),
+        function (section) {
+          return section.getClientRects().length > 0;
+        }
+      );
+    }
+
+    // Les sections sont souvent remplacées par htmx (outerHTML) : on ne garde
+    // que leur id et on ne reconstruit la liste que si l'ensemble change.
+    function build() {
+      var sections = visibleSections();
+      var next = sections
+        .map(function (section) {
+          return section.id + ":" + section.getAttribute("data-toc-label");
+        })
+        .join("|");
+      if (next !== signature) {
+        signature = next;
+        list.textContent = "";
+        entries = sections.map(function (section) {
+          var label = section.getAttribute("data-toc-label");
+          var item = document.createElement("li");
+          item.className = "listing-toc__item";
+          var link = document.createElement("a");
+          link.className = "listing-toc__link";
+          link.href = "#" + section.id;
+          link.title = label;
+          var dot = document.createElement("span");
+          dot.className = "listing-toc__dot";
+          dot.setAttribute("aria-hidden", "true");
+          var text = document.createElement("span");
+          text.className = "listing-toc__label";
+          text.textContent = label;
+          link.appendChild(dot);
+          link.appendChild(text);
+          item.appendChild(link);
+          list.appendChild(item);
+          return { id: section.id, item: item, link: link, dot: dot };
+        });
+        nav.hidden = entries.length < 2;
+      }
+      update();
+    }
+
+    function update() {
+      frame = 0;
+      if (!entries.length || !nav.getClientRects().length) return;
+
+      var navTop = nav.getBoundingClientRect().top;
+      var centers = entries.map(function (entry) {
+        var rect = entry.dot.getBoundingClientRect();
+        return rect.top + rect.height / 2 - navTop;
+      });
+      var first = centers[0];
+      var last = centers[centers.length - 1];
+      rail.style.top = first + "px";
+      rail.style.height = last - first + "px";
+      fill.style.top = first + "px";
+
+      var readingLine = topOffset() + window.innerHeight * 0.25;
+      var tops = entries.map(function (entry) {
+        var section = document.getElementById(entry.id);
+        return section ? section.getBoundingClientRect().top : Infinity;
+      });
+      var active = -1;
+      tops.forEach(function (top, index) {
+        if (top <= readingLine) active = index;
+      });
+      var scroller = document.documentElement;
+      if (window.innerHeight + window.scrollY >= scroller.scrollHeight - 2) {
+        active = entries.length - 1;
+      }
+
+      var progress = 0;
+      if (active >= 0 && active < entries.length - 1) {
+        var span = tops[active + 1] - tops[active];
+        var ratio = span > 0 ? Math.min(1, Math.max(0, (readingLine - tops[active]) / span)) : 0;
+        progress = centers[active] - first + ratio * (centers[active + 1] - centers[active]);
+      } else if (active === entries.length - 1) {
+        progress = last - first;
+      }
+      fill.style.height = progress + "px";
+
+      entries.forEach(function (entry, index) {
+        entry.item.classList.toggle("is-active", index === active);
+        entry.item.classList.toggle("is-passed", index < active);
+        if (index === active) entry.link.setAttribute("aria-current", "location");
+        else entry.link.removeAttribute("aria-current");
+      });
+    }
+
+    function schedule() {
+      if (!frame) frame = window.requestAnimationFrame(update);
+    }
+
+    nav.addEventListener("click", function (event) {
+      var link = event.target.closest(".listing-toc__link");
+      if (!link) return;
+      var target = document.getElementById(link.hash.slice(1));
+      if (!target) return;
+      event.preventDefault();
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({
+        top: target.getBoundingClientRect().top + window.scrollY - topOffset(),
+        behavior: reduceMotion ? "auto" : "smooth",
+      });
+    });
+
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    if (typeof ResizeObserver === "function") {
+      new ResizeObserver(schedule).observe(document.body);
+    }
+    document.body.addEventListener("htmx:afterSettle", build);
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", build);
+    } else {
+      build();
+    }
+  })();
 
 })();

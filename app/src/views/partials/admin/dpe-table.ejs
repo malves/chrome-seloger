@@ -3,6 +3,7 @@
   // courants sont repris). Utilisée par la pagination htmx.
   function searchUrl(page) {
     var params = new URLSearchParams();
+    if (filters.adresse) params.set("adresse", filters.adresse);
     if (filters.codePostal) params.set("code_postal", filters.codePostal);
     if (filters.dateModif) params.set("date_modif", filters.dateModif);
     if (filters.typeBatiment) params.set("type_batiment", filters.typeBatiment);
@@ -119,8 +120,16 @@
         <circle cx="11" cy="11" r="7" />
         <path d="m21 21-4.3-4.3" />
       </svg>
-      <p class="dpe-empty__title">Aucun DPE ne correspond à cette recherche</p>
-      <p class="dpe-empty__hint">Essayez d'élargir les filtres ou de modifier les termes de recherche.</p>
+      <% if (searchState === 'needs-filters') { %>
+        <p class="dpe-empty__title">Choisissez au moins un filtre</p>
+        <p class="dpe-empty__hint">Sur cette base volumineuse, le tableau ne s'affiche pas sans filtre (code postal, date, type, etc.).</p>
+      <% } else if (searchState === 'adresse-needs-postal') { %>
+        <p class="dpe-empty__title">Code postal requis pour l'adresse</p>
+        <p class="dpe-empty__hint">Renseignez aussi le code postal, puis validez le filtre adresse.</p>
+      <% } else { %>
+        <p class="dpe-empty__title">Aucun DPE ne correspond à cette recherche</p>
+        <p class="dpe-empty__hint">Essayez d'élargir les filtres ou de modifier les termes de recherche.</p>
+      <% } %>
     </div>
   <% } %>
 </div>

@@ -14,16 +14,10 @@
     return match ? match[1] : null;
   }
 
-  /** Identifiant annonce dans le chemin (aligné sur listing.js). */
   function listingIdFromPath(pathname) {
-    const path = String(pathname || "").replace(/\/+$/, "");
-    const legacy = path.match(/(\d{5,})\.htm(?:l)?$/i);
-    if (legacy) return legacy[1];
-    if (/\/annonces?\//i.test(path)) {
-      const last = path.split("/").filter(Boolean).pop();
-      if (last && /^[A-Za-z0-9]+$/.test(last)) return last.toUpperCase();
-    }
-    return null;
+    return global.CarnetListingId
+      ? global.CarnetListingId.listingIdFromPath(pathname)
+      : null;
   }
 
   function isListingDetailUrl(href) {

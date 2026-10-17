@@ -83,6 +83,12 @@ test("isListingDetailUrl distingue fiche et page de résultats", () => {
   );
   assert.equal(isListingDetailUrl("http://www.seloger.com/annonce/1.htm"), false);
   assert.equal(isListingDetailUrl("https://autre-site.fr/annonce/1"), false);
+  assert.equal(
+    isListingDetailUrl(
+      "https://www.seloger.com/annonce/achat/ile-de-france/yvelines-78/magnanville-78200/267TPPDTXTE6/medias/images"
+    ),
+    true
+  );
 });
 
 /* ------------------------------ Parsing -------------------------------- */
@@ -101,6 +107,32 @@ test("parseListingHtml lit le JSON-LD d'une annonce SeLoger", () => {
   assert.equal(payload.location.postal_code, "78120");
   assert.ok(payload.photos.includes("https://img.example.com/1.jpg"));
   assert.equal(payload.source_id, "26Q9YCW4ZDUN");
+});
+
+test("parseListingHtml lit numberOfRooms sous itemOffered (RealEstateListing SeLoger)", () => {
+  const html = `<!doctype html><html><head>
+<meta property="og:image" content="https://img.example.com/og.jpg" />
+<script type="application/ld+json">
+${JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "RealEstateListing",
+  name: "Appartement à vendre T2/F2 31 m² 167200 € Suresnes (92150)",
+  description: "Texte annonce.",
+  itemOffered: {
+    "@type": "Apartment",
+    numberOfRooms: "2",
+    numberOfBedrooms: "1",
+    floorSize: { "@type": "QuantitativeValue", value: "31" },
+  },
+  offers: { "@type": "Offer", price: "167200", priceCurrency: "EUR" },
+})}
+</script>
+</head><body></body></html>`;
+  const payload = parseListingHtml(html, SELOGER_URL);
+  assert.ok(payload);
+  assert.equal(payload.rooms, 2);
+  assert.equal(payload.bedrooms, 1);
+  assert.equal(payload.surface, 31);
 });
 
 test("parseListingHtml lit l'étage SeLoger dans le JSON embarqué UFRN", () => {

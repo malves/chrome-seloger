@@ -130,6 +130,25 @@ export function euro(value) {
   return euroFormatter.format(Math.round(Number(value)));
 }
 
+/**
+ * Titre d'annonce importé (souvent SeLoger) : le prix est parfois collé (« 720000 € »).
+ * Reformate chaque montant immédiatement suivi de « € ».
+ */
+export function listingTitle(title, price = null) {
+  if (!title || typeof title !== "string") return title;
+  const expected =
+    price !== null && price !== undefined && Number.isFinite(Number(price))
+      ? Math.round(Number(price))
+      : null;
+
+  return title.replace(/\b(\d[\d\s]*)\s*€/g, (match, raw) => {
+    const n = parseInt(String(raw).replace(/\s/g, ""), 10);
+    if (!Number.isFinite(n)) return match;
+    if (expected !== null && n !== expected) return match;
+    return euroFormatter.format(n);
+  });
+}
+
 export function number(value, suffix = "") {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) {
     return "—";
@@ -229,6 +248,7 @@ export function listingsUrl(currentQuery, changes) {
 
 export default {
   euro,
+  listingTitle,
   number,
   surface,
   percent,

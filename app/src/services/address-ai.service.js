@@ -18,6 +18,11 @@ import {
   resolveGoogleMapsListingUrl,
 } from "../lib/google-maps-url.js";
 import { dpeAddressKey, dpeMapsQuery, dpeStreetLine } from "../lib/dpe-address.js";
+import {
+  ADDRESS_AI_CRITERION_SPECS,
+  addressAiRechercheMeta,
+  dpeChampForCritere,
+} from "../lib/address-ai-criteria-debug.js";
 
 /** Demi-largeur de la fenêtre de surface (±3%). */
 export const SURFACE_MARGIN = 0.03;
@@ -429,6 +434,14 @@ export async function enrichAddressAiCandidateMaps(
   return enriched;
 }
 
+function champsDpeParCritere(mode) {
+  const out = {};
+  for (const spec of ADDRESS_AI_CRITERION_SPECS) {
+    out[spec.label] = dpeChampForCritere(spec.label, { mode });
+  }
+  return out;
+}
+
 export default function createAddressAiService({ repositories, logger } = {}) {
   const repo = repositories.dpe;
 
@@ -466,12 +479,24 @@ export default function createAddressAiService({ repositories, logger } = {}) {
         ? "address-ai/search (mode département)"
         : "address-ai/search (mode précis)"
     );
-    return { records, candidates };
+    return {
+      records,
+      candidates,
+      recherche: addressAiRechercheMeta({
+        mode: territory,
+        criteria,
+        typeBatiments,
+        surfaceMin,
+        surfaceMax,
+        recordsCount: records.length,
+        candidatesCount: candidates.length,
+      }),
+    };
   }
 
   /**
    * Recherche des adresses candidates pour une annonce (CP puis repli département).
-   * @returns {{ mode: string, criteria: object, champsRequisManquants: string[], candidates: object[], fallbackFrom?: string }}
+   * @returns {{ mode: string, criteria: object, champsRequisManquants: string[], candidates: object[], recherches?: object[], fallbackFrom?: string }}
    */
   function search(listing, { userId } = {}) {
     const payload = listingDpeSearchCriteria(listing);
@@ -485,7 +510,14 @@ export default function createAddressAiService({ repositories, logger } = {}) {
     if (criteria.surfaceM2 == null) champsRequisManquants.push("surfaceM2");
 
     if (champsRequisManquants.length) {
-      return { mode: "precise", criteria, champsRequisManquants, candidates: [] };
+      return {
+        mode: "precise",
+        criteria,
+        champsRequisManquants,
+        candidates: [],
+        recherches: [],
+        champsDpeParCritere: champsDpeParCritere("precise"),
+      };
     }
 
     const precise = runTerritorySearch({
@@ -505,6 +537,8 @@ export default function createAddressAiService({ repositories, logger } = {}) {
         criteria,
         champsRequisManquants: [],
         candidates: precise.candidates,
+        recherches: [precise.recherche],
+        champsDpeParCritere: champsDpeParCritere("precise"),
       };
     }
 
@@ -522,6 +556,11 @@ export default function createAddressAiService({ repositories, logger } = {}) {
       criteria,
       champsRequisManquants: [],
       candidates: dept.candidates,
+      recherches: [
+        { ...precise.recherche, utilise: false },
+        { ...dept.recherche, utilise: true },
+      ],
+      champsDpeParCritere: champsDpeParCritere("departement"),
     };
   }
 

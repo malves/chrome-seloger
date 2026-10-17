@@ -19,7 +19,7 @@
     ? 'Détectée automatiquement'
     : 'Adresse saisie manuellement';
 %>
-<div class="panel listing-location" id="listing-location">
+<div class="panel listing-location" id="listing-location" data-toc-label="Localisation">
   <div class="address-book__overlay listing-location__overlay" aria-hidden="true">
     <span class="spinner" role="status" aria-label="Chargement…"></span>
   </div>
@@ -31,6 +31,15 @@
     </div>
     <% if (listing && listing.id && typeof isAdmin !== "undefined" && isAdmin) { %>
       <div class="panel__head-aside listing-location__head-aside">
+        <button
+          type="button"
+          class="btn btn--ghost btn--sm"
+          data-location-probable-debug-open
+          data-location-probable-debug-url="/listings/<%= listing.id %>/location/debug"
+          title="Voir les indices utilisés pour la zone sur la carte (avant adresse réelle)"
+        >
+          Debug
+        </button>
         <button
           type="button"
           class="btn btn--ghost btn--sm listing-location__refresh"

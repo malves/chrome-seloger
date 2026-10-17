@@ -59,8 +59,24 @@
               </svg>
             </span>
             <span class="topnav__link-text">
-              <span class="topnav__link-label">Gérer les projets</span>
+              <span class="topnav__link-label">Gérer mes projets</span>
               <span class="topnav__link-hint">Dossiers et classement</span>
+            </span>
+            <span class="topnav__link-chevron" aria-hidden="true">›</span>
+          </a>
+          <a
+            class="topnav__link <%= currentPath.startsWith('/endettement') ? 'is-active' : '' %>"
+            href="/endettement"
+          >
+            <span class="topnav__link-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 17a8 8 0 1 1 16 0" />
+                <path d="m12 17 4-5" />
+              </svg>
+            </span>
+            <span class="topnav__link-text">
+              <span class="topnav__link-label">Endettement</span>
+              <span class="topnav__link-hint">Capacité d'emprunt</span>
             </span>
             <span class="topnav__link-chevron" aria-hidden="true">›</span>
           </a>

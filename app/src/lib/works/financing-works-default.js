@@ -27,7 +27,7 @@ export function financingWorksDefault({ listing, repositories, analysis, dpeInsi
   const row = repositories.worksPlans.find(listing.id);
   const plan = row?.data
     ? reconcileWorksPlan(row.data, photos)
-    : seedWorksPlan(analysis, photos);
+    : seedWorksPlan(analysis, photos, { listing });
   const resolvedDpe =
     dpeInsights === undefined ? linkedDpeInsights(listing, repositories) : dpeInsights;
   const overview = buildWorksOverview(listing, analysis, resolvedDpe, photos);

@@ -24,13 +24,25 @@ import {
   ROOM_ISSUES,
   ROOM_ISSUE_CATEGORIES,
   ROOM_ISSUE_KEYS,
+  ISSUE_ALIASES,
+  canonicalIssue,
   cleanIssues,
   issueAppliesTo,
 } from "./works-issues.js";
 import { reconcileRoomCondition, roomNeedsReview } from "./works-coherence.js";
-import { roomIssuesFromAnalysis } from "./works-seed-sources.js";
+import {
+  GLOBAL_WORKS,
+  GLOBAL_WORK_KEYS,
+  LEGACY_ROOM_TO_GLOBAL,
+  MAX_GLOBAL_QUANTITY,
+  globalItemsFromRoomIssues,
+  globalWorksOptions,
+  normalizeGlobalItems,
+} from "./works-global.js";
+import { roomIssuesFromAnalysis, seedGlobalWorks } from "./works-seed-sources.js";
 
-export const WORKS_PLAN_VERSION = 1;
+/** v2 : chantiers « Logement entier » (`global.items`), sortis des pièces. */
+export const WORKS_PLAN_VERSION = 2;
 
 export const GROUP_KEYS = ["unassigned", "exterior", "excluded"];
 
@@ -284,6 +296,7 @@ export function plannerOptions() {
       label: i.label,
       tone: i.tone,
       category: i.category,
+      hint: i.hint || "",
       roomTypes: i.roomTypes || null,
       heavyRoomTypes: i.heavyRoomTypes || null,
     })),
@@ -294,6 +307,7 @@ export function plannerOptions() {
     issuePriority: ISSUE_PRIORITY,
     priorities: PRIORITIES,
     costs: costsOptions(),
+    globalWorks: globalWorksOptions(),
   };
 }
 
@@ -306,7 +320,8 @@ const url = z.string().min(1).max(LIMITS.url);
 const urls = z.array(url).max(LIMITS.photos);
 
 const surfaceBase = { condition: enumOf(E.SURFACE_CONDITIONS, "unknown"), note: text(LIMITS.note), source };
-const issueList = z.array(z.enum(ROOM_ISSUE_KEYS)).max(ROOM_ISSUE_KEYS.length).default([]);
+const ACCEPTED_ISSUE_KEYS = [...ROOM_ISSUE_KEYS, ...Object.keys(ISSUE_ALIASES)];
+const issueList = z.array(z.enum(ACCEPTED_ISSUE_KEYS)).max(ACCEPTED_ISSUE_KEYS.length).default([]);
 
 const roomSchema = z.object({
   id: z.string().regex(/^[\w-]{1,40}$/),
@@ -335,8 +350,18 @@ const roomSchema = z.object({
   photos: urls,
 });
 
+const globalItemSchema = z.object({
+  key: z.enum(GLOBAL_WORK_KEYS),
+  enabled: z.boolean(),
+  variant: z.string().trim().max(40).default(""),
+  quantity: z.number().int().min(1).max(MAX_GLOBAL_QUANTITY).nullable().default(null),
+  source,
+  reason: text(LIMITS.issueReason),
+});
+
 const planSchema = z.object({
   rooms: z.array(roomSchema).max(LIMITS.rooms),
+  global: z.object({ items: z.array(globalItemSchema).max(GLOBAL_WORKS.length).default([]) }).default({ items: [] }),
   groups: z.object({
     unassigned: urls.default([]),
     exterior: urls.default([]),
@@ -362,17 +387,27 @@ export function parseWorksPlan(input) {
     if (ids.has(room.id)) return { ok: false, error: `Données du plan invalides (pièce en double : ${room.id}).` };
     ids.add(room.id);
     room.issues = cleanIssues(room.issues, room.type);
+    room.issues_ai = cleanIssues(room.issues_ai);
+    room.issues_heavy_auto = cleanIssues(room.issues_heavy_auto);
     room.issue_reasons = keepReasons(room.issue_reasons, room.issues_ai);
     room.needs_review = roomNeedsReview(room);
   }
-  return { ok: true, plan: { version: WORKS_PLAN_VERSION, ...result.data } };
+  const global = { items: normalizeGlobalItems(result.data.global.items) };
+  return { ok: true, plan: { version: WORKS_PLAN_VERSION, ...result.data, global } };
 }
 
 /** Raisons de l'IA, limitées aux points qu'elle a proposés. */
 function keepReasons(reasons, keys) {
+  const byKey = {};
+  const entries = Object.entries(reasons || {});
+  // La raison propre au point prime sur celle d'un ancien point fusionné (fissures).
+  for (const [k, v] of [...entries.filter(([k]) => !ISSUE_ALIASES[k]), ...entries.filter(([k]) => ISSUE_ALIASES[k])]) {
+    const key = canonicalIssue(k);
+    if (!byKey[key] && typeof v === "string" && v.trim()) byKey[key] = v;
+  }
   const out = {};
   for (const key of keys || []) {
-    const reason = typeof reasons?.[key] === "string" ? reasons[key].trim().slice(0, LIMITS.issueReason) : "";
+    const reason = typeof byKey[key] === "string" ? byKey[key].trim().slice(0, LIMITS.issueReason) : "";
     if (reason) out[key] = reason;
   }
   return out;
@@ -466,7 +501,7 @@ function seedRoom(raw, urlsOf, stored) {
     room.issues_heavy_auto = heavy.added;
   }
   room.issues_ai = [...room.issues];
-  return alignAiCondition(room);
+  return { room: alignAiCondition(room), global: found.global };
 }
 
 /**
@@ -515,14 +550,17 @@ export function captionFromObservations(o) {
  * Plan proposé par l'IA.
  * @param {object|null} stored - sortie de `readStored` (analyse des photos)
  * @param {string[]} photos - URLs de la galerie
+ * @param {{ listing?: object }} [context] - annonce (année de construction pour les diagnostics)
  */
-export function seedWorksPlan(stored, photos = []) {
+export function seedWorksPlan(stored, photos = [], context = {}) {
   const plan = {
     version: WORKS_PLAN_VERSION,
     rooms: [],
+    global: { items: [] },
     groups: { unassigned: [], exterior: [], excluded: [] },
     captions: {},
   };
+  const roomSignals = [];
   if (stored?.ready && stored.status === "ok") {
     const gallery = new Set(photos);
     const urlById = new Map();
@@ -537,11 +575,13 @@ export function seedWorksPlan(stored, photos = []) {
 
     const seenIds = new Set();
     for (const raw of stored.rooms || []) {
-      const room = seedRoom(raw, urlsOf, stored);
+      const { room, global } = seedRoom(raw, urlsOf, stored);
       while (seenIds.has(room.id)) room.id = `${room.id}_b`;
       seenIds.add(room.id);
       plan.rooms.push(room);
+      for (const [key, reason] of Object.entries(global)) roomSignals.push({ roomId: room.id, key, reason });
     }
+    plan.global.items = seedGlobalWorks(stored, context.listing || null, roomSignals, plan.rooms);
     plan.groups.unassigned = urlsOf(stored.unassigned_usable_image_ids);
     plan.groups.exterior = (stored.images || [])
       .filter((img) => img.exclusion_reason === "exterior")
@@ -564,6 +604,41 @@ function migrateAiSummary(room) {
   return { ai_summary: room.summary || "", summary: "" };
 }
 
+/** Points d'un plan v1 qui relèvent désormais du logement entier. */
+function legacyGlobalEntries(room) {
+  if (!Array.isArray(room.issues)) return [];
+  const fromAi = new Set(Array.isArray(room.issues_ai) ? room.issues_ai : []);
+  return room.issues
+    .filter((k) => LEGACY_ROOM_TO_GLOBAL[k])
+    .map((k) => ({
+      roomId: room.id,
+      key: k,
+      reason: typeof room.issue_reasons?.[k] === "string" ? room.issue_reasons[k] : "",
+      ai: fromAi.has(k),
+    }));
+}
+
+/**
+ * Chantiers du logement entier : ceux du plan, complétés par les points
+ * d'un plan v1 (jamais perdus). Un plan v1 avec des travaux reçoit aussi
+ * préparation et imprévus, comme une proposition récente.
+ */
+function reconcileGlobal(plan, legacyEntries, rooms) {
+  const items = normalizeGlobalItems(plan.global?.items);
+  const have = new Set(items.map((i) => i.key));
+  for (const item of globalItemsFromRoomIssues(legacyEntries, rooms, { mode: "migrate" })) {
+    if (!have.has(item.key)) items.push(item);
+  }
+  if (!plan.global && (items.length || rooms.some((r) => r.issues.length))) {
+    for (const key of ["preparation", "contingency"]) {
+      if (!items.some((i) => i.key === key)) {
+        items.push({ key, enabled: true, variant: "standard", quantity: null, source: "ai", reason: "Des travaux sont prévus" });
+      }
+    }
+  }
+  return { items: normalizeGlobalItems(items) };
+}
+
 /**
  * Aligne le plan sur la galerie : chaque photo apparaît une seule fois, les
  * photos disparues sont retirées et les nouvelles arrivent dans « À classer ».
@@ -578,7 +653,9 @@ export function reconcileWorksPlan(plan, photos = []) {
       return true;
     });
 
+  const legacyEntries = [];
   const rooms = (plan.rooms || []).map((room) => {
+    legacyEntries.push(...legacyGlobalEntries(room));
     const next = {
       ...room,
       ...migrateAiSummary(room),
@@ -608,7 +685,7 @@ export function reconcileWorksPlan(plan, photos = []) {
     if (gallery.has(u) && caption?.text) captions[u] = caption;
   }
 
-  return { version: WORKS_PLAN_VERSION, rooms, groups, captions };
+  return { version: WORKS_PLAN_VERSION, rooms, global: reconcileGlobal(plan, legacyEntries, rooms), groups, captions };
 }
 
 /* ------------------------- Résumé du widget ------------------------- */

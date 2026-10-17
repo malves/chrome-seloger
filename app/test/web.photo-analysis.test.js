@@ -186,6 +186,36 @@ test("fiche : résultat en cache rendu avec verdict, synthèse et badges galerie
   assert.doesNotMatch(panel.text, /<html/);
 });
 
+test("visite : faits photo structurés → questions catalogue, textes libres en encart seulement", async (t) => {
+  const { agent, repositories, listing } = await setup(t);
+  repositories.enrichments.saveListingResult(listing.id, PHOTO_ANALYSIS_PROVIDER, {
+    status: "ok",
+    data: storedAnalysis(listing, PHOTOS),
+  });
+  const page = await agent.get(`/listings/${listing.id}/visite`).expect(200);
+  const html = page.text;
+
+  // Question déclenchée par l'anomalie possible_humidity (0,77) dans le séjour.
+  assert.match(html, /data-q="photo_humidity"/);
+  assert.match(html, /Les traces d'humidité repérées sur les photos \(séjour\) sont-elles réelles/);
+  assert.match(html, /visit-q__hint[\s\S]*?humidité, dégât des eaux ou moisissure possibles \(séjour\)/);
+  assert.match(html, /visit-tag--ai"><svg[^>]*><use href="#wi-camera"><\/use><\/svg>Photos</);
+  // Contradiction annonce / photos → question avant la visite, citation de l'annonce.
+  assert.match(html, /data-q="photo_claims"/);
+  assert.match(html, /L'annonce affirme « entièrement rénové »/);
+  // Pas de fissure dans l'analyse : la question fissures n'existe pas.
+  assert.doesNotMatch(html, /data-q="photo_cracks"/);
+  // Plus aucune question rédigée par le modèle.
+  assert.doesNotMatch(html, /data-q="ai_/);
+  assert.doesNotMatch(html, /visit-q__title">[^<]*Vérifier la trace au plafond/);
+  assert.doesNotMatch(html, /visit-q__title">[^<]*De quelle année date la cuisine/);
+  // Les textes libres restent lisibles dans l'encart du bilan.
+  assert.match(html, /visit-photo-notes[\s\S]*Points soulevés par l'analyse photo/);
+  assert.match(html, /visit-photo-notes__list">[\s\S]*?Vérifier la trace au plafond du séjour\./);
+  assert.match(html, /visit-photo-notes__list">[\s\S]*?De quelle année date la cuisine \?/);
+  assert.match(html, /visit-photo-notes__list">[\s\S]*?Cuisine à remplacer/);
+});
+
 test("fiche : verdict et état général resynchronisés depuis le plan des pièces", async (t) => {
   const { agent, repositories, listing } = await setup(t);
   repositories.enrichments.saveListingResult(listing.id, PHOTO_ANALYSIS_PROVIDER, {

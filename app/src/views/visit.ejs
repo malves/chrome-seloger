@@ -1,0 +1,364 @@
+<%
+  // Page « Préparer la visite » : la structure (étapes, cartes, bilan) est
+  // rendue côté serveur depuis la view-model `sheet` ; les contrôles de
+  // réponse, les notes contextuelles et le bilan vivant sont pris en charge
+  // par public/js/visit-sheet.js à partir du JSON #visit-initial.
+  function vi(name) {
+    return '<svg class="wi" aria-hidden="true"><use href="#wi-' + name + '"></use></svg>';
+  }
+  var L = sheet.listing;
+  var themeById = {};
+  sheet.themes.forEach(function (t) { themeById[t.id] = t; });
+  var ins = sheet.insights;
+%>
+<%- include("partials/works-icons") %>
+<div
+  class="visit"
+  data-visit
+  data-visit-url="/listings/<%= L.id %>/visite"
+  data-listing-url="/listings/<%= L.id %>"
+>
+  <!-- ------------------------------ En-tête ------------------------------ -->
+  <header class="visit-hero">
+    <div class="visit-hero__main">
+      <a class="visit-back" href="/listings/<%= L.id %>">
+        <%- vi("undo") %><span>Retour à l'annonce</span>
+      </a>
+      <p class="visit-hero__eyebrow"><%- vi("clipboard") %> Préparer la visite</p>
+      <h1 class="visit-hero__title"><%= L.title %></h1>
+      <% if (L.address) { %>
+        <p class="visit-hero__address"><%- vi("pin") %><span><%= L.address %></span></p>
+      <% } %>
+      <div class="visit-hero__badges">
+        <% if (L.priceLabel) { %><span class="visit-hero__price"><%= L.priceLabel %></span><% } %>
+        <% if (L.propertyTypeLabel) { %><span class="visit-hero__badge"><%= L.propertyTypeLabel %></span><% } %>
+        <% if (L.transactionTypeLabel) { %><span class="visit-hero__badge"><%= L.transactionTypeLabel %></span><% } %>
+        <span class="visit-hero__badge">Origine : <%= L.origin %></span>
+      </div>
+      <ul class="visit-hero__facts" aria-label="Repères de l'annonce">
+        <li><span class="visit-hero__fact-label">Surface</span><strong data-fact="surface"><%= L.surface != null ? fmt.surface(L.surface) : "—" %></strong></li>
+        <li><span class="visit-hero__fact-label">Pièces</span><strong data-fact="rooms"><%= L.rooms != null ? L.rooms : "—" %></strong></li>
+        <li><span class="visit-hero__fact-label">DPE</span><strong data-fact="dpe"><%= L.dpe ? String(L.dpe).toUpperCase() : "—" %></strong></li>
+        <% if (sheet.market.daysOnMarket != null) { %>
+          <li><span class="visit-hero__fact-label">Suivi depuis</span><strong><%= sheet.market.daysOnMarket %> j</strong></li>
+        <% } %>
+      </ul>
+    </div>
+    <div class="visit-hero__side">
+      <% if (L.photo) { %>
+        <img class="visit-hero__photo" src="<%= L.photo %>" alt="Photo de l'annonce" referrerpolicy="no-referrer" />
+      <% } else { %>
+        <div class="visit-hero__photo visit-hero__photo--empty"><%- vi("image") %></div>
+      <% } %>
+      <div class="visit-hero__tools">
+        <span class="visit-save" data-save-status data-state="idle" role="status">
+          <span class="visit-save__dot" aria-hidden="true"></span>
+          <span data-save-text>Enregistré automatiquement</span>
+        </span>
+        <button type="button" class="visit-hero__reset" data-reset>Tout effacer</button>
+      </div>
+    </div>
+  </header>
+
+  <noscript>
+    <p class="panel">Cette page a besoin de JavaScript pour enregistrer vos réponses.</p>
+  </noscript>
+
+  <!-- ------------------------------ Filtres ------------------------------ -->
+  <nav class="visit-filters" aria-label="Filtrer les questions">
+    <div class="visit-filters__scroll" role="group" aria-label="Thème">
+      <button type="button" class="visit-filter is-active" data-filter="all" aria-pressed="true">
+        Tout <span class="visit-filter__count" data-filter-count="all"><%= sheet.counts.total %></span>
+      </button>
+      <button type="button" class="visit-filter visit-filter--star" data-filter="essential" aria-pressed="false">
+        <%- vi("star") %> Essentiels <span class="visit-filter__count" data-filter-count="essential"><%= sheet.counts.essentials %></span>
+      </button>
+      <% sheet.themes.forEach(function (t) { %>
+        <button type="button" class="visit-filter" data-filter="<%= t.id %>" aria-pressed="false">
+          <%- vi(t.icon) %> <%= t.label %> <span class="visit-filter__count" data-filter-count="<%= t.id %>"><%= t.total %></span>
+        </button>
+      <% }) %>
+    </div>
+    <label class="visit-filters__hide">
+      <input type="checkbox" data-hide-answered />
+      <span>Masquer les questions traitées</span>
+    </label>
+  </nav>
+
+  <div class="visit__grid">
+    <div class="visit__form">
+      <% sheet.sections.forEach(function (sec) { %>
+        <%
+          var discover = sec.items.filter(function (it) { return !it.known; });
+          var confirm = sec.items.filter(function (it) { return it.known; });
+          var ordered = discover.concat(confirm);
+        %>
+        <section class="panel visit-section" id="visit-<%= sec.id %>" data-section="<%= sec.id %>" aria-labelledby="visit-<%= sec.id %>-title">
+          <div class="visit-section__head">
+            <span class="visit-step" aria-hidden="true"><%= sec.index %></span>
+            <div class="visit-section__text">
+              <h2 class="panel__title" id="visit-<%= sec.id %>-title"><%= sec.label %></h2>
+              <p class="visit-section__sub"><%= sec.lead %></p>
+            </div>
+            <output class="visit-section__total" data-section-total="<%= sec.id %>">
+              <span data-section-done>0</span><span class="visit-section__total-sep">/</span><span data-section-count><%= sec.total %></span>
+            </output>
+          </div>
+          <div class="visit-section__bar" aria-hidden="true"><span data-section-bar></span></div>
+
+          <ol class="visit-list">
+            <% ordered.forEach(function (it, idx) { %>
+              <% if (confirm.length && discover.length && idx === discover.length) { %>
+                <li class="visit-divider" aria-hidden="true">
+                  <span><%- vi("check") %> À confirmer · déjà renseigné par l'annonce</span>
+                </li>
+              <% } %>
+              <% var theme = themeById[it.theme] || { label: it.theme, icon: "help" }; %>
+              <li
+                class="visit-q"
+                data-q="<%= it.id %>"
+                data-theme="<%= it.theme %>"
+                data-section="<%= sec.id %>"
+                data-known="<%= it.known ? '1' : '0' %>"
+                <%= it.essential ? "data-essential" : "" %>
+                data-state="idle"
+              >
+                <article class="visit-q__card">
+                  <div class="visit-q__head">
+                    <span class="visit-tag visit-tag--theme" data-theme-tag="<%= it.theme %>"><%- vi(theme.icon) %><%= theme.label %></span>
+                    <% if (it.essential) { %><span class="visit-tag visit-tag--essential"><%- vi("star") %>Essentiel</span><% } %>
+                    <% if (it.photoTriggered || it.photoHint) { %><span class="visit-tag visit-tag--ai"><%- vi("camera") %>Photos</span><% } %>
+                    <span class="visit-tag visit-tag--mode"><%= it.known ? "À confirmer" : "À découvrir" %></span>
+                    <span class="visit-q__done" data-done aria-hidden="true"><%- vi("check") %></span>
+                  </div>
+                  <h3 class="visit-q__title"><%= it.question %></h3>
+                  <% if (it.photoHint) { %>
+                    <p class="visit-q__hint"><%- vi("image") %><span><%= it.photoHint %></span></p>
+                  <% } %>
+                  <% if (it.known) { %>
+                    <p class="visit-q__known">
+                      <span class="visit-q__known-label">Selon l'annonce</span>
+                      <strong class="visit-q__known-value"><%= it.valueLabel %></strong>
+                      <% if (it.sourceShort) { %><span class="visit-source visit-source--<%= it.source %>"><%= it.sourceShort %></span><% } %>
+                    </p>
+                  <% } %>
+                  <div class="visit-q__control" data-control></div>
+                  <div class="visit-q__foot">
+                    <button type="button" class="visit-link" data-ask>
+                      <%- vi("message") %><span data-ask-label>Je demanderai sur place</span>
+                    </button>
+                    <% if (it.proTip) { %>
+                      <button type="button" class="visit-link visit-link--tip" data-tip-toggle aria-expanded="false">
+                        <%- vi("sparkles") %>Le conseil du pro
+                      </button>
+                    <% } %>
+                  </div>
+                  <% if (it.proTip) { %>
+                    <div class="visit-reveal" data-tip inert>
+                      <div class="visit-reveal__inner">
+                        <p class="visit-tip"><%= it.proTip %></p>
+                      </div>
+                    </div>
+                  <% } %>
+                  <div class="visit-notes" data-notes aria-live="polite"></div>
+                </article>
+              </li>
+            <% }) %>
+          </ol>
+          <p class="visit-section__empty" data-section-empty hidden>Tout est traité dans cette étape. Beau travail.</p>
+        </section>
+      <% }) %>
+
+      <div class="visit-end">
+        <p class="visit-end__text">Vous avez fait le tour ? Le bilan récapitule vos arguments et ce qu'il reste à demander.</p>
+        <a class="btn btn--green" href="/listings/<%= L.id %>">Retour à l'annonce</a>
+      </div>
+    </div>
+
+    <!-- ------------------------------ Bilan ------------------------------ -->
+    <aside class="visit__aside" aria-label="Bilan de visite">
+      <div class="visit-bilan" id="visit-bilan" data-result data-tone="<%= ins.verdict.tone %>">
+        <div class="visit-bilan__top">
+          <p class="panel__eyebrow">Bilan de visite</p>
+          <span class="visit-phase" data-phase="<%= ins.phase %>" data-phase-label>
+            <%= ins.phase === "terminee" ? "Visite terminée" : ins.phase === "visite" ? "Visite en cours" : "Préparation" %>
+          </span>
+        </div>
+
+        <div class="visit-ring">
+          <svg viewBox="0 0 120 120" class="visit-ring__svg" aria-hidden="true">
+            <circle class="visit-ring__track" cx="60" cy="60" r="52" pathLength="100" />
+            <circle class="visit-ring__fill" cx="60" cy="60" r="52" pathLength="100" data-ring-fill style="stroke-dashoffset: <%= 100 - ins.counts.progress %>" />
+          </svg>
+          <div class="visit-ring__value">
+            <strong data-out="answered"><%= ins.counts.answered %></strong>
+            <span class="visit-ring__total">/ <span data-out="total"><%= ins.counts.total %></span></span>
+            <small>répondues</small>
+          </div>
+        </div>
+
+        <div class="visit-verdict" data-verdict aria-live="polite">
+          <strong data-verdict-title><%= ins.verdict.title %></strong>
+          <span data-verdict-text><%= ins.verdict.text %></span>
+        </div>
+
+        <dl class="visit-stats">
+          <div class="visit-stats__row">
+            <dt>Essentiels vérifiés</dt>
+            <dd><span data-out="essentials-done"><%= ins.counts.essentialsAnswered %></span> / <span data-out="essentials"><%= ins.counts.essentials %></span></dd>
+          </div>
+          <div class="visit-stats__row">
+            <dt>Alertes</dt>
+            <dd data-out="alerts" data-tone="<%= ins.counts.alerts ? 'warn' : '' %>"><%= ins.counts.alerts %></dd>
+          </div>
+          <div class="visit-stats__row">
+            <dt>Corrections de l'annonce</dt>
+            <dd data-out="corrections"><%= ins.counts.corrections %></dd>
+          </div>
+          <div class="visit-stats__row">
+            <dt>À demander sur place</dt>
+            <dd data-out="todo"><%= ins.counts.todo %></dd>
+          </div>
+        </dl>
+
+        <!-- Levier de négociation -->
+        <div class="visit-lever" data-lever data-level="<%= ins.lever.level %>">
+          <p class="visit-bilan__title">
+            Levier de négociation
+            <span class="visit-lever__label" data-out="lever-label"><%= ins.lever.label %></span>
+          </p>
+          <div class="visit-lever__bar" data-lever-bar data-level="<%= ins.lever.level %>" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <ul class="visit-lever__reasons" data-lever-reasons></ul>
+          <p class="visit-lever__empty" data-lever-empty <%= ins.lever.reasons.length ? "hidden" : "" %>>
+            Chaque réponse qui révèle un défaut ou un vendeur pressé fait monter la barre.
+          </p>
+        </div>
+
+        <!-- Coûts annuels hors crédit -->
+        <div class="visit-money" data-costs <%= ins.costs.known ? "" : "hidden" %>>
+          <p class="visit-bilan__title">Coûts fixes hors crédit</p>
+          <p class="visit-money__big"><strong data-out="monthly"><%= fmt.euro(ins.costs.monthly) %></strong> <span>/ mois</span></p>
+          <ul class="visit-money__list" data-costs-list></ul>
+        </div>
+
+        <!-- Budget travaux probable -->
+        <div class="visit-money visit-money--works" data-works <%= ins.works.items.length ? "" : "hidden" %>>
+          <p class="visit-bilan__title">Travaux probables</p>
+          <p class="visit-money__big"><strong data-out="works"><%= fmt.euro(ins.works.min) %> – <%= fmt.euro(ins.works.max) %></strong></p>
+          <ul class="visit-money__list" data-works-list></ul>
+        </div>
+
+        <ul class="visit-tips" data-alerts aria-label="Alertes"></ul>
+
+        <div class="visit-todo" data-todo hidden>
+          <p class="visit-bilan__title">À demander sur place</p>
+          <ul class="visit-todo__list" data-todo-list></ul>
+        </div>
+
+        <div class="visit-fixes" data-fixes hidden>
+          <p class="visit-bilan__title">Corrections de l'annonce</p>
+          <ul class="visit-fixes__list" data-fixes-list></ul>
+        </div>
+
+        <% var pn = sheet.photoNotes; %>
+        <% if (pn && pn.total > 0) { %>
+          <!-- Textes libres de l'analyse photo : simple aide-mémoire, sans réponse ni signal. -->
+          <details class="visit-photo-notes">
+            <summary class="visit-photo-notes__summary">
+              <%- vi("camera") %>
+              <span>Points soulevés par l'analyse photo</span>
+              <span class="visit-photo-notes__count"><%= pn.total %></span>
+            </summary>
+            <p class="visit-photo-notes__lead">
+              Remarques rédigées automatiquement à partir des photos : à garder en tête,
+              elles ne remplacent pas les questions de la fiche.
+            </p>
+            <% [
+              { label: "À vérifier sur place", items: pn.checks },
+              { label: "À demander", items: pn.questions },
+              { label: "Arguments possibles", items: pn.negotiation },
+            ].forEach(function (group) { if (!group.items.length) return; %>
+              <p class="visit-photo-notes__label"><%= group.label %></p>
+              <ul class="visit-photo-notes__list">
+                <% group.items.forEach(function (text) { %><li><%= text %></li><% }) %>
+              </ul>
+            <% }) %>
+          </details>
+        <% } %>
+
+        <label class="visit-switch">
+          <input type="checkbox" data-apply-toggle <%= sheet.applyToSheet === true ? "checked" : "" %> />
+          <span class="visit-switch__track" aria-hidden="true"></span>
+          <span class="visit-switch__text">
+            <strong>Mettre à jour la fiche de l'annonce</strong>
+            <small data-apply-hint>
+              <%= sheet.applyToSheet === true
+                ? "Vos corrections remplacent les valeurs de l'annonce et réajustent le dossier technique."
+                : "Vos réponses restent dans cette fiche : l'annonce et le chiffrage ne changent pas." %>
+            </small>
+          </span>
+        </label>
+
+        <p class="visit-bilan__note">
+          Les montants de travaux sont des fourchettes indicatives : faites établir des devis
+          avant une offre. Rien ne remplace une seconde visite à une autre heure.
+        </p>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Résumé mobile : visible quand le bilan sort de l'écran. -->
+  <button type="button" class="visit-dock" data-dock data-tone="<%= ins.verdict.tone %>" aria-hidden="true" tabindex="-1">
+    <span class="visit-dock__count" data-dock-count><%= ins.counts.answered %>/<%= ins.counts.total %></span>
+    <span class="visit-dock__text" data-dock-text><%= ins.verdict.title %></span>
+    <span class="visit-dock__cta">Voir le bilan</span>
+  </button>
+
+  <!-- 1er lancement : choix obligatoire avant de parcourir la fiche (réglable ensuite dans le bilan). -->
+  <div
+    class="modal visit-consent"
+    id="visit-consent-modal"
+    data-consent-modal
+    <%= sheet.applyToSheet === null ? "" : "hidden" %>
+  >
+    <div class="modal__overlay" aria-hidden="true"></div>
+    <div
+      class="modal__dialog visit-consent__dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="visit-consent-title"
+      aria-describedby="visit-consent-text"
+    >
+      <span class="visit-consent__icon" aria-hidden="true"><%- vi("sparkles") %></span>
+      <h2 class="modal__title" id="visit-consent-title">Vos réponses doivent-elles mettre à jour la fiche de l'annonce&nbsp;?</h2>
+      <p class="modal__message" id="visit-consent-text">
+        Surface, charges, DPE… corrigés sur place remplacent les valeurs de l'annonce
+        (l'ancienne reste visible) et réajustent le dossier technique et le coût des travaux.
+        Vos réponses sont toujours prioritaires.
+      </p>
+      <div class="modal__actions visit-consent__actions">
+        <button type="button" class="btn btn--ghost" data-consent-choice="no">Non, garder séparé</button>
+        <button type="button" class="btn btn--green" data-consent-choice="yes">Oui, mettre à jour la fiche</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="visit-toast" data-toast role="status" aria-live="polite">
+    <span data-toast-text></span>
+    <button type="button" class="visit-toast__undo" data-toast-undo>Annuler</button>
+  </div>
+
+  <script type="application/json" id="visit-initial"><%- JSON.stringify({
+    listing: sheet.listing,
+    applyToSheet: sheet.applyToSheet,
+    market: sheet.market,
+    items: sheet.sections.flatMap(function (s) { return s.items; }),
+    answers: Object.fromEntries(
+      sheet.sections.flatMap(function (s) { return s.items; })
+        .filter(function (it) { return it.answer; })
+        .map(function (it) { return [it.id, it.answer]; })
+    ),
+  }).replace(/</g, "\\u003c") %></script>
+</div>

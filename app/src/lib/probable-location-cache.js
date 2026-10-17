@@ -43,6 +43,12 @@ function fingerprintMatchesStored(stored, listing) {
   return false;
 }
 
+/** Indique si le cache enrichissement correspond encore à l'annonce courante. */
+export function probableLocationCacheValid(row, listing) {
+  if (!row || row.status !== "ok" || !row.data?.result) return false;
+  return fingerprintMatchesStored(row.data.inputFingerprint, listing);
+}
+
 /**
  * @param {object|null} row - ligne `listing_enrichments` hydratée
  * @param {object} listing

@@ -85,6 +85,10 @@ const SECONDARY_INDEXES = [
     name: "idx_dpe_records_address_lookup",
     sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_address_lookup ON dpe_records(code_postal_ban, adresse_ban, adresse_brut, type_batiment, numero_dpe)",
   },
+  {
+    name: "idx_dpe_records_type_batiment",
+    sql: "CREATE INDEX IF NOT EXISTS idx_dpe_records_type_batiment ON dpe_records(type_batiment, date_derniere_modification_dpe, numero_dpe)",
+  },
 ];
 
 /** Transforme une ligne de l'API en jeu de valeurs pour l'upsert. */
@@ -216,7 +220,6 @@ export default function createDpeRepository(db) {
     );
   }
 
-  /** Recrée les index manquants (fin d'import massif, ou redémarrage après un plantage). */
   function ensureSecondaryIndexes() {
     const existing = indexNames();
     for (const index of SECONDARY_INDEXES) {
@@ -315,7 +318,8 @@ export default function createDpeRepository(db) {
      * Recherche filtrée et paginée. Les fragments SQL proviennent uniquement de
      * constantes ; seules les valeurs passent par des paramètres liés.
      *
-     * Filtres : `codePostal`, `commune`, `typeBatiment`, `etiquette` (DPE),
+     * Filtres : `adresse` (sous-chaîne sur `adresse_ban` / `adresse_brut`),
+     * `codePostal`, `commune`, `typeBatiment`, `etiquette` (DPE),
      * `etiquetteGes`, `surfaceMin`, `surfaceMax` (m²), `anneeMin`, `anneeMax`,
      * `dateModif` (YYYY-MM-DD, égalité sur `date_derniere_modification_dpe`, indexée).
      */
@@ -327,7 +331,10 @@ export default function createDpeRepository(db) {
         ? "numero_dpe DESC"
         : "date_derniere_modification_dpe DESC, numero_dpe DESC";
 
-      let sql = `SELECT * FROM dpe_records${whereSql}
+      const selectSql = filters.listOnly
+        ? `SELECT ${KEY_COLUMNS.join(", ")} FROM dpe_records`
+        : "SELECT * FROM dpe_records";
+      let sql = `${selectSql}${whereSql}
         ORDER BY ${orderBy}`;
 
       if (Number.isFinite(filters.limit)) {
@@ -403,7 +410,16 @@ export default function createDpeRepository(db) {
 
       params.limit = Math.max(1, Math.trunc(limit));
 
-      const sql = `SELECT * FROM dpe_records
+      // Le repli département doit filtrer par `code_departement_ban` en premier :
+      // sans indice explicite, SQLite peut choisir `idx_dpe_records_type_batiment`
+      // (migration 030) et parcourir des millions de lignes (~1 min sur la base complète).
+      const indexedBy = codePostal
+        ? " INDEXED BY idx_dpe_records_cp"
+        : departement
+          ? " INDEXED BY idx_dpe_records_dept"
+          : "";
+
+      const sql = `SELECT * FROM dpe_records${indexedBy}
         WHERE ${where.join(" AND ")}
         ORDER BY date_derniere_modification_dpe DESC, numero_dpe DESC
         LIMIT @limit`;
@@ -579,10 +595,27 @@ export default function createDpeRepository(db) {
     },
   };
 
+  function escapeLikeFragment(value) {
+    return String(value)
+      .replace(/\\/g, "\\\\")
+      .replace(/%/g, "\\%")
+      .replace(/_/g, "\\_");
+  }
+
   function buildSearchClause(filters) {
     const where = [];
     const params = {};
 
+    if (filters.adresse) {
+      if (!filters.codePostal) {
+        where.push("1 = 0");
+      } else {
+        where.push(
+          `(COALESCE(adresse_ban, '') LIKE @adresse ESCAPE '\\' OR COALESCE(adresse_brut, '') LIKE @adresse ESCAPE '\\')`
+        );
+        params.adresse = `%${escapeLikeFragment(filters.adresse)}%`;
+      }
+    }
     if (filters.codePostal) {
       where.push("code_postal_ban = @code_postal");
       params.code_postal = filters.codePostal;

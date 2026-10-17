@@ -35,7 +35,7 @@
   var offerData = {
     listing: {
       id: listing.id,
-      title: listing.title || null,
+      title: listing.title ? fmt.listingTitle(listing.title, listing.price) : null,
       url: listing.url || null,
       price: listing.price ?? null,
       surface: listing.surface ?? null,

@@ -1,0 +1,547 @@
+/**
+ * Registre des patterns UI — ids stables pour les prompts (`form-amount-stepper`,
+ * `#pattern-form-amount-stepper` sur `/admin/design-system`).
+ *
+ * `hasSpec: true` = l'ancre `#pattern-{id}` est sur un spécimen ou l'en-tête de
+ * section (une seule occurrence par id). Le catalogue `#patterns` y pointe.
+ */
+
+/** @typedef {"foundation" | "motion" | "icon" | "form" | "filter" | "layout" | "action" | "feedback" | "data" | "nav" | "content"} DesignPatternGroup */
+
+/**
+ * @typedef {Object} DesignPattern
+ * @property {string} id
+ * @property {string} title
+ * @property {DesignPatternGroup} group
+ * @property {string} classes
+ * @property {string} referenceFile
+ * @property {string} usage
+ * @property {string} [script]
+ * @property {string} [anchor] Ancre legacy (#boutons, #retours…)
+ * @property {boolean} hasSpec Présent sur la page design system (obligatoire)
+ * @property {boolean} [catalogOnly] Pas de spécimen : ancre `#pattern-{id}` dans le catalogue uniquement
+ */
+
+/** @type {DesignPattern[]} */
+export const DESIGN_PATTERNS = [
+  // —— Fondations ——
+  {
+    id: "foundation-esprit",
+    title: "Esprit du site",
+    group: "foundation",
+    classes: "—",
+    referenceFile: "design-system.ejs#esprit",
+    usage: "Principes : calme, donnée d'abord, une action par zone, htmx, mouvement, accessibilité.",
+    anchor: "esprit",
+    hasSpec: true,
+  },
+  {
+    id: "foundation-colors",
+    title: "Couleurs et tokens",
+    group: "foundation",
+    classes: "var(--token)",
+    referenceFile: "lib/design-system.js, app.css :root",
+    usage: "Toujours un rôle, jamais de hex en dur.",
+    anchor: "couleurs",
+    hasSpec: true,
+  },
+  {
+    id: "foundation-typography",
+    title: "Typographie",
+    group: "foundation",
+    classes: "--font · .page-title …",
+    referenceFile: "app.css, design-system.ejs",
+    usage: "Échelle 11–44 px, tabular-nums pour les chiffres.",
+    anchor: "typographie",
+    hasSpec: true,
+  },
+  {
+    id: "foundation-spacing",
+    title: "Espacements, rayons, ombres",
+    group: "foundation",
+    classes: "--space-* · --radius-* · --shadow-*",
+    referenceFile: "lib/design-system.js",
+    usage: "Gap plutôt que marges sur les enfants.",
+    anchor: "espacements",
+    hasSpec: true,
+  },
+  {
+    id: "motion-interface",
+    title: "Mouvement (interface)",
+    group: "motion",
+    classes: "opacity · transform · 150–300 ms",
+    referenceFile: "app.css, design-system.ejs#mouvement",
+    usage: "Survol, modale, toast ; prefers-reduced-motion obligatoire.",
+    anchor: "mouvement",
+    hasSpec: true,
+  },
+  // —— Mise en page ——
+  {
+    id: "layout-page-head",
+    title: "En-tête de page",
+    group: "layout",
+    classes: ".page-head · .page-title",
+    referenceFile: "listings.ejs, projects.ejs",
+    usage: "Fil d'Ariane, titre, actions à droite.",
+    anchor: "mise-en-page",
+    hasSpec: true,
+  },
+  {
+    id: "layout-admin-settings",
+    title: "Layout administration",
+    group: "layout",
+    classes: ".settings-layout · .settings-content",
+    referenceFile: "partials/admin/sidebar.ejs",
+    usage: "Menu latéral + contenu ; pages /admin.",
+    hasSpec: true,
+    catalogOnly: true,
+  },
+  {
+    id: "layout-panel",
+    title: "Panneau",
+    group: "layout",
+    classes: ".panel · .panel__head · .panel__title",
+    referenceFile: "design-system.ejs",
+    usage: "Surtitre, titre, note de source.",
+    anchor: "panneaux",
+    hasSpec: true,
+  },
+  {
+    id: "layout-panel-variants",
+    title: "Panneau — variantes",
+    group: "layout",
+    classes: ".panel--green · --dark · --flat",
+    referenceFile: "design-system.ejs",
+    usage: "Verdict vert, bloc sombre, imbriqué plat.",
+    anchor: "panneaux",
+    hasSpec: true,
+  },
+  {
+    id: "layout-panel-danger",
+    title: "Panneau — bordure danger",
+    group: "layout",
+    classes: ".danger-zone · .detail--rejected .panel · .danger-zone__grid",
+    referenceFile: "listing.ejs, settings.ejs, project.ejs",
+    usage:
+      "Bordure var(--danger) sur un .panel : zone destructive isolée (.danger-zone + bouton .btn--danger et data-confirm) ou tous les panneaux d'une fiche annonce écartée (.detail--rejected). Compléter par badge--error et parcours .status-pipe.is-rejected si besoin. Pas pour les erreurs de formulaire (.form-errors) ni pour un contrôle désactivé.",
+    anchor: "panneaux",
+    hasSpec: true,
+  },
+  {
+    id: "layout-collapse",
+    title: "Bloc repliable",
+    group: "layout",
+    classes: "details.delinquance__details",
+    referenceFile: "partials/enrichment/delinquance.ejs",
+    usage: "Détail secondaire natif <details>, sans JS.",
+    anchor: "repli",
+    hasSpec: true,
+  },
+  {
+    id: "tabs-admin",
+    title: "Onglets administration",
+    group: "layout",
+    classes: ".pricem2__type-tabs",
+    referenceFile: "admin/dpe.ejs, admin/hexasmal.ejs",
+    usage: "Import / Recherche.",
+    hasSpec: true,
+    catalogOnly: true,
+  },
+
+  // —— Icônes ——
+  {
+    id: "icon-sprite",
+    title: "Icône sprite Lucide",
+    group: "icon",
+    classes: "svg.wi > use href=\"#wi-*\"",
+    referenceFile: "lib/icons.js, partials/works-icons.ejs",
+    usage: "Catalogue wi-* ; inclure le sprite une fois par page.",
+    anchor: "icones",
+    hasSpec: true,
+  },
+  {
+    id: "icon-inline",
+    title: "Icône SVG en ligne",
+    group: "icon",
+    classes: "<svg viewBox=\"0 0 24 24\">",
+    referenceFile: "admin/dpe.ejs (calendrier, chevrons)",
+    usage: "Favori, cas sans sprite ; tracés depuis lib/icons.js.",
+    anchor: "icones",
+    hasSpec: true,
+  },
+  {
+    id: "icon-motion-demo",
+    title: "Animations d'icônes (démo)",
+    group: "icon",
+    classes: ".detail-head__fav-btn · .link-exit-arrow",
+    referenceFile: "partials/detail-header.ejs, listing-card.ejs",
+    usage: "Survol des boutons favori, corbeille, flèche externe.",
+    anchor: "icones",
+    hasSpec: true,
+  },
+
+  // —— Actions ——
+  {
+    id: "action-btn-variants",
+    title: "Boutons — variantes",
+    group: "action",
+    classes: ".btn--green · --lime · --dark · --ghost",
+    referenceFile: "design-system.ejs",
+    usage: "Une action principale verte par zone.",
+    anchor: "boutons",
+    hasSpec: true,
+  },
+  {
+    id: "action-btn-danger",
+    title: "Boutons — destructif",
+    group: "action",
+    classes: ".btn--danger · --danger-solid · --danger-ghost",
+    referenceFile: "design-system.ejs",
+    usage: "Rouge + data-confirm pour supprimer.",
+    anchor: "boutons",
+    hasSpec: true,
+  },
+  {
+    id: "action-btn-sizes",
+    title: "Boutons — tailles et états",
+    group: "action",
+    classes: ".btn--sm · --icon-only · .btn__spinner",
+    referenceFile: "design-system.ejs",
+    usage: "Petit, icône seule, désactivé, chargement.",
+    anchor: "boutons",
+    hasSpec: true,
+  },
+  {
+    id: "action-btn-favorite",
+    title: "Bouton favori",
+    group: "action",
+    classes: ".btn--fav-add · .btn--gold",
+    referenceFile: "partials/detail-header.ejs, listing-card.ejs",
+    usage: "Étoile + aria-pressed ; or réservé aux favoris.",
+    anchor: "boutons",
+    hasSpec: true,
+  },
+
+  // —— Filtres ——
+  {
+    id: "filter-pills",
+    title: "Filtres et pastilles",
+    group: "filter",
+    classes: ".filters · .pill · .select--pill",
+    referenceFile: "listings.ejs",
+    usage: "Compteurs, tri, data-autosubmit.",
+    anchor: "pastilles",
+    hasSpec: true,
+  },
+  {
+    id: "badge-variants",
+    title: "Badges",
+    group: "filter",
+    classes: ".badge--*",
+    referenceFile: "design-system.ejs",
+    usage: "État non cliquable ; DPE en badge--dpe.",
+    anchor: "pastilles",
+    hasSpec: true,
+  },
+  {
+    id: "badge-source",
+    title: "Badge de provenance",
+    group: "filter",
+    classes: ".visit-source · .visit-source--{structured|description|ai_photo|user|computed|reference} · .kv__prev",
+    referenceFile: "partials/listing-spec-source.ejs",
+    usage: "Origine d'une valeur (Annonce, Description, IA photos, Vous, Calculé, Référentiel) + ancienne valeur.",
+    anchor: "pastilles",
+    hasSpec: true,
+  },
+
+  // —— Formulaires ——
+  {
+    id: "form-stack",
+    title: "Formulaire empilé",
+    group: "form",
+    classes: ".form · .field · .input",
+    referenceFile: "settings.ejs, projects.ejs",
+    usage: "POST classique, _csrf, form-errors.",
+    anchor: "formulaires",
+    hasSpec: true,
+  },
+  {
+    id: "form-amount-stepper",
+    title: "Stepper numérique",
+    group: "form",
+    classes: ".amount-stepper",
+    referenceFile: "admin/financing.ejs, partials/financing.ejs",
+    usage: "Flèches haut/bas, data-step, data-amount.",
+    script: "app.js",
+    anchor: "amount-stepper",
+    hasSpec: true,
+  },
+  {
+    id: "form-date-picker-range",
+    title: "Calendrier — plage",
+    group: "form",
+    classes: ".date-range-picker · .calendar",
+    referenceFile: "admin/dpe.ejs",
+    usage: "Import DPE ; data-cal-from/to.",
+    script: "app.js initImportCalendar",
+    anchor: "date-picker",
+    hasSpec: true,
+  },
+  {
+    id: "form-date-picker-day",
+    title: "Calendrier — un jour",
+    group: "form",
+    classes: ".date-range-picker · hidden[data-field]",
+    referenceFile: "admin/amortization.ejs, debt.ejs",
+    usage: "CalendarPicker.mountSingleDay.",
+    script: "calendar-picker.js",
+    anchor: "date-picker",
+    hasSpec: true,
+  },
+  {
+    id: "select-project-dropdown",
+    title: "Menu déroulant projet",
+    group: "form",
+    classes: ".project-select",
+    referenceFile: "partials/project-dropdown.ejs",
+    usage: "Projets associés, statut.",
+    hasSpec: true,
+    catalogOnly: true,
+  },
+  {
+    id: "status-pipeline",
+    title: "Pipeline de statut",
+    group: "form",
+    classes: ".status-pipe",
+    referenceFile: "partials/status-pipeline.ejs",
+    usage: "Où en est la recherche sur la fiche.",
+    hasSpec: true,
+    catalogOnly: true,
+  },
+  {
+    id: "form-autosubmit",
+    title: "Formulaire auto-soumis",
+    group: "form",
+    classes: "form[data-autosubmit]",
+    referenceFile: "listings.ejs",
+    usage: "Tri au changement de select.",
+    hasSpec: true,
+    catalogOnly: true,
+  },
+
+  // —— Données ——
+  {
+    id: "data-table-numeric-admin",
+    title: "Tableau chiffré (admin)",
+    group: "data",
+    classes: ".table · __table-scroll · __num",
+    referenceFile: "admin/amortization.ejs, partials/admin/dpe-table.ejs",
+    usage: "Sticky header, montants à droite.",
+    anchor: "tableaux",
+    hasSpec: true,
+  },
+  {
+    id: "data-card-listing",
+    title: "Carte d'annonce",
+    group: "data",
+    classes: ".card",
+    referenceFile: "partials/listing-card.ejs",
+    usage: "Grille liste annonces.",
+    anchor: "cartes",
+    hasSpec: true,
+  },
+  {
+    id: "data-kv",
+    title: "Liste clé / valeur",
+    group: "data",
+    classes: ".kv",
+    referenceFile: "design-system.ejs",
+    usage: "Caractéristiques bien.",
+    anchor: "listes",
+    hasSpec: true,
+  },
+  {
+    id: "data-tags",
+    title: "Étiquettes (tags)",
+    group: "data",
+    classes: ".tags",
+    referenceFile: "design-system.ejs",
+    usage: "Atouts en badges neutres.",
+    anchor: "listes",
+    hasSpec: true,
+  },
+  {
+    id: "data-steps",
+    title: "Étapes numérotées",
+    group: "data",
+    classes: ".steps",
+    referenceFile: "partials/empty-listings.ejs, home.ejs",
+    usage: "Onboarding 3–5 étapes.",
+    anchor: "listes",
+    hasSpec: true,
+  },
+  {
+    id: "data-dpe-scale",
+    title: "Échelle DPE / GES",
+    group: "data",
+    classes: "partials/energy-performance.ejs",
+    referenceFile: "partials/energy-performance.ejs",
+    usage: "Couleurs officielles A→G.",
+    anchor: "donnees",
+    hasSpec: true,
+  },
+
+  // —— Retours ——
+  {
+    id: "modal-dialog",
+    title: "Boîte de dialogue",
+    group: "feedback",
+    classes: ".modal__dialog",
+    referenceFile: "layout.ejs",
+    usage: "420 px, overlay, Échap.",
+    anchor: "modales",
+    hasSpec: true,
+  },
+  {
+    id: "feedback-confirm-modal",
+    title: "Confirmation (data-confirm)",
+    group: "feedback",
+    classes: "form[data-confirm] · #confirm-modal",
+    referenceFile: "layout.ejs, app.js",
+    usage: "Jamais alert/confirm natif.",
+    anchor: "modales",
+    hasSpec: true,
+  },
+  {
+    id: "feedback-alerts-policy",
+    title: "Politique d'alertes",
+    group: "feedback",
+    classes: "—",
+    referenceFile: "design-system.ejs#modales",
+    usage: "Flash, toast, modale ; interdit alert().",
+    anchor: "modales",
+    hasSpec: true,
+  },
+  {
+    id: "feedback-flash",
+    title: "Message flash",
+    group: "feedback",
+    classes: ".flash--success · --info · --error",
+    referenceFile: "partials/flash.ejs",
+    usage: "Après redirection POST.",
+    anchor: "retours",
+    hasSpec: true,
+  },
+  {
+    id: "feedback-toast-works",
+    title: "Toast",
+    group: "feedback",
+    classes: ".works-toast",
+    referenceFile: "works-planner.js",
+    usage: "Retour htmx/script, annulation possible.",
+    anchor: "retours",
+    hasSpec: true,
+  },
+  {
+    id: "feedback-loading",
+    title: "Chargement",
+    group: "feedback",
+    classes: ".spinner · .htmx-request",
+    referenceFile: "app.css",
+    usage: "Spinner + texte Chargement….",
+    anchor: "retours",
+    hasSpec: true,
+  },
+  {
+    id: "state-empty",
+    title: "État vide",
+    group: "feedback",
+    classes: ".empty",
+    referenceFile: "partials/empty-listings.ejs",
+    usage: "Constat + action de sortie.",
+    anchor: "retours",
+    hasSpec: true,
+  },
+  {
+    id: "tooltip-data",
+    title: "Infobulle",
+    group: "feedback",
+    classes: "[data-tooltip]",
+    referenceFile: "app.css",
+    usage: "Court, pas d'info indispensable.",
+    anchor: "infobulle",
+    hasSpec: true,
+  },
+
+  // —— Navigation ——
+  {
+    id: "nav-pagination",
+    title: "Pagination",
+    group: "nav",
+    classes: ".pagination",
+    referenceFile: "partials/pagination.ejs",
+    usage: "Liens serveur + résumé.",
+    anchor: "pagination",
+    hasSpec: true,
+  },
+
+  // —— Contenu doc (patterns UX, rédaction, écarts) ——
+  {
+    id: "content-ux-patterns",
+    title: "Patterns UX",
+    group: "content",
+    classes: "—",
+    referenceFile: "design-system.ejs#ux",
+    usage: "Formulaire POST/htmx, suppression, clavier.",
+    anchor: "ux",
+    hasSpec: true,
+  },
+  {
+    id: "content-redaction",
+    title: "Rédaction",
+    group: "content",
+    classes: "—",
+    referenceFile: "design-system.ejs#redaction",
+    usage: "Vouvoiement, boutons infinitif, typo FR.",
+    anchor: "redaction",
+    hasSpec: true,
+  },
+  {
+    id: "content-a-eviter",
+    title: "À éviter",
+    group: "content",
+    classes: "—",
+    referenceFile: "design-system.ejs#a-eviter",
+    usage: "Anti-patterns documentés.",
+    anchor: "a-eviter",
+    hasSpec: true,
+  },
+  {
+    id: "content-ecarts-connus",
+    title: "Écarts connus",
+    group: "content",
+    classes: "—",
+    referenceFile: "design-system.ejs#ecarts",
+    usage: "Dette UI à ne pas reproduire.",
+    anchor: "ecarts",
+    hasSpec: true,
+  },
+];
+
+/** Ancre HTML (`#pattern-form-amount-stepper`). */
+export function patternAnchor(id) {
+  return `pattern-${id}`;
+}
+
+export function patternById(id) {
+  return DESIGN_PATTERNS.find((p) => p.id === id) ?? null;
+}
+
+export function patternsByGroup(group) {
+  return DESIGN_PATTERNS.filter((p) => p.group === group);
+}
+
+/** Tous les ids doivent avoir hasSpec — enforced by test. */
+export function patternsWithSpec() {
+  return DESIGN_PATTERNS.filter((p) => p.hasSpec);
+}

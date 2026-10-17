@@ -1,0 +1,12 @@
+<% if (source && source.kind) { %>
+  <span
+    class="visit-source visit-source--<%= source.kind %> listing-spec-value__source"
+    title="<%= source.title %>"
+  ><%= source.short %></span>
+  <% if (source.previous) { %>
+    <span class="kv__prev listing-spec-value__prev" title="<%= source.previous.title %>">
+      <svg class="wi" aria-hidden="true"><use href="#wi-undo"></use></svg>
+      <%= source.previous.display %>
+    </span>
+  <% } %>
+<% } %>

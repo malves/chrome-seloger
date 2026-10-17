@@ -1,0 +1,84 @@
+<%
+  const src = (typeof source !== "undefined" && source) || null;
+  const inputKind =
+    typeof fieldInputKind !== "undefined" && fieldInputKind
+      ? fieldInputKind
+      : null;
+  const editValue =
+    typeof rawValue === "undefined" || rawValue === null ? "" : String(rawValue);
+  const fieldError =
+    typeof fieldErrorMessage !== "undefined" ? fieldErrorMessage : null;
+  const isEditing = Boolean(fieldError);
+  const rowEditable = Boolean(fieldKey && listing && listing.id);
+  const rowKey = (typeof specKey !== "undefined" && specKey) || fieldKey || null;
+  const swapOob = typeof oob !== "undefined" && oob;
+%>
+<div class="kv__row"<% if (rowKey) { %> id="listing-spec-<%= rowKey %>"<% } %><% if (swapOob) { %> hx-swap-oob="true"<% } %>>
+  <span class="kv__key<%= rowEditable ? ' kv__key--editable' : '' %>">
+    <% if (rowEditable && !isEditing) { %>
+      <span class="kv__key__hover-hint" aria-hidden="true">
+        Double-clic pour éditer
+      </span>
+    <% } %>
+    <span class="kv__key__label"><%= label %></span>
+  </span>
+  <% if (rowEditable) { %>
+    <div
+      class="kv__value listing-spec-value"
+      data-listing-field-edit
+      data-field-key="<%= fieldKey %>"
+    >
+      <button
+        type="button"
+        class="listing-spec-value__text"
+        data-listing-field-label
+        data-listing-field-raw="<%= editValue %>"
+        aria-label="Modifier <%= label %> : <%= display %>"
+        <% if (isEditing) { %>hidden<% } %>
+      ><%= display %></button>
+      <form
+        class="project-rename-form listing-spec-value__form"
+        <% if (!isEditing) { %>hidden<% } %>
+        data-listing-field-form
+        hx-patch="/listings/<%= listing.id %>/fields/<%= fieldKey %>"
+        hx-target="#listing-spec-<%= fieldKey %>"
+        hx-swap="outerHTML"
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <input
+          class="input input--sm project-rename__input listing-spec-value__input"
+          type="text"
+          name="value"
+          value="<%= editValue %>"
+          autocomplete="off"
+          aria-label="<%= label %>"
+          aria-invalid="<%= fieldError ? 'true' : 'false' %>"
+          <% if (inputKind && inputKind.unit) { %>placeholder="<%= inputKind.unit %>"<% } %>
+          data-listing-field-input
+          <% if (inputKind) { %>
+            data-input-kind="<%= inputKind.kind %>"
+            <% if (inputKind.decimals !== null && inputKind.decimals !== undefined) { %>
+              data-input-decimals="<%= inputKind.decimals %>"
+            <% } %>
+          <% } %>
+        />
+        <% if (fieldError) { %>
+          <p class="field-error listing-spec-value__error" role="alert"><%= fieldError %></p>
+        <% } else { %>
+          <p class="field-error listing-spec-value__error" role="alert" hidden></p>
+        <% } %>
+      </form>
+      <% if (!isEditing) { %>
+        <span class="listing-spec-value__hover-hint" aria-hidden="true">
+          Double-clic pour éditer
+        </span>
+        <%- include("listing-spec-source", { source: src }) %>
+      <% } %>
+    </div>
+  <% } else { %>
+    <div class="kv__value listing-spec-value">
+      <span class="listing-spec-value__text"><%= display %></span>
+      <%- include("listing-spec-source", { source: src }) %>
+    </div>
+  <% } %>
+</div>

@@ -4,7 +4,7 @@
 <div class="detail-head" id="detail-header">
   <div class="detail-head__intro">
     <h1 class="detail-title">
-      <%= listing.title || (fmt.propertyTypeLabel(listing.property_type) || 'Annonce') %>
+      <%= listing.title ? fmt.listingTitle(listing.title, listing.price) : (fmt.propertyTypeLabel(listing.property_type) || 'Annonce') %>
     </h1>
 
     <div class="detail-meta">
@@ -114,6 +114,16 @@
   </div>
 
   <div class="detail-head__reject">
+    <a
+      href="/listings/<%= listing.id %>/visite"
+      class="btn btn--green btn--sm offer-cta detail-head__offer-btn"
+      data-visit-open
+      title="Préparer votre visite : questions à poser et points à vérifier"
+    >
+      <svg class="wi" aria-hidden="true"><use href="#wi-clipboard"></use></svg>
+      <span class="detail-head__visit-label-full">Préparer la visite</span>
+      <span class="detail-head__visit-label-short">Visite</span>
+    </a>
     <% if (listing.transaction_type !== 'rent' && listing.price) { %>
       <button
         type="button"

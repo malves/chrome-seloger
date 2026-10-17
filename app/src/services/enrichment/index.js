@@ -285,6 +285,24 @@ export default function createEnrichmentService({ repositories, logger }) {
     return run;
   }
 
+  /**
+   * Attend la fin des orchestrations encore en cours (analyse photos, etc.).
+   * Utilisé à l'arrêt du serveur pour ne pas tronquer un calcul vision déjà lancé.
+   */
+  async function waitForIdle({ timeoutMs = 180000 } = {}) {
+    const pending = [...runsInFlight.values()];
+    if (!pending.length) return;
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("enrichment_idle_timeout")), timeoutMs);
+    });
+    try {
+      await Promise.race([Promise.allSettled(pending), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function executeRun(userId, listingId, { only, force }) {
     const { providers } = await getRegistry();
     // Les providers « standalone » (lents, ex. vision) ne font pas partie de
@@ -670,9 +688,28 @@ export default function createEnrichmentService({ repositories, logger }) {
     }));
   }
 
+  /**
+   * Enrichissement après capture extension ou import URL.
+   * Une mise à jour ne relance pas les analyses lourdes (zone probable, photos,
+   * valeur locative LLM) : seuls prix, territoire, marché, etc. sont rafraîchis.
+   */
+  function scheduleAfterListingCapture(userId, listingId, { created = true } = {}) {
+    if (created) {
+      schedule(userId, listingId);
+      return;
+    }
+    schedule(userId, listingId, {
+      skipProbableLocation: true,
+      skipPhotoAnalysis: true,
+      skipRentEstimate: true,
+    });
+  }
+
   return {
     runForListing,
+    waitForIdle,
     schedule,
+    scheduleAfterListingCapture,
     scheduleListingTravelForProject,
     viewModel,
     pricePositionFor,

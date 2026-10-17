@@ -1,0 +1,24 @@
+---
+description: Contrat de l'API v1 entre le serveur et l'extension Chrome
+globs: app/src/routes/api.v1.js,app/src/schemas/**,chrome-extension/src/**
+alwaysApply: false
+---
+
+# Contrat de l'API `/api/v1`
+
+L'API n'a pas à rester rétrocompatible : une extension obsolète est bloquée et l'utilisateur invité à la mettre à jour.
+
+## Changer le contrat
+
+Toute modification d'un champ de requête ou de réponse se fait **dans la même tâche** des deux côtés :
+
+1. Serveur : route et schéma zod dans `app/src/schemas/`.
+2. Extension : code appelant dans `chrome-extension/src/`.
+3. Monter `version` dans `chrome-extension/manifest.json`.
+4. Rappeler de régler `EXTENSION_MIN_VERSION` sur cette version lors du déploiement, pour que les anciennes extensions reçoivent la réponse 426 `extension_outdated`.
+
+## Invariants
+
+- Format d'erreur figé : `{ error: { code, message, details } }`. L'extension s'en sert pour afficher le message, y compris l'invitation à mettre à jour.
+- Le contrôle de version (`X-Carnet-Extension-Version`, middleware `extension.client.js`) passe avant toute autre logique.
+- Authentification par en-tête `Authorization: Bearer`, jamais par cookie.

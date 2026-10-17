@@ -15,8 +15,8 @@ test("roomNeedsReview : état qui suppose des travaux sans point coché", () => 
   assert.equal(roomNeedsReview({ condition: "good", issues: [] }), false);
 });
 
-test("reconcileRoomCondition : les équipements seuls ne dégradent pas l'état", () => {
-  assert.equal(reconcileRoomCondition("good", ["windows"]).condition, "good");
+test("reconcileRoomCondition : un point de pièce dégrade un état « bon »", () => {
+  assert.equal(reconcileRoomCondition("good", []).condition, "good");
   assert.equal(reconcileRoomCondition("good", ["paint"]).condition, "average");
 });
 

@@ -57,16 +57,8 @@
   }
 
   function idFromUrl() {
-    // SeLoger place l'identifiant en dernier segment du chemin, quel que soit
-    // le format d'URL. On évite tout repli sur `\d{5,}` : le chemin contient
-    // des codes postaux (ex. « garches-92380 ») qui feraient collisionner deux
-    // annonces d'une même commune.
-    const path = location.pathname.replace(/\/+$/, "");
-    const legacy = path.match(/(\d{5,})\.htm(?:l)?$/i);
-    if (legacy) return legacy[1];
-    if (/\/annonces?\//i.test(path)) {
-      const last = path.split("/").filter(Boolean).pop();
-      if (last && /^[A-Za-z0-9]+$/.test(last)) return last.toUpperCase();
+    if (self.CarnetListingId) {
+      return self.CarnetListingId.listingIdFromPath(location.pathname);
     }
     return null;
   }
@@ -213,6 +205,18 @@
     return undefined;
   }
 
+  /** Chemin à la racine du nœud ou sous itemOffered (RealEstateListing SeLoger). */
+  function pickLodgingPath(nodes, path) {
+    return pick(nodes, path) ?? pick(nodes, ["itemOffered", ...path]);
+  }
+
+  /** Propriété quantitative ou scalaire (numberOfRooms, floorSize…). */
+  function pickLodgingProperty(nodes, key) {
+    return (
+      pickLodgingPath(nodes, [key, "value"]) ?? pickLodgingPath(nodes, [key])
+    );
+  }
+
   function fromJsonLd() {
     const nodes = jsonLdNodes();
     if (!nodes.length) return {};
@@ -233,19 +237,15 @@
       price:
         integerFrom(pick(nodes, ["offers", "price"])) ??
         integerFrom(pick(nodes, ["offers", "priceSpecification", "price"])),
-      surface: decimalFrom(pick(nodes, ["floorSize", "value"])),
-      rooms:
-        integerFrom(pick(nodes, ["numberOfRooms", "value"])) ??
-        integerFrom(pick(nodes, ["numberOfRooms"])),
-      bedrooms:
-        integerFrom(pick(nodes, ["numberOfBedrooms", "value"])) ??
-        integerFrom(pick(nodes, ["numberOfBedrooms"])),
+      surface: decimalFrom(pickLodgingProperty(nodes, "floorSize")),
+      rooms: integerFrom(pickLodgingProperty(nodes, "numberOfRooms")),
+      bedrooms: integerFrom(pickLodgingProperty(nodes, "numberOfBedrooms")),
       photos: httpsOnly(images),
       location: {
-        city: pick(nodes, ["address", "addressLocality"]),
-        postal_code: pick(nodes, ["address", "postalCode"]),
-        lat: decimalFrom(pick(nodes, ["geo", "latitude"])),
-        lng: decimalFrom(pick(nodes, ["geo", "longitude"])),
+        city: pickLodgingPath(nodes, ["address", "addressLocality"]),
+        postal_code: pickLodgingPath(nodes, ["address", "postalCode"]),
+        lat: decimalFrom(pickLodgingPath(nodes, ["geo", "latitude"])),
+        lng: decimalFrom(pickLodgingPath(nodes, ["geo", "longitude"])),
       },
     };
   }
@@ -398,6 +398,21 @@
     return null;
   }
 
+  /** Prix dans le titre SeLoger souvent sans séparateur de milliers. */
+  function formatEuroInTitle(title, price) {
+    if (!title) return title;
+    const expected =
+      price !== null && price !== undefined && Number.isFinite(price)
+        ? Math.round(price)
+        : null;
+    return title.replace(/\b(\d[\d\s]*)\s*€/g, (match, raw) => {
+      const n = parseInt(String(raw).replace(/\s/g, ""), 10);
+      if (!Number.isFinite(n)) return match;
+      if (expected !== null && n !== expected) return match;
+      return n.toLocaleString("fr-FR") + "\u00a0€";
+    });
+  }
+
   function fromPage() {
     const structured = fromJsonLd();
     const nodes = jsonLdNodes();
@@ -433,9 +448,11 @@
         structured.price ?? integerFrom(meta("product:price:amount"));
     }
 
+    const trimmedTitle = title ? title.trim().slice(0, 300) : null;
+
     return {
       ...structured,
-      title: title ? title.trim().slice(0, 300) : null,
+      title: trimmedTitle ? formatEuroInTitle(trimmedTitle, price) : null,
       description: description ? description.trim() : null,
       price,
       raw,

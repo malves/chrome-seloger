@@ -100,10 +100,11 @@ test("fiche : positionnement visuel, sans travaux chiffrés", async (t) => {
   // Jauge : repère marché + curseur prix, pas de curseur travaux.
   assert.match(html, /pricepos__marker--price/);
   assert.doesNotMatch(html, /pricepos__marker--works/);
-  // Aide repliée, puces de référence et conseil compact.
+  // Aide repliée, puces de référence, verdict dans l'en-tête (pas de bandeau conseil).
   assert.match(html, /Comment est calculée l'estimation \?/);
   assert.match(html, /pricepos__chip/);
-  assert.match(html, /Prix aligné/);
+  assert.match(html, /Dans le prix du marché/);
+  assert.doesNotMatch(html, /pricepos__advice/);
   // Les anciens blocs textuels ont disparu.
   assert.doesNotMatch(html, /Références comparées/);
   assert.doesNotMatch(html, /pricepos__figures/);
@@ -141,10 +142,10 @@ test("financement : le montant Travaux resynchronise le positionnement (OOB)", a
   assert.match(html, /dont 40[\u202f\u00a0 ]000[\u202f\u00a0 ]€ de travaux/);
   assert.match(html, /\+[\u00a0 ]7,7[\u00a0 ]%/);
   assert.match(html, /pricepos__marker--works/);
-  assert.match(html, /Travaux compris/);
-  assert.match(html, /Au-dessus du marché/);
-  // Le prix seul reste « aligné ».
-  assert.match(html, /Prix aligné/);
+  assert.match(html, /pricepos__kpi--works/);
+  // Le prix seul reste au marché ; le + travaux ressort dans les KPI.
+  assert.match(html, /Dans le prix du marché/);
+  assert.doesNotMatch(html, /pricepos__advice/);
 
   // La fiche rechargée reprend le même montant.
   const page = await agent.get(`/listings/${id}`).expect(200);

@@ -24,22 +24,37 @@ test("dominantApparentAge : pondère par la confiance", () => {
   assert.equal(dominantApparentAge([], "windows"), "unknown");
 });
 
-test("fenêtres cochées dans le plan + menuiseries insuffisantes → cohérent", () => {
-  const [windows] = dpeCoherence({ rooms: [room(["windows"])], dpe: dpeOf({ qualite_isolation_menuiseries: "insuffisante" }) });
+const windowsPlanned = (enabled = true) => [{ key: "windows", enabled }];
+
+test("fenêtres prévues (logement entier) + menuiseries insuffisantes → cohérent", () => {
+  const [windows] = dpeCoherence({
+    rooms: [room()],
+    globalItems: windowsPlanned(),
+    dpe: dpeOf({ qualite_isolation_menuiseries: "insuffisante" }),
+  });
   assert.equal(windows.topic, "windows");
   assert.equal(windows.status, "consistent");
   assert.equal(windows.title, "Fenêtres et DPE");
   assert.equal(windows.tone, "good");
 });
 
-test("fenêtres décochées dans le plan : le plan prime sur l'âge vu en photo", () => {
+test("fenêtres écartées dans le plan : le plan prime sur l'âge vu en photo", () => {
   const [windows] = dpeCoherence({
     rooms: [room()],
+    globalItems: windowsPlanned(false),
     dpe: dpeOf({ qualite_isolation_menuiseries: "insuffisante" }),
     photoSignals: { windowsAge: "dated" },
   });
   assert.equal(windows.status, "to_check");
-  assert.match(windows.text, /aucune pièce ne signale/);
+  assert.match(windows.text, /n'est pas prévu dans « Général »/);
+});
+
+test("ventilation prévue : plus d'alerte humidité × DPE", () => {
+  const dpe = dpeOf({ qualite_isolation_menuiseries: "bonne" });
+  dpe.zones = [{ id: "ventilation", state: "poor" }];
+  const humid = [room(["humidity"])];
+  assert.ok(dpeCoherence({ rooms: humid, dpe }).some((c) => c.topic === "ventilation"));
+  assert.ok(!dpeCoherence({ rooms: humid, globalItems: [{ key: "ventilation", enabled: true }], dpe }).some((c) => c.topic === "ventilation"));
 });
 
 test("fenêtres récentes en photo, rien dans le plan + DPE faible → rénovation possible après le DPE", () => {
@@ -53,7 +68,7 @@ test("fenêtres récentes en photo, rien dans le plan + DPE faible → rénovati
 });
 
 test("sans DPE → rien", () => {
-  assert.deepEqual(dpeCoherence({ rooms: [room(["windows"])], dpe: null }), []);
+  assert.deepEqual(dpeCoherence({ rooms: [room()], globalItems: windowsPlanned(), dpe: null }), []);
 });
 
 test("chauffage : radiateurs à eau visibles + DPE électrique → écart à vérifier", () => {

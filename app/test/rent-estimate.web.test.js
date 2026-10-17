@@ -169,3 +169,22 @@ test("panneau : relance affiche l'état en cours", async (t) => {
     .expect(200);
   assert.match(res.text, /Estimation locative en cours/);
 });
+
+test("panneau : estimation OK resynchronise le financement (OOB)", async (t) => {
+  const ctx = createTestApp();
+  t.after(() => ctx.close());
+  const { id } = await setupSaleListing(ctx, "rent-fin-oob@example.com", {
+    saveRent: true,
+  });
+
+  const agent = await loginAgent(ctx.app, "rent-fin-oob@example.com");
+  const res = await agent
+    .get(`/listings/${id}/rent-estimate/panel`)
+    .set("HX-Request", "true")
+    .expect(200);
+
+  assert.match(res.text, /id="listing-rent-estimate"/);
+  assert.match(res.text, /id="financing-block"[^>]*hx-swap-oob="true"/);
+  assert.match(res.text, /data-financing-annual-rent="/);
+  assert.match(res.text, /Rendement brut locatif/);
+});

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   monthlyRent,
   grossYield,
+  financingGrossYield,
   normalizeRentBand,
   buildRentEstimateView,
   buildRentHttpError,
@@ -74,6 +75,14 @@ test("loyer mensuel et rendement brut", () => {
   assert.equal(grossYield(0, 520000), null);
 });
 
+test("rendement brut financement : prix retenu + travaux", () => {
+  assert.deepEqual(
+    financingGrossYield({ monthlyRentMid: 1680, price: 520_000, works: 20_000 }),
+    { annualRent: 20_160, pct: 3.73 }
+  );
+  assert.equal(financingGrossYield({ monthlyRentMid: null, price: 1, works: 0 }), null);
+});
+
 test("fourchette €/m² : bornes et remise en ordre", () => {
   assert.deepEqual(normalizeRentBand({ low: 22, mid: 18, high: 20 }), {
     low: 18,
@@ -117,11 +126,12 @@ test("vue d'affichage : loyer et rendement", () => {
   assert.equal(view.visible, true);
   assert.equal(view.status, "ok");
   assert.equal(view.monthly.mid, 1680);
-  assert.equal(view.yield_gross, 3.88);
-  assert.ok(view.yield_works < view.yield_gross);
+  assert.equal(view.yield_gross, 3.73);
+  assert.equal(view.yield_listing, 3.88);
+  assert.equal(view.acquisition_price, 540_000);
   assert.equal(view.has_address, true);
-  assert.equal(view.yield_attractiveness?.grade, "C");
-  assert.equal(view.yield_attractiveness?.index, 106);
+  assert.equal(view.yield_attractiveness?.grade, "D");
+  assert.equal(view.yield_attractiveness?.index, 102);
 });
 
 test("vue d'affichage : location masquée, sans cache = en cours", () => {

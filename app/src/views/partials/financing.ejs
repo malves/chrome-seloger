@@ -3,7 +3,26 @@
   const r = financing.result;
   const amortization = financing.amortization;
 %>
-<div id="financing-block"<% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %> hx-swap-oob="true"<% } %>>
+<%
+  const rentYield = financing.rentYield || null;
+  const marketEstimate = financing.marketEstimate > 0 ? financing.marketEstimate : null;
+  const yieldAttract =
+    financing.rentYieldGrade ||
+    (rentYield && rentYield.attractiveness ? rentYield.attractiveness : null);
+  const YIELD_GRADE_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const YIELD_GRADE_COLORS = ['#319834', '#5faa32', '#a7c62c', '#f2d307', '#eca40c', '#e2691b'];
+  const yieldGradeIdx =
+    yieldAttract && yieldAttract.grade
+      ? YIELD_GRADE_LETTERS.indexOf(String(yieldAttract.grade).toUpperCase())
+      : -1;
+  const showYieldGrade = Boolean(marketEstimate);
+%>
+<div
+  id="financing-block"
+  <% if (rentYield) { %>data-financing-annual-rent="<%= rentYield.annualRent %>"<% } %>
+  <% if (marketEstimate) { %>data-financing-market-estimate="<%= marketEstimate %>"<% } %>
+  <% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %> hx-swap-oob="true"<% } %>
+>
   <div class="panel__head">
     <div>
       <p class="panel__eyebrow">Budget</p>
@@ -172,6 +191,45 @@
         <th>Travaux</th>
         <td><%= fmt.euro(r.works) %></td>
       </tr>
+      <tr data-financing-gross-yield-row>
+        <th>Rendement brut locatif</th>
+        <td>
+          <div class="financing__yield-row">
+            <div
+              class="financing__yield-scale-wrap"
+              data-financing-yield-grade
+              <% if (!showYieldGrade) { %>hidden<% } %>
+            >
+              <div
+                class="financing__yield-scale"
+                role="img"
+                data-financing-yield-scale
+                <% if (yieldAttract) { %>
+                  aria-label="Attractivité du rendement : <%= yieldAttract.grade %>. <%= yieldAttract.grade_label %>"
+                <% } %>
+              >
+                <% YIELD_GRADE_LETTERS.forEach(function (letter, i) {
+                  const isOn = i === yieldGradeIdx;
+                  const darkText = isOn && i >= 2 && i <= 4;
+                %>
+                  <span
+                    class="financing__yield-seg<%= isOn ? ' is-active' : '' %><%= darkText ? ' is-active--dark' : '' %>"
+                    style="background: <%= YIELD_GRADE_COLORS[i] %>"
+                    <% if (isOn && yieldAttract) { %>title="<%= yieldAttract.grade_label %>"<% } %>
+                  ><%= isOn ? letter : '' %></span>
+                <% }); %>
+              </div>
+            </div>
+            <strong class="financing__yield-pct" data-financing-gross-yield>
+              <% if (rentYield) { %>
+                <%= fmt.percent(rentYield.pct / 100, 2) %>
+              <% } else { %>
+                —
+              <% } %>
+            </strong>
+          </div>
+        </td>
+      </tr>
       <tr class="specs--total">
         <th>Coût total du projet</th>
         <td><%= fmt.euro(r.totalCost) %></td>
@@ -216,6 +274,16 @@
       </tr>
     </tbody>
   </table>
+
+    <% if (!r.isFullyFunded) { %>
+      <a
+        class="financing__debt-link"
+        href="/endettement?mensualite=<%= Math.round(r.totalMonthly) %>&source=<%= encodeURIComponent(listing.title || 'cette annonce') %>"
+      >
+        Vérifier avec mes revenus et mes crédits
+        <span aria-hidden="true">→</span>
+      </a>
+    <% } %>
 
     <% if (r.isFullyFunded) { %>
       <p class="panel__note">

@@ -6,12 +6,13 @@
  */
 
 import crypto from "node:crypto";
+import {
+  listingIdFromPath,
+  normalizeSelogerListingPathname,
+} from "../lib/listing-id-from-path.js";
 import { nowIso } from "../lib/time.js";
 import { projectReferences } from "../schemas/listing.payload.js";
 import createProjectsService from "./projects.service.js";
-import { PROBABLE_LOCATION_PROVIDER } from "../lib/probable-location-cache.js";
-import { PHOTO_ANALYSIS_PROVIDER } from "../lib/photo-analysis-cache.js";
-
 /** Paramètres de suivi retirés de l'URL avant comparaison. */
 const TRACKING_PARAMS = new Set([
   "gclid",
@@ -72,6 +73,11 @@ export function canonicalizeUrl(rawUrl) {
     url.pathname = url.pathname.replace(/\/+$/, "");
   }
 
+  const host = url.hostname.replace(/^www\./i, "");
+  if (/^(seloger|bellesdemeures)\.com$/i.test(host)) {
+    url.pathname = normalizeSelogerListingPathname(url.pathname);
+  }
+
   return url.toString();
 }
 
@@ -101,19 +107,7 @@ export function sourceIdFromUrl(source, rawUrl) {
     return null;
   }
 
-  const path = url.pathname.replace(/\/+$/, "");
-
-  // Anciennes URLs : l'identifiant précède « .htm ».
-  const legacy = path.match(/(\d{5,})\.html?$/i);
-  if (legacy) return legacy[1];
-
-  // URLs modernes : l'identifiant est le dernier segment de /annonce(s)/…
-  if (/\/annonces?\//i.test(path)) {
-    const last = path.split("/").filter(Boolean).pop();
-    if (last && /^[A-Za-z0-9]+$/.test(last)) return last.toUpperCase();
-  }
-
-  return null;
+  return listingIdFromPath(url.pathname);
 }
 
 /** Garde la valeur reçue si elle est définie, sinon celle déjà stockée. */
@@ -223,34 +217,18 @@ export default function createListingsService({ repositories }) {
         return { id, created: true, priceChanged: false, projects };
       }
 
+      // Mise à jour depuis l'extension : on ne réécrit pas la description ni
+      // la galerie déjà stockées, pour conserver l'empreinte des analyses
+      // (photos, zone probable) déjà calculées.
+      if (String(existing.description || "").trim()) {
+        fields.description = existing.description;
+      }
+      const previousPhotos = repositories.listings.listPhotos(existing.id);
+
       repositories.listings.update(user.id, existing.id, fields, observedAt);
 
-      const locationTextChanged =
-        (fields.description != null &&
-          String(fields.description) !== String(existing.description || "")) ||
-        (fields.city != null && String(fields.city) !== String(existing.city || "")) ||
-        (fields.postal_code != null &&
-          String(fields.postal_code) !== String(existing.postal_code || ""));
-      if (locationTextChanged) {
-        repositories.enrichments.removeOne(
-          existing.id,
-          PROBABLE_LOCATION_PROVIDER
-        );
-      }
-
-      // L'analyse des photos dépend des images et du contexte textuel : on
-      // l'invalide si l'un ou l'autre change (l'empreinte ferait de même à la
-      // lecture, mais une ligne obsolète bloquerait le statut « en cours »).
-      let photosChanged = false;
-      if (payload.photos?.length) {
-        const previous = repositories.listings.listPhotos(existing.id);
-        photosChanged =
-          previous.length !== payload.photos.length ||
-          previous.some((url, i) => url !== payload.photos[i]);
+      if (payload.photos?.length && !previousPhotos.length) {
         repositories.listings.replacePhotos(existing.id, payload.photos);
-      }
-      if (photosChanged || locationTextChanged) {
-        repositories.enrichments.removeOne(existing.id, PHOTO_ANALYSIS_PROVIDER);
       }
 
       const priceChanged =

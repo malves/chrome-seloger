@@ -50,7 +50,8 @@ function negotiationFromPlan(est) {
     .sort((a, b) => b.max - a.max)
     .slice(0, MAX_NEGOTIATION_ITEMS)
     .forEach((i) => {
-      out.push(`${i.label}${i.rooms.length ? ` (${i.rooms.join(", ")})` : ""} : ${fmt(i.min)} – ${fmt(i.max)} €`);
+      const where = i.rooms.length ? i.rooms.join(", ") : i.detail && i.detail !== "forfait" ? i.detail : "";
+      out.push(`${i.label}${where ? ` (${where})` : ""} : ${fmt(i.min)} – ${fmt(i.max)} €`);
     });
   return out;
 }
@@ -60,10 +61,12 @@ function negotiationFromPlan(est) {
  */
 export function buildWorksSummary({ plan, overview, propertyType = "", aiStatus = "ready", aiNewer = false }) {
   const rooms = plan?.rooms || [];
+  const globalItems = plan?.global?.items || [];
   const est = estimateWorksCosts({
     surface: overview?.surface ?? null,
     propertyType,
     rooms,
+    globalItems,
     dpeZones: dpeZoneMap(overview),
     costs: costsOptions(),
     issueLabel,
@@ -99,6 +102,7 @@ export function buildWorksSummary({ plan, overview, propertyType = "", aiStatus 
   const withWork = roomRows.filter((r) => r.issues.length);
   const health = computeHomeHealth({
     rooms,
+    globalItems,
     roomTypeFactors: ROOM_TYPE_FACTORS,
     issueTones: Object.fromEntries(ROOM_ISSUES.map((i) => [i.key, i.tone])),
     fallbackScore: overview?.condition?.score ?? null,
@@ -112,7 +116,7 @@ export function buildWorksSummary({ plan, overview, propertyType = "", aiStatus 
     aiInitial: overview?.renovation?.text || "",
     aiNewer,
     unplaced,
-    dpeChecks: dpeCoherence({ rooms, health, dpe: overview?.dpe || null, photoSignals: overview?.photoSignals || {} }).map(
+    dpeChecks: dpeCoherence({ rooms, globalItems, health, dpe: overview?.dpe || null, photoSignals: overview?.photoSignals || {} }).map(
       (c) => ({ ...c, statusLabel: DPE_CORRELATION_STATUS_LABELS[c.status] || "" })
     ),
     negotiation: negotiationFromPlan(est),
@@ -126,6 +130,7 @@ export function buildWorksSummary({ plan, overview, propertyType = "", aiStatus 
     cleanRooms: roomRows.filter((r) => !r.issues.length && !r.needsReview).map((r) => r.name),
     reviewCount: roomRows.filter((r) => r.needsReview).length,
     priorities,
+    globalWorks: est.items.filter((i) => i.global).map((i) => ({ label: i.label, detail: i.detail, ...range(i.min, i.max) })),
     energy: est.items.filter((i) => i.post === "energy" && !i.copro).map((i) => ({ label: i.label, ...range(i.min, i.max) })),
     copro: est.copro.map((i) => ({ label: i.label, ...range(i.min, i.max) })),
   };

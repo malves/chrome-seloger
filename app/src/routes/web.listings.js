@@ -33,7 +33,11 @@ import createPhotoAnalysisRunService from "../services/photo-analysis/photo-anal
 import { photoAnalysisViewModel } from "../lib/photo-analysis/view-model.js";
 import * as photoLabels from "../lib/photo-analysis/labels.js";
 import { PHOTO_ANALYSIS_PROVIDER } from "../lib/photo-analysis-cache.js";
-import { RENT_ESTIMATE_PROVIDER } from "../lib/rent-estimate.js";
+import {
+  RENT_ESTIMATE_PROVIDER,
+  financingGrossYield,
+  yieldAttractiveness,
+} from "../lib/rent-estimate.js";
 import { findCommuneRentEstimate } from "../services/enrichment/rent-estimate.provider.js";
 import {
   LISTING_TRAVEL_PROVIDER,
@@ -48,6 +52,15 @@ import { plannerOptions } from "../lib/works/works-plan.js";
 import { financingWorksDefault } from "../lib/works/financing-works-default.js";
 import { buildWorksOverview } from "../lib/works/works-overview.js";
 import { buildWorksSummary } from "../lib/works/works-summary.js";
+import createVisitSheetService from "../services/visit-sheet.service.js";
+import { resolveAll } from "../lib/listing-field-provenance.js";
+import { extractDescriptionFacts } from "../lib/listing-description-facts.js";
+import { buildListingSpecs } from "../lib/listing-specs.js";
+import {
+  listingFieldKeyParamSchema,
+  listingFieldPatchBodySchema,
+} from "../schemas/listing-field.patch.js";
+import { buildVisitSheet } from "../lib/visit/visit-sheet-view.js";
 import { listingPayloadSchema } from "../schemas/listing.payload.js";
 import {
   buildAmortizationSchedule,
@@ -138,6 +151,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   });
   const photoAnalysisRun = createPhotoAnalysisRunService({ repositories, logger });
   const worksPlans = createWorksPlanService({ repositories, photoAnalysisRun });
+  const visitSheet = createVisitSheetService({ repositories });
 
   /**
    * Analyse des photos pour la fiche : résultat stocké + modèle d'affichage.
@@ -223,15 +237,109 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     return buildDpeInsights(record, fmt);
   }
 
-  /** Travaux à prévoir d'après le plan des pièces (même chiffrage que la modale). */
-  function worksSummaryForListing(listing, fmt, dpeInsights) {
-    const state = worksPlans.getPlan(listing);
+  /**
+   * Corrections utilisateur a APPLIQUER (couche visite acceptee) + faits
+   * extraits de la description. Base commune du resolveur de provenance.
+   */
+  function provenanceContext(listing) {
+    return {
+      descriptionFacts: extractDescriptionFacts(listing.description),
+      overrides: visitSheet.appliedOverrides(listing),
+    };
+  }
+
+  /** Locals du partial d'une ligne « Caractéristiques ». */
+  function specRowLocals(listing, row, extra = {}) {
+    return {
+      listing,
+      specKey: row.key,
+      label: row.label,
+      display: row.display,
+      fieldKey: row.fieldKey,
+      rawValue: row.rawValue,
+      source: row.source,
+      fieldInputKind: row.fieldInputKind,
+      ...extra,
+    };
+  }
+
+  /**
+   * Réponse htmx d'une correction : la ligne modifiée et, en OOB, les lignes
+   * calculées qui en dépendent (prix au m² après une correction de surface).
+   */
+  function listingSpecPatchLocals(listing, fmt, fieldKey, { fieldErrorMessage = null } = {}) {
+    const { descriptionFacts, overrides } = provenanceContext(listing);
+    const provenance = resolveAll({ listing, overrides, descriptionFacts });
+    const specs = buildListingSpecs(listing, provenance, fmt);
+    const row = specs.find((entry) => entry.fieldKey === fieldKey);
+    if (!row) {
+      throw HttpError.notFound("Caractéristique introuvable.");
+    }
+    const dependents = fieldErrorMessage
+      ? []
+      : specs.filter((entry) => entry.key && entry.dependsOn.includes(fieldKey));
+    return {
+      layout: false,
+      primary: specRowLocals(listing, row, { fieldErrorMessage }),
+      dependents: dependents.map((entry) => specRowLocals(listing, entry, { oob: true })),
+    };
+  }
+
+  /** Surface effective : correction de visite acceptee, sinon surface annoncée. */
+  function effectiveSurface(listing) {
+    const { overrides } = provenanceContext(listing);
+    const o = overrides.surface;
+    return o && typeof o.value === "number" && o.value > 0 ? o.value : null;
+  }
+
+  /**
+   * View-model complet de la fiche de visite (catalogue + provenance « naturelle »
+   * + questions / points de négociation déjà produits par l'IA + bilan). Rendu
+   * uniquement sur la page dédiée /listings/:id/visite, jamais inliné dans la
+   * fiche annonce (les libellés IA n'y ont pas leur place).
+   */
+  function buildVisitSheetFor(listing, fmt) {
+    const photos = repositories.listings.listPhotos(listing.id);
+    const { descriptionFacts } = provenanceContext(listing);
+    const naturalResolved = resolveAll({ listing, overrides: {}, descriptionFacts });
+    const photoAnalysis = photoAnalysisForListing(
+      listing,
+      photos,
+      linkedDpeInsightsForListing(listing, fmt)
+    );
+    return buildVisitSheet({
+      listing,
+      photo: photos[0] || null,
+      resolved: naturalResolved,
+      photoAnalysis,
+      priceHistory: repositories.listings.listPriceHistory(listing.id),
+      sheet: visitSheet.getSheet(listing),
+      isCopro: Boolean(descriptionFacts.is_copro),
+      fmt,
+    });
+  }
+
+  /**
+   * Récap fixe de la modale « Pièces et état » avec la surface effective :
+   * une surface corrigée pendant la visite (et acceptée) réajuste tout le
+   * chiffrage, sur la fiche comme dans la modale.
+   */
+  function worksOverviewFor(listing, state, fmt, dpeInsights) {
     const overview = buildWorksOverview(
       listing,
       state.analysis,
       dpeInsights === undefined ? linkedDpeInsightsForListing(listing, fmt) : dpeInsights,
       state.photos
     );
+    const surf = effectiveSurface(listing);
+    if (surf != null) overview.surface = surf;
+    return overview;
+  }
+
+  /** Travaux à prévoir d'après le plan des pièces (même chiffrage que la modale). */
+  function worksSummaryForListing(listing, fmt, dpeInsights) {
+    const state = worksPlans.getPlan(listing);
+    const overview = worksOverviewFor(listing, state, fmt, dpeInsights);
     return buildWorksSummary({
       plan: state.plan,
       overview,
@@ -302,6 +410,31 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       }),
   });
 
+  // Chaque relance de l'estimation locative consomme un appel LLM + recherche web.
+  const rentEstimateRunLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: 5,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    skip: () => config.isTest,
+    keyGenerator: (req) =>
+      req.user ? `u:${req.user.id}` : ipKeyGenerator(req.ip),
+    // htmx ne remplace pas le panneau sur une réponse 4xx : on le renvoie avec un message.
+    handler: (req, res, next) => {
+      try {
+        const listing = loadListing(req);
+        if (!req.get("hx-request")) {
+          return res.redirect(`/listings/${listing.id}`);
+        }
+        return renderRentEstimatePanel(req, res, listing, {
+          rentNotice: "Trop de relances d'affilée. Réessayez dans quelques minutes.",
+        });
+      } catch (err) {
+        return next(err);
+      }
+    },
+  });
+
   /** Charge l'annonce du compte courant ou lève une 404. L'admin peut ouvrir toute fiche. */
   function loadListing(req) {
     const id = Number(req.params.id);
@@ -333,12 +466,43 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       worksDefault
     );
     const result = financingForListing(listing, params);
-    return {
+    const bundle = {
       params,
       result,
       edited: Array.isArray(stored?.data?.edited) ? stored.data.edited : [],
       amortization: buildAmortizationSchedule(result),
     };
+    return attachFinancingRentYield(listing, bundle);
+  }
+
+  function attachFinancingRentYield(listing, bundle) {
+    if (!bundle || listing.transaction_type === "rent") return bundle;
+    const estimate = enrichment.rentEstimateFor(listing, {
+      works: bundle.params.works,
+    });
+    const { position } = enrichment.pricePositionFor(listing, {
+      works: bundle.params.works,
+    });
+    const marketEstimate =
+      position?.primary?.estimate > 0
+        ? Math.round(Number(position.primary.estimate))
+        : null;
+    const acquisition =
+      (Number(bundle.result.price) || 0) +
+      (Number(bundle.result.works) || 0);
+    let rentYield = financingGrossYield({
+      monthlyRentMid: estimate.monthly?.mid,
+      price: bundle.result.price,
+      works: bundle.result.works,
+    });
+    const rentYieldGrade =
+      marketEstimate && acquisition > 0
+        ? yieldAttractiveness(acquisition, marketEstimate)
+        : null;
+    if (rentYield && rentYieldGrade) {
+      rentYield = { ...rentYield, attractiveness: rentYieldGrade };
+    }
+    return { ...bundle, rentYield, marketEstimate, rentYieldGrade };
   }
 
   /**
@@ -522,7 +686,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         listingId: id,
       });
 
-      enrichment.schedule(req.user.id, id);
+      enrichment.scheduleAfterListingCapture(req.user.id, id, { created });
 
       return res.json({
         ok: true,
@@ -563,16 +727,24 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     });
   }
 
-  function renderRentEstimatePanel(req, res, listing) {
+  function renderRentEstimatePanel(req, res, listing, { rentNotice = null } = {}) {
     const estimate = enrichment.rentEstimateFor(
       listing,
       worksOptionsFor(listing, res.locals.fmt)
     );
+    const financingOob =
+      listing.transaction_type !== "rent" &&
+      estimate.status === "ok" &&
+      estimate.monthly?.mid > 0
+        ? financingFor(listing)
+        : null;
     res.set("Cache-Control", "no-store");
     return res.render("partials/enrichment/rent-estimate", {
       layout: false,
       listing,
       estimate,
+      financingOob,
+      rentNotice,
     });
   }
 
@@ -626,14 +798,27 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       maybeScheduleListingTravel(listing, req.user.id);
       const extensionPanel = extensionPanelLocals(listing, req.user.id);
 
+      const photoAnalysis = photoAnalysisForListing(listing, photos, linkedDpeInsights);
+      const priceHistory = repositories.listings.listPriceHistory(listing.id);
+
+      // Provenance : valeur effective (corrections de visite appliquées) +
+      // source retenue, pour les badges des caractéristiques. La fiche de
+      // visite complète vit sur sa propre page (/listings/:id/visite).
+      const { descriptionFacts, overrides: appliedOverrides } = provenanceContext(listing);
+      const provenance = resolveAll({ listing, overrides: appliedOverrides, descriptionFacts });
+      const listingSpecs = buildListingSpecs(listing, provenance, res.locals.fmt, {
+        postalInseeCode,
+      });
+
       res.render("listing", {
-        title: listing.title || "Annonce",
+        title: res.locals.fmt.listingTitle(listing.title, listing.price) || "Annonce",
         listing,
+        listingSpecs,
         userAddressMapsHref: userAddressMapsHrefValue,
         linkedDpeInsights,
         postalInseeCode,
         photos,
-        photoAnalysis: photoAnalysisForListing(listing, photos, linkedDpeInsights),
+        photoAnalysis,
         photoLabels,
         worksSummary,
         scripts: [
@@ -642,7 +827,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
             ? ["/public/js/offer-wizard.js"]
             : []),
         ],
-        priceHistory: repositories.listings.listPriceHistory(listing.id),
+        priceHistory,
         // Le financement a son propre bloc ; les autres providers sont groupés
         // par vocation d'affichage (territoire vs analyse de marché), pas par
         // portée de cache (Immo Data est mis en cache en communal/départemental).
@@ -834,7 +1019,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     }
   });
 
-  router.post("/listings/:id/rent-estimate/run", (req, res, next) => {
+  router.post("/listings/:id/rent-estimate/run", rentEstimateRunLimiter, (req, res, next) => {
     try {
       const listing = loadListing(req);
       repositories.enrichments.removeOne(listing.id, RENT_ESTIMATE_PROVIDER);
@@ -889,12 +1074,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       return res.json({
         ...worksPlanResponse(state),
         options: plannerOptions(),
-        overview: buildWorksOverview(
-          listing,
-          state.analysis,
-          linkedDpeInsightsForListing(listing, res.locals.fmt),
-          state.photos
-        ),
+        overview: worksOverviewFor(listing, state, res.locals.fmt),
       });
     } catch (err) {
       return worksJsonError(res, next, err);
@@ -945,6 +1125,92 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       return res.json(worksPlanResponse(state));
     } catch (err) {
       return worksJsonError(res, next, err);
+    }
+  });
+
+  /* --------------------- Fiche de visite ----------------------- */
+
+  const visitJsonBody = express.json({ limit: "256kb" });
+
+  router.get("/listings/:id/visite", (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const sheet = buildVisitSheetFor(listing, res.locals.fmt);
+      res.set("Cache-Control", "no-store");
+      return res.render("visit", {
+        title: `Préparer la visite · ${sheet.listing.title}`,
+        listing,
+        sheet,
+        styles: ["/public/css/visit.css"],
+        scripts: ["/public/js/visit-sheet.js"],
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  router.put("/listings/:id/visite", visitJsonBody, (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const saved = visitSheet.saveSheet(listing, req.body);
+      logActivity(logger, req, "fiche de visite enregistrée", {
+        listingId: listing.id,
+        answers: Object.keys(saved.visit.answers || {}).length,
+        applyToSheet: saved.visit.applyToSheet,
+      });
+      return res.json({ ok: true, applyToSheet: saved.visit.applyToSheet });
+    } catch (err) {
+      return worksJsonError(res, next, err);
+    }
+  });
+
+  const fieldPatchJson = express.json({ limit: "8kb" });
+
+  router.patch("/listings/:id/fields/:fieldKey", fieldPatchJson, (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const parsedKey = listingFieldKeyParamSchema.safeParse(req.params.fieldKey);
+      if (!parsedKey.success) {
+        throw HttpError.unprocessable("Champ non modifiable depuis la fiche.");
+      }
+      const fieldKey = parsedKey.data;
+      const parsedBody = listingFieldPatchBodySchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        throw HttpError.unprocessable("Valeur invalide.");
+      }
+
+      const { descriptionFacts } = provenanceContext(listing);
+      const result = visitSheet.patchListingField(listing, fieldKey, parsedBody.data.value, {
+        descriptionFacts,
+      });
+
+      if (!result.ok) {
+        if (req.get("HX-Request")) {
+          res.status(422);
+          return res.render(
+            "partials/listing-spec-patch",
+            listingSpecPatchLocals(listing, res.locals.fmt, fieldKey, {
+              fieldErrorMessage: result.message,
+            })
+          );
+        }
+        throw HttpError.unprocessable(result.message);
+      }
+
+      logActivity(logger, req, "caractéristique corrigée depuis la fiche", {
+        listingId: listing.id,
+        field: fieldKey,
+      });
+
+      if (req.get("HX-Request")) {
+        return res.render(
+          "partials/listing-spec-patch",
+          listingSpecPatchLocals(listing, res.locals.fmt, fieldKey)
+        );
+      }
+      return res.json({ ok: true, field: fieldKey, resolved: result.resolved });
+    } catch (err) {
+      return next(err);
     }
   });
 
@@ -1089,6 +1355,27 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       return next(err);
     }
   });
+
+  /** Diagnostic zone probable (LLM, contraintes, heatmap) — administration uniquement. */
+  router.get(
+    "/listings/:id/location/debug",
+    requireAdminForEnrichmentRefresh,
+    (req, res, next) => {
+      try {
+        const listing = loadListing(req);
+        const payload = probableLocationRun.readDebug(listing);
+        res.set("Cache-Control", "no-store");
+        return res.render("partials/listing-location-probable-debug", {
+          layout: false,
+          listing,
+          // Ne pas nommer cette clé `debug` : EJS interprète `debug` comme option de compilation.
+          locationDebug: payload,
+        });
+      } catch (err) {
+        return next(err);
+      }
+    }
+  );
 
   /**
    * Recalcul forcé (LLM + géocodage). Réservé à un usage explicite ; la fiche
@@ -1288,11 +1575,11 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       return res.render("partials/financing", {
         layout: false,
         listing,
-        financing: {
+        financing: attachFinancingRentYield(listing, {
           params,
           result,
           amortization: buildAmortizationSchedule(result),
-        },
+        }),
         // Le montant « Travaux » pilote aussi le positionnement « prix + travaux ».
         pricePositionOob: pricePositionOobFor(listing, res.locals.fmt, {
           works: params.works,

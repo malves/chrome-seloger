@@ -23,6 +23,7 @@
   /** Vues spéciales du menu (« @ » est exclu des identifiants de pièce). */
   var HOME_VIEW = "@home";
   var ENERGY_VIEW = "@energy";
+  var GLOBAL_VIEW = "@global";
 
   var ISSUE_SURFACE = {
     floor_worn: "floor",
@@ -44,18 +45,21 @@
   var estimateWorksCostsFn = null;
   var computeHomeHealthFn = null;
   var coherence = null;
+  var globalLib = null;
   var estimateModulePromise = null;
 
   function loadEstimateModule() {
-    if (estimateWorksCostsFn && coherence) return Promise.resolve();
+    if (estimateWorksCostsFn && coherence && globalLib) return Promise.resolve();
     if (!estimateModulePromise) {
       estimateModulePromise = Promise.all([
         import("/public/js/works-estimate.js"),
         import("/public/js/works-coherence.js"),
+        import("/public/js/works-global.js"),
       ]).then(function (mods) {
         estimateWorksCostsFn = mods[0].estimateWorksCosts;
         computeHomeHealthFn = mods[0].computeHomeHealth;
         coherence = mods[1];
+        globalLib = mods[2];
       });
     }
     return estimateModulePromise;
@@ -158,9 +162,17 @@
     return key === ENERGY_VIEW;
   }
 
+  function isGlobal(key) {
+    return key === GLOBAL_VIEW;
+  }
+
+  function globalItems() {
+    if (!S.plan.global || !Array.isArray(S.plan.global.items)) S.plan.global = { items: [] };
+    return S.plan.global.items;
+  }
+
   function homeLabel() {
-    if (S.overview && S.overview.propertyLabel) return S.overview.propertyLabel;
-    return propertyType === "house" ? "Maison" : propertyType === "apartment" ? "Appartement" : "Logement";
+    return "Estimation";
   }
 
   function homeIcon() {
@@ -205,7 +217,7 @@
 
   function render() {
     if (!S.loaded) return;
-    if (!S.view || (!isHome(S.view) && !isEnergy(S.view) && !isGroup(S.view) && !findRoom(S.view))) {
+    if (!S.view || (!isHome(S.view) && !isEnergy(S.view) && !isGlobal(S.view) && !isGroup(S.view) && !findRoom(S.view))) {
       S.view = HOME_VIEW;
     }
     body.innerHTML =
@@ -249,9 +261,29 @@
     );
   }
 
+  function renderGlobalSideItem() {
+    var active = isGlobal(S.view);
+    var lines = globalLines(estimateCosts());
+    var cost = lines.reduce(
+      function (acc, l) {
+        return { min: acc.min + l.min, max: acc.max + l.max };
+      },
+      { min: 0, max: 0 }
+    );
+    var state = lines.length ? plural(lines.length, "chantier") + (cost.max > 0 ? " · " + costRange(cost.min, cost.max) : "") : "Électricité, fenêtres…";
+    return (
+      '<button type="button" class="works-side__item works-side__item--global' + (lines.length ? " works-side__item--average" : "") + (active ? " is-active" : "") + '"' +
+      ' data-select="' + GLOBAL_VIEW + '"' + (active ? ' aria-current="true"' : "") + ">" +
+      '<span class="works-side__icon">' + icon("hammer") + "</span>" +
+      '<span class="works-side__text"><span class="works-side__name">Général</span>' +
+      '<span class="works-side__state">' + esc(state) + "</span></span></button>"
+    );
+  }
+
   function renderSide() {
     var html = '<div class="works-side__section works-side__section--home">';
     html += renderHomeItem();
+    html += '<ul class="works-side__list works-side__list--global" role="list"><li class="works-side__entry">' + renderGlobalSideItem() + "</li></ul>";
     html += '<p class="works-side__caption works-side__caption--sub">Pièces</p>';
     html += '<div class="works-side__rooms">';
     html += '<ul class="works-side__list works-side__list--rooms" role="list" data-works-room-list>';
@@ -314,6 +346,7 @@
   function renderMain() {
     if (isHome(S.view)) return renderBanner() + renderOverview();
     if (isEnergy(S.view)) return renderBanner() + renderEnergyView();
+    if (isGlobal(S.view)) return renderBanner() + renderGlobalView();
     if (isGroup(S.view)) return renderBanner() + renderGroupView(S.view);
     return renderBanner() + renderRoomView(findRoom(S.view));
   }
@@ -478,12 +511,77 @@
     return tone;
   }
 
-  function issueHint(room, key) {
+  /** Ce que l'IA a relevé pour ce point : son constat s'il l'a coché, sinon la note de la surface. */
+  function issueAiNote(room, key) {
     var reason = room.issue_reasons && room.issue_reasons[key];
-    if (reason && (room.issues_ai || []).indexOf(key) !== -1) return "Vu par l'IA : " + reason;
+    if (reason && (room.issues_ai || []).indexOf(key) !== -1) return reason;
     var surface = ISSUE_SURFACE[key];
-    var note = surface && room[surface] && room[surface].note;
-    return note ? "IA : " + note : "";
+    return (surface && room[surface] && room[surface].note) || "";
+  }
+
+  /** Chaque point à signaler a un « ? » (définition catalogue, exclusion, note IA). */
+  function issueShowsHelp() {
+    return true;
+  }
+
+  function renderIssueTip(room, option) {
+    var aiNote = issueAiNote(room, option.value);
+    var exclusive = "";
+    exclusiveIssues().forEach(function (pair) {
+      var other = pair[0] === option.value ? pair[1] : pair[1] === option.value ? pair[0] : null;
+      var o = other && optionOf(S.options.issues, other);
+      if (o) exclusive = "Ne se cumule pas avec « " + o.label + " » : cocher l'un décoche l'autre.";
+    });
+    return (
+      '<div class="works-issue-tip works-issue-tip--' + esc(option.tone) + '" role="dialog" aria-label="' + esc(option.label) + '" data-issue-tip>' +
+      '<div class="works-issue-tip__head">' +
+      '<span class="works-issue-tip__dot" aria-hidden="true"></span>' +
+      '<strong class="works-issue-tip__title">' + esc(option.label) + "</strong>" +
+      '<button type="button" class="works-issue-tip__close" data-issue-tip-close aria-label="Fermer">' + icon("close") + "</button>" +
+      "</div>" +
+      (option.hint ? '<p class="works-issue-tip__text">' + esc(option.hint) + "</p>" : "") +
+      (exclusive ? '<p class="works-issue-tip__rule">' + esc(exclusive) + "</p>" : "") +
+      (aiNote
+        ? '<p class="works-issue-tip__ai">' + icon("sparkles") + "<span><strong>Vu par l'IA</strong>" + esc(aiNote) + "</span></p>"
+        : "") +
+      "</div>"
+    );
+  }
+
+  var issueTip = null;
+
+  function closeIssueTip(restoreFocus) {
+    if (!issueTip) return false;
+    var tip = issueTip;
+    issueTip = null;
+    if (tip.el.isConnected) tip.el.remove();
+    if (tip.btn.isConnected) {
+      tip.btn.setAttribute("aria-expanded", "false");
+      tip.btn.classList.remove("is-open");
+      if (restoreFocus) tip.btn.focus({ preventScroll: true });
+    }
+    return true;
+  }
+
+  function toggleIssueTip(btn, room) {
+    var key = btn.getAttribute("data-value");
+    var same = issueTip && issueTip.btn === btn;
+    closeIssueTip(false);
+    if (same) return;
+    var option = optionOf(S.options.issues, key);
+    if (!option) return;
+    var holder = document.createElement("div");
+    holder.innerHTML = renderIssueTip(room, option);
+    var el = holder.firstChild;
+    btn.parentNode.appendChild(el);
+    btn.setAttribute("aria-expanded", "true");
+    btn.classList.add("is-open");
+    issueTip = { el: el, btn: btn };
+    var bounds = (btn.closest(".works-issues") || body).getBoundingClientRect();
+    if (el.getBoundingClientRect().right > bounds.right) el.classList.add("works-issue-tip--end");
+    var b = btn.getBoundingClientRect();
+    el.style.setProperty("--tip-arrow", Math.round(b.left + b.width / 2 - el.getBoundingClientRect().left - 6) + "px");
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
   function renderIssues(room) {
@@ -505,8 +603,17 @@
         return issues.indexOf(o.value) !== -1;
       }).length;
       var catTone = categoryIssueTone(items, issues);
+      var stackChoices =
+        c.value === "floor" ||
+        c.value === "walls" ||
+        c.value === "ceiling" ||
+        c.value === "humidity" ||
+        c.value === "fixtures";
       html +=
-        '<section class="works-issues__group' + (count ? " has-issues" : "") + '" role="group" aria-label="' + esc(c.label) + '">' +
+        '<section class="works-issues__group' +
+        (count ? " has-issues" : "") +
+        (stackChoices ? " works-issues__group--stack" : "") +
+        '" role="group" aria-label="' + esc(c.label) + '">' +
         '<h4 class="works-issues__cat works-issues__cat--' + catTone + '">' + icon(c.icon) + "<span>" + esc(c.label) + "</span>" +
         (count ? '<span class="works-issues__count">' + count + "</span>" : "") +
         "</h4>" +
@@ -514,15 +621,19 @@
       items.forEach(function (o) {
         var on = issues.indexOf(o.value) !== -1;
         var ai = on && fromAi.indexOf(o.value) !== -1;
-        var hint = issueHint(room, o.value);
+        var showHelp = issueShowsHelp(room, o);
         html +=
+          '<span class="works-issue-wrap">' +
+          (showHelp
+            ? '<button type="button" class="works-issue-help" data-action="issue-help" data-value="' + esc(o.value) + '"' +
+              ' aria-expanded="false" aria-label="' + esc("En savoir plus : " + o.label) + '"><span aria-hidden="true">?</span></button>'
+            : "") +
           '<button type="button" class="works-issue works-issue--' + o.tone + (on ? " is-on" : "") + '"' +
-          ' aria-pressed="' + on + '" data-action="toggle-issue" data-value="' + esc(o.value) + '"' +
-          (hint ? ' title="' + esc(hint) + '"' : "") + ">" +
+          ' aria-pressed="' + on + '" data-action="toggle-issue" data-value="' + esc(o.value) + '">' +
           '<span class="works-issue__mark">' + icon(on ? "check" : "plus") + "</span>" +
           esc(o.label) +
           (ai ? icon("sparkles", "works-issue__ai") : "") +
-          "</button>";
+          "</button></span>";
       });
       html += "</div></section>";
     });
@@ -713,7 +824,7 @@
     );
   }
 
-  /* --------------------- Vue récapitulative Maison / Appartement --------------------- */
+  /* --------------------- Vue récapitulative Estimation --------------------- */
 
   var PRIORITY_STYLES = {
     necessary: { icon: "alert", tone: "poor" },
@@ -797,6 +908,7 @@
     });
     return computeHomeHealthFn({
       rooms: S.plan.rooms,
+      globalItems: globalItems(),
       roomTypeFactors: costs().roomTypeFactors,
       issueTones: tones,
       fallbackScore: typeof ai === "number" ? ai : null,
@@ -826,6 +938,7 @@
       surface: o.surface,
       propertyType: propertyType,
       rooms: S.plan.rooms,
+      globalItems: globalItems(),
       dpeZones: dpeZones(),
       costs: costs(),
       issueLabel: issueLabel,
@@ -852,9 +965,9 @@
   /** Croisement pièces × DPE (works-coherence.js, identique sur la fiche) : seuls les écarts sont signalés. */
   function planDpeChecks(health) {
     var o = S.overview || {};
-    if (!coherence || !o.dpe || !S.plan.rooms.length) return [];
+    if (!coherence || !o.dpe || (!S.plan.rooms.length && !globalItems().length)) return [];
     return coherence
-      .dpeCoherence({ rooms: S.plan.rooms, health: health, dpe: o.dpe, photoSignals: o.photoSignals || {} })
+      .dpeCoherence({ rooms: S.plan.rooms, globalItems: globalItems(), health: health, dpe: o.dpe, photoSignals: o.photoSignals || {} })
       .filter(function (c) {
         return c.status !== "consistent";
       })
@@ -972,7 +1085,7 @@
     } else if (!est.posts.length) {
       inner +=
         '<div class="works-overview__empty works-overview__empty--good">' + icon("shield") +
-        "<p>Aucun travaux signalé pour l'instant. Cochez des points à signaler dans les pièces pour alimenter le chiffrage.</p></div>";
+        "<p>Aucun travaux signalé pour l'instant. Cochez des points dans les pièces ou des chantiers dans « Général » pour alimenter le chiffrage.</p></div>";
     } else {
       inner +=
         '<p class="works-overview__amount">' +
@@ -1001,7 +1114,7 @@
             .map(function (it) {
               return (
                 "<li><span>" + esc(it.label) +
-                (it.rooms.length ? ' <em>· ' + esc(it.rooms.join(", ")) + "</em>" : "") +
+                (it.rooms.length ? ' <em>· ' + esc(it.rooms.join(", ")) + "</em>" : it.detail ? ' <em>· ' + esc(it.detail) + "</em>" : "") +
                 "</span><span>" + costRange(it.min, it.max) + "</span></li>"
               );
             })
@@ -1023,7 +1136,7 @@
     }
     if (!est.unavailableReason) {
       inner +=
-        "<p class=\"works-overview__footnote\">Estimation indicative d'après la surface du bien et la répartition estimée entre les pièces du plan (type et nombre de pièces). À affiner avec des devis.</p>";
+        "<p class=\"works-overview__footnote\">Estimation indicative d'après la surface du bien, la répartition estimée entre les pièces du plan et les prix moyens constatés des chantiers généraux. À affiner avec des devis.</p>";
     }
     return overviewCard("works-overview__budget", 1, inner);
   }
@@ -1059,16 +1172,37 @@
     return overviewCard("works-overview__vigilance", 2, inner);
   }
 
-  function renderOverviewRooms() {
+  function renderOverviewGlobalTile(est) {
+    var lines = globalLines(est);
+    var cost = lines.reduce(
+      function (acc, l) {
+        return { min: acc.min + l.min, max: acc.max + l.max };
+      },
+      { min: 0, max: 0 }
+    );
+    return (
+      '<button type="button" class="works-overview__tile works-overview__tile--global works-overview__tile--' + (lines.length ? "average" : "unknown") + '" data-select="' + GLOBAL_VIEW + '" style="--i:0" aria-label="' + esc("Général : " + plural(lines.length, "chantier") + ". Ouvrir.") + '">' +
+      '<span class="works-overview__tile-media">' + icon("hammer") + "</span>" +
+      '<span class="works-overview__tile-body">' +
+      '<span class="works-overview__tile-name">Général</span>' +
+      '<span class="works-overview__tile-state">' + (cost.max > 0 ? esc(costRange(cost.min, cost.max)) : "Électricité, fenêtres, chauffage…") + "</span>" +
+      "</span>" +
+      '<span class="works-overview__tile-issues' + (lines.length ? " is-average" : " is-clear") + '">' + (lines.length ? lines.length : icon("plus")) + "</span>" +
+      "</button>"
+    );
+  }
+
+  function renderOverviewRooms(est) {
     var rooms = S.plan.rooms;
     var inner = overviewHead("grid", "Pièce par pièce", '<span class="works-overview__count">' + rooms.length + "</span>");
     if (!rooms.length) {
       inner +=
+        '<div class="works-overview__tiles">' + renderOverviewGlobalTile(est) + "</div>" +
         '<div class="works-overview__empty">' + icon("home") +
         '<p>Aucune pièce pour l\'instant.</p><button type="button" class="btn btn--ghost btn--sm" data-action="add-room">' + icon("plus") + " Ajouter une pièce</button></div>";
       return overviewCard("works-overview__rooms", 3, inner);
     }
-    inner += '<div class="works-overview__tiles">';
+    inner += '<div class="works-overview__tiles">' + renderOverviewGlobalTile(est);
     rooms.forEach(function (room, i) {
       var tone = roomTone(room);
       var issues = room.issues || [];
@@ -1114,7 +1248,13 @@
             return (
               '<li><span class="works-overview__prio-icon">' + icon(it.icon || "hammer") + "</span>" +
               '<span class="works-overview__prio-text"><span>' + esc(it.label) + (it.copro ? " <em>(copropriété)</em>" : "") + "</span>" +
-              (it.rooms.length ? "<small>" + esc(it.rooms.join(", ")) + "</small>" : it.post === "energy" ? "<small>D'après le DPE</small>" : "") +
+              (it.rooms.length
+                ? "<small>" + esc(it.rooms.join(", ")) + "</small>"
+                : it.global
+                  ? "<small>Général" + (it.detail && it.detail !== "forfait" ? " · " + esc(it.detail) : "") + "</small>"
+                  : it.post === "energy"
+                    ? "<small>Suggéré par le DPE</small>"
+                    : "") +
               "</span>" +
               '<span class="works-overview__prio-cost">' + costRange(it.min, it.max) + "</span></li>"
             );
@@ -1126,7 +1266,7 @@
     if (!any) {
       inner +=
         '<div class="works-overview__empty works-overview__empty--good">' + icon("shield") +
-        "<p>Aucun travaux identifié. Les points cochés dans chaque pièce apparaîtront ici, classés par priorité.</p></div>";
+        "<p>Aucun travaux identifié. Les points cochés dans les pièces et les chantiers généraux apparaîtront ici, classés par priorité.</p></div>";
     } else {
       inner += '<div class="works-overview__prios">' + cols + "</div>";
     }
@@ -1151,6 +1291,259 @@
     return '<div class="works-view works-view--energy works-overview" data-view-anim>' + renderEnergyPanel() + "</div>";
   }
 
+  /* ------------------------ Logement entier (chantiers) ------------------------ */
+
+  function globalCatalog() {
+    return (S.options && S.options.globalWorks) || { categories: [], works: [], maxQuantity: 99 };
+  }
+
+  function globalItem(key) {
+    var items = globalItems();
+    for (var i = 0; i < items.length; i++) if (items[i].key === key) return items[i];
+    return null;
+  }
+
+  function globalWorkDef(key) {
+    var works = globalCatalog().works;
+    for (var i = 0; i < works.length; i++) if (works[i].key === key) return works[i];
+    return null;
+  }
+
+  function appliesToProperty(entry) {
+    return !entry.propertyTypes || entry.propertyTypes.indexOf(propertyType) !== -1;
+  }
+
+  function variantsOf(work) {
+    return work.variants.filter(appliesToProperty);
+  }
+
+  function currentVariant(work, item) {
+    var list = variantsOf(work);
+    var key = item && item.variant;
+    for (var i = 0; i < list.length; i++) if (list[i].key === key) return list[i];
+    for (var j = 0; j < list.length; j++) if (list[j].key === work.defaultVariant) return list[j];
+    return list[0];
+  }
+
+  /** Lignes chiffrées des chantiers globaux (y compris frais de chantier). */
+  function globalLines(est) {
+    return (est.items || []).filter(function (it) {
+      return it.global;
+    });
+  }
+
+  function globalLineOf(est, key) {
+    var lines = globalLines(est);
+    for (var i = 0; i < lines.length; i++) if (lines[i].key === key) return lines[i];
+    return null;
+  }
+
+  function estimatedQuantities() {
+    if (!globalLib) return {};
+    return globalLib.estimateQuantities({ rooms: S.plan.rooms, surface: (S.overview || {}).surface });
+  }
+
+  function unitsLabel(variant, n) {
+    return n + " " + (n > 1 ? variant.units || variant.unit : variant.unit);
+  }
+
+  function renderGlobalQuantity(work, item, variant, quantities) {
+    var est = quantities[variant.quantity] || { count: 1, basis: 0 };
+    var custom = item.quantity != null;
+    var n = custom ? item.quantity : est.count;
+    var basis = est.basis
+      ? "Estimé d'après " + plural(est.basis, "pièce") + " du plan"
+      : "Estimé d'après la surface du bien";
+    var html =
+      '<div class="works-global__qty">' +
+      '<div class="works-chips works-global__qty-mode" role="radiogroup" aria-label="Quantité">' +
+      '<button type="button" role="radio" aria-checked="' + !custom + '" class="works-chip' + (custom ? "" : " is-on") + '" data-action="global-qty-all" data-key="' + esc(work.key) + '">' +
+      "Toutes (" + esc(unitsLabel(variant, est.count)) + " estimé" + (variant.feminine ? "e" : "") + (est.count > 1 ? "s" : "") + ")</button>" +
+      '<button type="button" role="radio" aria-checked="' + custom + '" class="works-chip' + (custom ? " is-on" : "") + '" data-action="global-qty-custom" data-key="' + esc(work.key) + '">Nombre précis</button>' +
+      "</div>";
+    if (custom) {
+      html +=
+        '<div class="works-global__stepper">' +
+        '<button type="button" class="works-icon-btn" data-action="global-qty-step" data-key="' + esc(work.key) + '" data-delta="-1" aria-label="Retirer une unité"' + (n <= 1 ? " disabled" : "") + ">" + icon("minus") + "</button>" +
+        '<label class="visually-hidden" for="works-global-qty-' + esc(work.key) + '">Nombre de ' + esc(variant.units || variant.unit) + "</label>" +
+        '<input id="works-global-qty-' + esc(work.key) + '" class="works-global__qty-input" type="number" inputmode="numeric" min="1" max="' + globalCatalog().maxQuantity + '" value="' + n + '" data-global-qty="' + esc(work.key) + '" />' +
+        '<button type="button" class="works-icon-btn" data-action="global-qty-step" data-key="' + esc(work.key) + '" data-delta="1" aria-label="Ajouter une unité"' + (n >= globalCatalog().maxQuantity ? " disabled" : "") + ">" + icon("plus") + "</button>" +
+        '<span class="works-global__qty-unit">' + esc(n > 1 ? variant.units || variant.unit : variant.unit) + "</span>" +
+        "</div>";
+    }
+    html += '<p class="works-global__basis">' + esc(basis) + (custom ? " : " + esc(unitsLabel(variant, est.count)) + "." : ".") + "</p>";
+    html += "</div>";
+    return html;
+  }
+
+  function renderGlobalCard(work, est, quantities, i) {
+    var item = globalItem(work.key);
+    var on = Boolean(item && item.enabled);
+    var declined = Boolean(item && !item.enabled);
+    var variant = currentVariant(work, item);
+    var line = on ? globalLineOf(est, work.key) : null;
+    var variants = variantsOf(work);
+    var html =
+      '<article class="works-global__card' + (on ? " is-on" : "") + '" style="--i:' + i + '" data-global-card="' + esc(work.key) + '">' +
+      '<header class="works-global__head">' +
+      '<span class="works-global__icon">' + icon(work.icon || "hammer") + "</span>" +
+      '<div class="works-global__titles">' +
+      '<h4 class="works-global__title">' + esc(work.label) +
+      (on && item.source === "ai" ? '<span class="works-source works-source--ai" title="Proposé par l\'IA">' + icon("sparkles") + "IA</span>" : "") +
+      "</h4>" +
+      '<p class="works-global__hint">' + esc(work.hint || "") + "</p>" +
+      "</div>" +
+      (line ? '<span class="works-global__cost">' + costRange(line.min, line.max) + "</span>" : "") +
+      '<button type="button" role="switch" aria-checked="' + on + '" class="works-switch' + (on ? " is-on" : "") + '" data-action="global-toggle" data-key="' + esc(work.key) + '" aria-label="' + esc((on ? "Retirer : " : "Prévoir : ") + work.label) + '">' +
+      '<span class="works-switch__thumb"></span></button>' +
+      "</header>";
+    if (on) {
+      html += '<div class="works-global__body">';
+      if (item.reason) {
+        html += '<p class="works-global__reason">' + icon(item.source === "ai" ? "sparkles" : "message") + "<span>" + esc(item.reason) + "</span></p>";
+      }
+      if (variants.length > 1) {
+        html +=
+          '<div class="works-chips works-global__variants" role="radiogroup" aria-label="' + esc("Type de travaux : " + work.label) + '">' +
+          variants
+            .map(function (v) {
+              var sel = v.key === variant.key;
+              return (
+                '<button type="button" role="radio" aria-checked="' + sel + '" class="works-chip' + (sel ? " is-on" : "") + '"' +
+                ' data-action="global-variant" data-key="' + esc(work.key) + '" data-value="' + esc(v.key) + '">' + esc(v.label) + "</button>"
+              );
+            })
+            .join("") +
+          "</div>";
+      }
+      if (variant.hint) html += '<p class="works-global__variant-hint">' + esc(variant.hint) + "</p>";
+      if (variant.mode === "unit") html += renderGlobalQuantity(work, item, variant, quantities);
+      if (line && line.detail && variant.mode !== "unit") {
+        html += '<p class="works-global__basis">' + esc(variant.mode === "surface" ? "Calculé sur " + line.detail + " de surface." : variant.mode === "percent" ? "Soit " + line.detail + "." : "Prix forfaitaire.") + "</p>";
+      }
+      if (variant.mode === "surface" && !line) {
+        html += '<p class="works-global__basis">Surface du bien inconnue : non chiffré.</p>';
+      }
+      if (work.note) html += '<p class="works-global__note">' + icon("help") + "<span>" + esc(work.note) + "</span></p>";
+      html += "</div>";
+    } else if (declined) {
+      html += '<p class="works-global__declined">Écarté' + (item.source === "ai" ? " (proposé par l'IA)" : "") + "</p>";
+    }
+    html += "</article>";
+    return html;
+  }
+
+  function renderGlobalView() {
+    var est = estimateCosts();
+    var quantities = estimatedQuantities();
+    var lines = globalLines(est);
+    var total = lines.reduce(
+      function (acc, l) {
+        return { min: acc.min + l.min, max: acc.max + l.max };
+      },
+      { min: 0, max: 0 }
+    );
+    var html =
+      '<div class="works-view works-view--global" data-view-anim>' +
+      '<header class="works-room__head">' +
+      '<span class="works-room__type-btn works-room__type-btn--static">' + icon("hammer") + "</span>" +
+      '<div class="works-room__titles">' +
+      '<h3 class="works-room__group-title">Général</h3>' +
+      '<p class="works-room__hint">Chantiers qui portent sur tout le logement plutôt que sur une pièce : une électricité hors normes se refait partout, placards et couloirs compris.</p>' +
+      "</div></header>";
+    if (est.unavailableReason === "missing_surface") {
+      html += '<p class="works-room-budget works-room-budget--muted">' + icon("coins") + "Budget non estimé : la surface du bien n'est pas renseignée.</p>";
+    } else if (total.max > 0) {
+      html +=
+        '<p class="works-room-budget">' + icon("coins") +
+        "<span>" + plural(lines.length, "chantier") + " prévu" + (lines.length > 1 ? "s" : "") + "</span><strong>" + costRange(total.min, total.max) + "</strong></p>";
+    }
+    var i = 0;
+    globalCatalog().categories.forEach(function (cat) {
+      var works = globalCatalog().works.filter(function (w) {
+        return w.category === cat.key && appliesToProperty(w);
+      });
+      if (!works.length) return;
+      html +=
+        '<section class="works-global__group" aria-label="' + esc(cat.label) + '">' +
+        '<h4 class="works-global__cat">' + icon(cat.icon) + "<span>" + esc(cat.label) + "</span></h4>" +
+        '<div class="works-global__list">';
+      works.forEach(function (w) {
+        html += renderGlobalCard(w, est, quantities, i++);
+      });
+      html += "</div></section>";
+    });
+    html +=
+      "<p class=\"works-overview__footnote\">Prix moyens constatés, TTC et pose comprise, à affiner avec des devis. Les frais de chantier s'appliquent en pourcentage des autres travaux.</p>";
+    html += "</div>";
+    return html;
+  }
+
+  /** Re-rendu en gardant le focus sur le même contrôle. */
+  function rerenderFocus(selector) {
+    rerender();
+    var el = selector && body.querySelector(selector);
+    if (el && !el.disabled) el.focus({ preventScroll: true });
+  }
+
+  function ensureGlobalItem(key) {
+    var item = globalItem(key);
+    if (item) return item;
+    var work = globalWorkDef(key);
+    item = { key: key, enabled: false, variant: work ? work.defaultVariant : "", quantity: null, source: "user", reason: "" };
+    var order = globalCatalog().works.map(function (w) {
+      return w.key;
+    });
+    var items = globalItems();
+    items.push(item);
+    items.sort(function (a, b) {
+      return order.indexOf(a.key) - order.indexOf(b.key);
+    });
+    return item;
+  }
+
+  function globalAction(action, el) {
+    var key = el.getAttribute("data-key");
+    var work = globalWorkDef(key);
+    if (!work) return;
+    var item = ensureGlobalItem(key);
+    var focus = '[data-action="' + action + '"][data-key="' + cssEscape(key) + '"]';
+    if (action === "global-toggle") {
+      item.enabled = !item.enabled;
+      announce(work.label + (item.enabled ? " prévu." : " retiré."));
+    } else if (action === "global-variant") {
+      item.variant = el.getAttribute("data-value");
+      item.enabled = true;
+      focus += '[data-value="' + cssEscape(item.variant) + '"]';
+    } else if (action === "global-qty-all") {
+      item.quantity = null;
+    } else if (action === "global-qty-custom") {
+      if (item.quantity == null) {
+        var variant = currentVariant(work, item);
+        var est = estimatedQuantities()[variant.quantity];
+        item.quantity = est ? est.count : 1;
+      }
+      focus = "#works-global-qty-" + cssEscape(key);
+    } else if (action === "global-qty-step") {
+      var delta = Number(el.getAttribute("data-delta")) || 0;
+      item.quantity = Math.max(1, Math.min(globalCatalog().maxQuantity, (item.quantity || 1) + delta));
+      focus += '[data-delta="' + el.getAttribute("data-delta") + '"]';
+    }
+    changed();
+    rerenderFocus(focus);
+  }
+
+  function setGlobalQuantity(input) {
+    var key = input.getAttribute("data-global-qty");
+    var item = globalItem(key);
+    if (!item) return;
+    var n = Math.round(Number(input.value));
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    item.quantity = Math.min(globalCatalog().maxQuantity, n);
+    changed();
+    rerenderFocus("#works-global-qty-" + cssEscape(key));
+  }
+
   function renderOverview() {
     var health = homeHealth();
     var est = estimateCosts();
@@ -1171,7 +1564,7 @@
       renderOverviewBudget(est) +
       renderOverviewAlerts(alerts) +
       "</div>" +
-      renderOverviewRooms() +
+      renderOverviewRooms(est) +
       renderOverviewWorks(est) +
       "</div>"
     );
@@ -1227,7 +1620,7 @@
       })
       .then(function (data) {
         S.overview = data.overview || null;
-        if ((isHome(S.view) || isEnergy(S.view)) && !modal.hidden) rerender();
+        if ((isHome(S.view) || isEnergy(S.view) || isGlobal(S.view)) && !modal.hidden) rerender();
       })
       .catch(function () {});
   }
@@ -1379,24 +1772,36 @@
   }
 
   function deleteRoom(room) {
-    var snapshot = clone(S.plan);
-    var index = S.plan.rooms.indexOf(room);
-    Array.prototype.push.apply(S.plan.groups.unassigned, room.photos);
-    S.plan.rooms.splice(index, 1);
-    var next = S.plan.rooms[index] || S.plan.rooms[index - 1];
-    S.view = next ? next.id : "unassigned";
-    S.selection.clear();
-    changed();
-    rerender({ animateView: true });
-    bump(body.querySelector('[data-count-for="group:unassigned"]'));
     var name = roomName(room);
-    toast("Pièce « " + name + " » supprimée" + (room.photos.length ? " — ses photos sont dans « À classer »" : "") + ".", "Annuler", function () {
-      S.plan = snapshot;
-      S.view = room.id;
-      changed();
-      rerender({ animateView: true });
-      announce("Pièce « " + name + " » restaurée.");
-    });
+    var photoHint = room.photos.length ? " Ses photos seront déplacées dans « À classer »." : "";
+    confirmInline(
+      "Supprimer la pièce ?",
+      "La pièce « " + name + " » sera retirée du plan de travaux." + photoHint,
+      "Supprimer",
+      function () {
+        var snapshot = clone(S.plan);
+        var index = S.plan.rooms.indexOf(room);
+        Array.prototype.push.apply(S.plan.groups.unassigned, room.photos);
+        S.plan.rooms.splice(index, 1);
+        var next = S.plan.rooms[index] || S.plan.rooms[index - 1];
+        S.view = next ? next.id : "unassigned";
+        S.selection.clear();
+        changed();
+        rerender({ animateView: true });
+        bump(body.querySelector('[data-count-for="group:unassigned"]'));
+        toast(
+          "Pièce « " + name + " » supprimée" + (room.photos.length ? " — ses photos sont dans « À classer »" : "") + ".",
+          "Annuler",
+          function () {
+            S.plan = snapshot;
+            S.view = room.id;
+            changed();
+            rerender({ animateView: true });
+            announce("Pièce « " + name + " » restaurée.");
+          }
+        );
+      }
+    );
   }
 
   function duplicateRoom(room) {
@@ -1847,6 +2252,9 @@
     if (target === "energy" || target === ENERGY_VIEW) {
       S.view = ENERGY_VIEW;
       S.selection.clear();
+    } else if (target === "global" || target === GLOBAL_VIEW) {
+      S.view = GLOBAL_VIEW;
+      S.selection.clear();
     } else if (target && (isGroup(target) || findRoom(target))) {
       S.view = target;
       S.selection.clear();
@@ -1949,6 +2357,13 @@
     }
     if (!S.loaded || t.closest("[data-works-layer]")) return;
 
+    if (t.closest("[data-issue-tip-close]")) {
+      closeIssueTip(true);
+      return;
+    }
+    if (issueTip && !t.closest("[data-issue-tip]") && !t.closest('[data-action="issue-help"]')) closeIssueTip(false);
+    if (t.closest("[data-issue-tip]")) return;
+
     if (suppressClick) {
       suppressClick = false;
       return;
@@ -1958,6 +2373,7 @@
     var room = findRoom(S.view);
     if (actionEl) {
       var action = actionEl.getAttribute("data-action");
+      if (action.indexOf("global-") === 0) return globalAction(action, actionEl);
       if (action === "add-room") return openTypePicker("add");
       if (action === "pick-type" && room) return openTypePicker("change");
       if (action === "delete-room" && room) return deleteRoom(room);
@@ -1978,6 +2394,7 @@
         changed();
         return rerender();
       }
+      if (action === "issue-help" && room) return toggleIssueTip(actionEl, room);
       if (action === "toggle-issue" && room) return toggleIssue(room, actionEl.getAttribute("data-value"));
       if (action === "toggle-select") {
         var photo = actionEl.closest("[data-photo]");
@@ -2049,11 +2466,21 @@
     changed();
   });
 
+  modal.addEventListener("change", function (event) {
+    if (!S.loaded || !event.target.matches || !event.target.matches("[data-global-qty]")) return;
+    setGlobalQuantity(event.target);
+  });
+
   modal.addEventListener("keydown", function (event) {
     if (modal.hidden) return;
+    if (event.key === "Enter" && event.target.matches && event.target.matches("[data-global-qty]")) {
+      event.preventDefault();
+      return setGlobalQuantity(event.target);
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       if (dragState && dragState.active) return cancelDrag();
+      if (closeIssueTip(true)) return;
       if (closeLayer()) return;
       // La maison DPE (app.js) referme elle-même sa zone active sur Échap.
       if (body.querySelector("[data-dpe-house-stage][data-active-zone]")) return;

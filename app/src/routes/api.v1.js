@@ -196,7 +196,7 @@ export default function createApiRouter({ repositories, enrichment, logger }) {
     });
 
     // Réponse envoyée : l'enrichissement se poursuit en arrière-plan.
-    enrichment.schedule(req.user.id, id);
+    enrichment.scheduleAfterListingCapture(req.user.id, id, { created });
     return undefined;
   });
 

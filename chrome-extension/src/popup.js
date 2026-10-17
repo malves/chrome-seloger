@@ -143,6 +143,20 @@ function formatEuro(value) {
   return `${formatNumber(value)} €`;
 }
 
+function formatListingTitle(title, price) {
+  if (!title) return title;
+  const expected =
+    price !== null && price !== undefined && Number.isFinite(Number(price))
+      ? Math.round(Number(price))
+      : null;
+  return title.replace(/\b(\d[\d\s]*)\s*€/g, (match, raw) => {
+    const n = parseInt(String(raw).replace(/\s/g, ""), 10);
+    if (!Number.isFinite(n)) return match;
+    if (expected !== null && n !== expected) return match;
+    return `${formatNumber(n)}\u00a0€`;
+  });
+}
+
 function timeAgo(timestamp) {
   if (!timestamp) return "";
   const seconds = Math.round((Date.now() - timestamp) / 1000);
@@ -301,7 +315,8 @@ function renderPage() {
 
   show(els["save-unavailable"], false);
 
-  els["listing-title"].textContent = listing.title || "Annonce sans titre";
+  els["listing-title"].textContent =
+    formatListingTitle(listing.title, listing.price) || "Annonce sans titre";
 
   const parts = [];
   if (listing.price) parts.push(formatEuro(listing.price));

@@ -1,0 +1,349 @@
+<%
+  const est = locationDebug && locationDebug.estimate;
+  const constraints = (est && est.constraints) || [];
+  const topCandidates = (est && est.top_candidates) || [];
+  const heatmap = (est && est.heatmap) || [];
+  const warnings = (est && est.warnings) || [];
+  const jsonPayload = locationDebug || {};
+  const hasUserGeo = locationDebug.inputs && locationDebug.inputs.userGeocoded;
+  const cacheOk = locationDebug.cache && locationDebug.cache.valid;
+  const hasEst = Boolean(est);
+
+  function statusLabel(status) {
+    const map = {
+      estimated: "Zone estimée",
+      exact_address: "Adresse texte (LLM)",
+      insufficient: "Signaux insuffisants",
+      unavailable: "Indisponible",
+      pending: "En attente",
+    };
+    return map[status] || status || "—";
+  }
+
+  function statusTone(status) {
+    if (status === "estimated" || status === "exact_address") return "ok";
+    if (status === "insufficient") return "warn";
+    if (status === "unavailable" || status === "pending") return "muted";
+    return "muted";
+  }
+
+  function rejectLabel(code) {
+    const map = {
+      not_found: "Lieu introuvable",
+    };
+    return map[code] || code || "Rejeté";
+  }
+
+  function pct01(v) {
+    if (v == null || !Number.isFinite(Number(v))) return "—";
+    const n = Number(v);
+    return (n <= 1 ? Math.round(n * 100) : Math.round(n)) + " %";
+  }
+
+  function fmtCoord(lat, lng) {
+    if (lat == null || lng == null) return "—";
+    return Number(lat).toFixed(5) + ", " + Number(lng).toFixed(5);
+  }
+
+  const estStatus = est ? est.status : null;
+  const confPct =
+    est && est.confidence != null ? Math.round(Number(est.confidence) * 100) : null;
+  const usedC = est && est.constraints_used != null ? est.constraints_used : null;
+  const rejC = est && est.constraints_rejected != null ? est.constraints_rejected : null;
+%>
+<div class="pa-debug location-probable-debug loc-debug" data-location-probable-debug-panel>
+  <p class="loc-debug__lede field__hint">
+    Pipeline <strong>zone indicative</strong> sur la carte (texte annonce → LLM → géocodage → grille),
+    <em>avant</em> adresse réelle ou détermination par IA.
+  </p>
+
+  <% if (warnings.length) { %>
+    <div class="loc-debug__alert" role="status">
+      <p class="loc-debug__alert-title">Avertissements du calcul</p>
+      <ul class="loc-debug__alert-list">
+        <% warnings.forEach(function (w) { %>
+          <li><%= w %></li>
+        <% }); %>
+      </ul>
+    </div>
+  <% } %>
+
+  <% if (locationDebug.mapUi && locationDebug.mapUi.note && hasUserGeo) { %>
+    <div class="loc-debug__banner">
+      <strong>Carte en mode adresse précise.</strong>
+      <%= locationDebug.mapUi.note %>
+    </div>
+  <% } %>
+
+  <div class="loc-debug__stats" aria-label="Synthèse">
+    <div class="loc-debug__stat">
+      <span class="loc-debug__stat-label">Carte (UI)</span>
+      <span class="loc-debug__badge loc-debug__badge--<%= hasUserGeo ? "info" : "ok" %>">
+        <%= hasUserGeo ? "Adresse enregistrée" : "Zone probable" %>
+      </span>
+    </div>
+    <div class="loc-debug__stat">
+      <span class="loc-debug__stat-label">Cache</span>
+      <span class="loc-debug__badge loc-debug__badge--<%= cacheOk ? "ok" : "warn" %>">
+        <%= cacheOk ? "À jour" : "Absent ou périmé" %>
+      </span>
+    </div>
+    <div class="loc-debug__stat">
+      <span class="loc-debug__stat-label">Estimation</span>
+      <% if (hasEst) { %>
+        <span class="loc-debug__badge loc-debug__badge--<%= statusTone(estStatus) %>">
+          <%= statusLabel(estStatus) %>
+        </span>
+      <% } else { %>
+        <span class="loc-debug__badge loc-debug__badge--muted">Aucun résultat</span>
+      <% } %>
+    </div>
+    <div class="loc-debug__stat">
+      <span class="loc-debug__stat-label">Confiance</span>
+      <span class="loc-debug__stat-value"><%= confPct != null ? confPct + " %" : "—" %></span>
+    </div>
+    <div class="loc-debug__stat">
+      <span class="loc-debug__stat-label">Rayon</span>
+      <span class="loc-debug__stat-value">
+        <%= est && est.estimated_radius_m != null ? "~" + est.estimated_radius_m + " m" : "—" %>
+      </span>
+    </div>
+    <div class="loc-debug__stat">
+      <span class="loc-debug__stat-label">Contraintes</span>
+      <span class="loc-debug__stat-value">
+        <% if (usedC != null || rejC != null) { %>
+          <%= usedC != null ? usedC : "—" %> ok · <%= rejC != null ? rejC : "—" %> rejet
+        <% } else { %>—<% } %>
+      </span>
+    </div>
+  </div>
+
+  <ol class="loc-debug__pipeline" aria-label="Étapes du calcul">
+    <li class="loc-debug__pipe loc-debug__pipe--done">
+      <span class="loc-debug__pipe-num">1</span>
+      <span class="loc-debug__pipe-label">Annonce</span>
+    </li>
+    <li class="loc-debug__pipe <%= locationDebug.enrichment ? "loc-debug__pipe--done" : "loc-debug__pipe--idle" %>">
+      <span class="loc-debug__pipe-num">2</span>
+      <span class="loc-debug__pipe-label">Cache</span>
+    </li>
+    <li class="loc-debug__pipe <%= hasEst ? "loc-debug__pipe--done" : "loc-debug__pipe--idle" %>">
+      <span class="loc-debug__pipe-num">3</span>
+      <span class="loc-debug__pipe-label">Calcul</span>
+    </li>
+    <li class="loc-debug__pipe <%= hasUserGeo ? "loc-debug__pipe--info" : hasEst ? "loc-debug__pipe--done" : "loc-debug__pipe--idle" %>">
+      <span class="loc-debug__pipe-num">4</span>
+      <span class="loc-debug__pipe-label">Carte</span>
+    </li>
+  </ol>
+
+  <details class="loc-debug__section" open>
+    <summary class="loc-debug__summary">
+      <span class="loc-debug__summary-title">Contexte annonce</span>
+      <span class="loc-debug__summary-hint">ville, texte, adresse utilisateur</span>
+    </summary>
+    <dl class="loc-debug__facts">
+      <div class="loc-debug__fact">
+        <dt>Localisation annonce</dt>
+        <dd><%= locationDebug.inputs.city || "—" %> · <%= locationDebug.inputs.postalCode || "—" %></dd>
+      </div>
+      <div class="loc-debug__fact">
+        <dt>Description</dt>
+        <dd><%= locationDebug.inputs.descriptionLength %> car.</dd>
+      </div>
+      <div class="loc-debug__fact">
+        <dt>Adresse utilisateur</dt>
+        <dd><%= locationDebug.inputs.userAddress || "—" %></dd>
+      </div>
+      <div class="loc-debug__fact">
+        <dt>Géocodage utilisateur</dt>
+        <dd><%= locationDebug.inputs.userGeocoded ? "Oui" : "Non" %></dd>
+      </div>
+    </dl>
+    <% if (locationDebug.inputs.descriptionPreview) { %>
+      <p class="loc-debug__block-label">Extrait envoyé au LLM</p>
+      <pre class="loc-debug__excerpt"><%= locationDebug.inputs.descriptionPreview %><% if (locationDebug.inputs.descriptionLength > 1200) { %>…<% } %></pre>
+    <% } %>
+  </details>
+
+  <details class="loc-debug__section" open>
+    <summary class="loc-debug__summary">
+      <span class="loc-debug__summary-title">Cache enrichissement</span>
+      <span class="loc-debug__summary-hint">probable-location</span>
+    </summary>
+    <dl class="loc-debug__facts">
+      <% if (locationDebug.enrichment) { %>
+        <div class="loc-debug__fact">
+          <dt>Statut ligne</dt>
+          <dd><%= locationDebug.enrichment.status %></dd>
+        </div>
+        <% if (locationDebug.enrichment.fetchedAt) { %>
+          <div class="loc-debug__fact">
+            <dt>Enregistré le</dt>
+            <dd><%= fmt.date(locationDebug.enrichment.fetchedAt) %></dd>
+          </div>
+        <% } %>
+      <% } else { %>
+        <div class="loc-debug__fact">
+          <dt>Statut ligne</dt>
+          <dd class="pa-debug__error">Aucune ligne</dd>
+        </div>
+      <% } %>
+      <div class="loc-debug__fact">
+        <dt>Empreinte</dt>
+        <dd><%= cacheOk ? "Correspond à l'annonce" : "Absente ou obsolète" %></dd>
+      </div>
+      <% if (locationDebug.clientStored) { %>
+        <div class="loc-debug__fact">
+          <dt>API fiche (stored)</dt>
+          <dd><%= locationDebug.clientStored.ready ? locationDebug.clientStored.status : "pending" %></dd>
+        </div>
+      <% } %>
+    </dl>
+    <% if (locationDebug.enrichment && locationDebug.enrichment.error) { %>
+      <p class="loc-debug__block-label">Erreur</p>
+      <pre class="loc-debug__error-block"><%= locationDebug.enrichment.error %></pre>
+    <% } %>
+  </details>
+
+  <details class="loc-debug__section" open>
+    <summary class="loc-debug__summary">
+      <span class="loc-debug__summary-title">Résultat zone probable</span>
+      <span class="loc-debug__summary-hint">centre, rayon, heatmap</span>
+    </summary>
+    <% if (!hasEst) { %>
+      <p class="loc-debug__empty">
+        Aucun résultat en cache. Utilisez <strong>Actualiser</strong> dans le widget Localisation pour lancer un calcul.
+      </p>
+    <% } else { %>
+      <dl class="loc-debug__facts">
+        <div class="loc-debug__fact">
+          <dt>Statut</dt>
+          <dd><%= statusLabel(estStatus) %></dd>
+        </div>
+        <div class="loc-debug__fact">
+          <dt>Confiance</dt>
+          <dd><%= confPct != null ? confPct + " %" : "—" %></dd>
+        </div>
+        <div class="loc-debug__fact">
+          <dt>Centre (lat, lng)</dt>
+          <dd class="loc-debug__mono">
+            <%= est.center ? fmtCoord(est.center.latitude, est.center.longitude) : "—" %>
+          </dd>
+        </div>
+        <div class="loc-debug__fact">
+          <dt>Rayon estimé</dt>
+          <dd><%= est.estimated_radius_m != null ? "~" + est.estimated_radius_m + " m" : "—" %></dd>
+        </div>
+        <div class="loc-debug__fact">
+          <dt>Cellules heatmap</dt>
+          <dd><%= heatmap.length %></dd>
+        </div>
+        <% if (est.exact_address) { %>
+          <div class="loc-debug__fact loc-debug__fact--wide">
+            <dt>Adresse texte (LLM)</dt>
+            <dd><%= est.exact_address %></dd>
+          </div>
+        <% } %>
+      </dl>
+    <% } %>
+  </details>
+
+  <% if (constraints.length) { %>
+    <details class="loc-debug__section" open>
+      <summary class="loc-debug__summary">
+        <span class="loc-debug__summary-title">Lieux cités</span>
+        <span class="loc-debug__summary-hint"><%= constraints.length %> ligne(s) · extraction → géocodage → accessibilité</span>
+      </summary>
+      <div class="pa-debug__table-wrap loc-debug__table-wrap">
+        <table class="pa-debug__table loc-debug__table">
+          <thead>
+            <tr>
+              <th scope="col">Lieu</th>
+              <th scope="col">Type</th>
+              <th scope="col">Relation</th>
+              <th scope="col">Transport</th>
+              <th scope="col">Conf.</th>
+              <th scope="col">Géoloc.</th>
+              <th scope="col">Isochrone</th>
+              <th scope="col">Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% constraints.forEach(function (c) { %>
+              <tr class="<%= c.rejected ? "pa-debug__row--warn" : "" %>">
+                <td class="loc-debug__place"><%= c.place || "—" %></td>
+                <td><%= c.place_type || "—" %></td>
+                <td><%= c.relation || "—" %></td>
+                <td><%= c.transport || "—" %></td>
+                <td><%= pct01(c.confidence) %></td>
+                <td class="loc-debug__mono">
+                  <%= c.latitude != null && c.longitude != null ? fmtCoord(c.latitude, c.longitude) : "—" %>
+                </td>
+                <td><%= c.access_mode || "—" %></td>
+                <td>
+                  <% if (c.rejected) { %>
+                    <span class="loc-debug__badge loc-debug__badge--warn loc-debug__badge--sm">Rejet</span>
+                    <span class="loc-debug__cell-sub"><%= rejectLabel(c.reject_reason) %></span>
+                  <% } else { %>
+                    <span class="loc-debug__badge loc-debug__badge--ok loc-debug__badge--sm">OK</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </details>
+  <% } %>
+
+  <% if (topCandidates.length) { %>
+    <details class="loc-debug__section">
+      <summary class="loc-debug__summary">
+        <span class="loc-debug__summary-title">Candidats grille</span>
+        <span class="loc-debug__summary-hint">top <%= topCandidates.length %></span>
+      </summary>
+      <div class="pa-debug__table-wrap loc-debug__table-wrap">
+        <table class="pa-debug__table loc-debug__table">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Score</th>
+              <th scope="col">Latitude</th>
+              <th scope="col">Longitude</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% topCandidates.forEach(function (c, i) { %>
+              <tr>
+                <td><%= i + 1 %></td>
+                <td><%= c.score != null ? c.score : "—" %></td>
+                <td class="loc-debug__mono"><%= c.latitude %></td>
+                <td class="loc-debug__mono"><%= c.longitude %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </details>
+  <% } %>
+
+  <details class="loc-debug__section loc-debug__section--json">
+    <summary class="loc-debug__summary">
+      <span class="loc-debug__summary-title">JSON brut</span>
+      <span class="loc-debug__summary-hint">export technique</span>
+    </summary>
+    <div class="pa-debug__json loc-debug__json">
+      <div class="pa-debug__json-head">
+        <button
+          type="button"
+          class="btn btn--ghost btn--sm loc-debug__copy-json"
+          data-location-probable-debug-copy
+        >
+          Copier le JSON
+        </button>
+      </div>
+      <textarea class="pa-debug__json-field" readonly rows="12" data-location-probable-debug-json><%= JSON.stringify(jsonPayload, null, 2) %></textarea>
+    </div>
+  </details>
+</div>

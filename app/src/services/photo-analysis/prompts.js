@@ -12,7 +12,7 @@
  */
 
 import * as E from "../../lib/photo-analysis/enums.js";
-import { ROOM_ISSUE_KEYS } from "../../lib/works/works-issues.js";
+import { ANALYSIS_ISSUE_KEYS } from "../../lib/works/works-issues.js";
 
 const list = (values) => values.map((v) => `"${v}"`).join("|");
 
@@ -122,7 +122,9 @@ ${CONDITION_GRID}
 TÂCHES :
 1. PIÈCES LOGIQUES : regroupe les images montrant la MÊME pièce (géométrie, fenêtres, sol, portes, mobilier fixe, point de vue). Trois photos du salon = UN salon. Attribue un état global par pièce.
    POINTS À REFAIRE PAR PIÈCE ("issues") : liste précisément ce qui est à refaire dans la pièce, avec pour chaque point un constat court dans "issue_reasons" (ex. { "bathroom_refresh": "faïence et sanitaires datés, joints noircis" }).
-   - Valeurs autorisées : ${list(ROOM_ISSUE_KEYS)}.
+   - Valeurs autorisées : ${list(ANALYSIS_ISSUE_KEYS)}.
+   - "paint" : murs sains dont seule la finition est à reprendre (peinture ancienne, défraîchie, papier peint). "walls_damaged" : murs eux-mêmes dégradés (fortes traces d'humidité, enduit abîmé, trous, cloquage) ; la peinture est comprise, ne mets jamais les deux.
+   - "cracks" : toute fissure visible sur un mur, à signaler systématiquement (le mur sera à refaire).
    - "kitchen_refresh" / "kitchen_redo" : cuisine uniquement ; "bathroom_refresh" / "bathroom_redo" : salle de bain, salle d'eau ou WC uniquement. "_refresh" = rafraîchir (façades, peinture, joints, robinetterie) ; "_redo" = refaire (équipements, faïence, plomberie apparente).
    - Un état "average" ou pire impose au moins un point dans "issues". Un état "good", "very_good" ou "new_or_recently_renovated" impose "issues" vide.
    - "issues" doit être cohérent avec l'état du sol, des murs et du plafond : une surface "worn" ou "dated" donne au moins le point « à repeindre / usé » correspondant, une surface "damaged" ou "replacement_likely" le point « à refaire ».

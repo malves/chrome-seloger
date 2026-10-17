@@ -86,8 +86,13 @@
     <div class="pa-pending pa-pending--compact" role="status" aria-live="polite">
       <span class="spinner spinner--sm" aria-hidden="true"></span>
       <div>
-        <p class="pa-pending__title">Analyse de marché en cours</p>
-        <p class="field__hint">Prix au m², évolution et comparatifs Immo Data. Mise à jour automatique.</p>
+        <% if (provider.group === 'territory') { %>
+          <p class="pa-pending__title"><%= provider.label %> : chargement en cours</p>
+          <p class="field__hint">Mise à jour automatique.</p>
+        <% } else { %>
+          <p class="pa-pending__title">Analyse de marché en cours</p>
+          <p class="field__hint">Prix au m², évolution et comparatifs Immo Data. Mise à jour automatique.</p>
+        <% } %>
       </div>
     </div>
     <% if (provider.key === 'immo-data' && provider.rentEstimate && provider.rentEstimate.visible) { %>
@@ -112,8 +117,10 @@
       provider.data &&
       provider.data.indicators &&
       provider.data.indicators.length;
+    const sourceInPopulationPartial =
+      provider.key === 'population' && provider.status === 'ok' && provider.data;
   %>
-  <% if (provider.source && !sourceInDelinquancePartial && provider.key !== 'immo-data') { %>
+  <% if (provider.source && !sourceInDelinquancePartial && !sourceInPopulationPartial && provider.key !== 'immo-data') { %>
     <p class="provider-source">
       Source :
       <% if (provider.sourceUrl) { %>

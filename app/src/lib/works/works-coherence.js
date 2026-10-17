@@ -9,15 +9,11 @@
  * N'importe que des modules eux-mêmes servis au navigateur.
  */
 
-import { ROOM_ISSUES } from "./works-issues.js";
-
 /* --------------------------- État des pièces --------------------------- */
 
 /** États qui supposent au moins un point à refaire. */
 export const CONDITIONS_NEEDING_WORK = ["average", "renovation_needed", "heavy_renovation_likely"];
 const CONDITIONS_WITHOUT_WORK = ["new_or_recently_renovated", "very_good", "good", "not_assessable"];
-
-const CATEGORY_BY_ISSUE = new Map(ROOM_ISSUES.map((i) => [i.key, i.category]));
 
 /** Une pièce est à préciser si son état suppose des travaux et qu'aucun point n'est coché. */
 export function roomNeedsReview(room) {
@@ -29,14 +25,12 @@ export function roomNeedsReview(room) {
  * - une pièce « Bon » (ou non évaluée) avec des finitions à reprendre passe à « Moyen » ;
  * - une pièce « Moyen » ou pire sans aucun point relevé n'est appuyée par
  *   rien de concret : elle repasse à « Bon » (`unsupported` garde l'avis initial).
- * Fenêtres, chauffage ou électricité seuls ne disent rien des finitions.
  * Ne s'applique qu'aux états de l'IA : un état choisi par l'utilisateur reste tel quel.
  * @returns {{ condition: string, needsReview: boolean, adjusted: boolean, unsupported: string|null }}
  */
 export function reconcileRoomCondition(condition, issues) {
   const list = issues || [];
-  const finishWork = list.some((k) => CATEGORY_BY_ISSUE.get(k) !== "equipment");
-  if (finishWork && CONDITIONS_WITHOUT_WORK.includes(condition)) {
+  if (list.length && CONDITIONS_WITHOUT_WORK.includes(condition)) {
     return { condition: "average", needsReview: false, adjusted: true, unsupported: null };
   }
   if (!list.length && CONDITIONS_NEEDING_WORK.includes(condition)) {
@@ -96,19 +90,23 @@ function anyRoomHas(rooms, keys) {
   return (rooms || []).some((r) => (r.issues || []).some((k) => keys.includes(k)));
 }
 
-function windowsCheck(rooms, zone, photoSignals, dpeDate) {
+function globalPlanned(globalItems, key) {
+  return (globalItems || []).some((i) => i && i.key === key && i.enabled);
+}
+
+function windowsCheck(globalItems, zone, photoSignals, dpeDate) {
   if (!zone || !zone.state || zone.state === "unknown") return null;
-  const signal = anyRoomHas(rooms, ["windows"])
+  const signal = globalPlanned(globalItems, "windows")
     ? "old"
     : RECENT_AGES.includes(photoSignals?.windowsAge)
       ? "recent"
       : "none";
   const topic = "windows";
   if (signal === "old" && zone.state === "poor") {
-    return { topic, status: "consistent", text: "Des fenêtres à changer sont signalées dans les pièces, ce qui concorde avec la faible performance des menuiseries indiquée par le DPE." };
+    return { topic, status: "consistent", text: "Le remplacement des fenêtres est prévu, ce qui concorde avec la faible performance des menuiseries indiquée par le DPE." };
   }
   if (signal === "old" && zone.state === "good") {
-    return { topic, status: "to_check", text: "Des fenêtres à changer sont signalées alors que le DPE juge les menuiseries performantes. Le diagnostic porte peut-être sur d'autres fenêtres : à vérifier en visite." };
+    return { topic, status: "to_check", text: "Le remplacement des fenêtres est prévu alors que le DPE juge les menuiseries performantes. Le diagnostic porte peut-être sur d'autres fenêtres : à vérifier en visite." };
   }
   if (signal === "recent" && zone.state === "poor") {
     return { topic, status: "possible_post_dpe_renovation", text: `Les photos montrent des fenêtres d'aspect récent alors que le DPE${dpeDate ? ` (établi le ${dpeDate})` : ""} signale des menuiseries peu performantes : elles ont peut-être été remplacées après le diagnostic. À confirmer.` };
@@ -117,12 +115,12 @@ function windowsCheck(rooms, zone, photoSignals, dpeDate) {
     return { topic, status: "consistent", text: "Fenêtres d'aspect récent et menuiseries jugées performantes par le DPE : les deux sources concordent." };
   }
   if (signal === "none" && zone.state === "poor") {
-    return { topic, status: "to_check", text: "Le DPE juge les menuiseries peu performantes, mais aucune pièce ne signale de fenêtres à changer. Vérifiez le vitrage en visite : un remplacement est chiffré dans le budget énergie." };
+    return { topic, status: "to_check", text: "Le DPE juge les menuiseries peu performantes, mais le remplacement des fenêtres n'est pas prévu dans « Général ». Vérifiez le vitrage en visite." };
   }
   return null;
 }
 
-function heatingCheck(rooms, zone, photoSignals) {
+function heatingCheck(globalItems, zone, photoSignals) {
   if (!zone || !zone.state || zone.state === "unknown") return null;
   const topic = "heating";
   const title = String(zone.title || "").toLowerCase();
@@ -131,15 +129,15 @@ function heatingCheck(rooms, zone, photoSignals) {
   const waterVisible = equipments.includes("water_radiator");
   const dpeElectric = title.includes("électrique");
   const dpeWater = ["gaz", "fioul", "réseau", "pompe"].some((w) => title.includes(w));
-  const planHeating = anyRoomHas(rooms, ["heating"]);
+  const planHeating = globalPlanned(globalItems, "heating");
 
   if ((electricVisible && dpeWater && !dpeElectric) || (waterVisible && dpeElectric && !dpeWater)) {
     return { topic, status: "possible_post_dpe_renovation", text: "Les émetteurs visibles sur les photos ne correspondent pas au chauffage décrit par le DPE : installation modifiée après le diagnostic, ou DPE d'un autre lot. À vérifier." };
   }
   if (zone.state === "poor") {
     return planHeating
-      ? { topic, status: "consistent", text: "Chauffage à moderniser signalé dans les pièces, en accord avec le DPE qui le juge peu efficace." }
-      : { topic, status: "to_check", text: "Le DPE juge le chauffage peu efficace alors que rien n'est signalé dans les pièces : l'équipement visible peut paraître correct alors que le système est énergivore." };
+      ? { topic, status: "consistent", text: "La modernisation du chauffage est prévue, en accord avec le DPE qui le juge peu efficace." }
+      : { topic, status: "to_check", text: "Le DPE juge le chauffage peu efficace alors que sa modernisation n'est pas prévue : l'équipement visible peut paraître correct alors que le système est énergivore." };
   }
   if ((electricVisible && dpeElectric) || (waterVisible && dpeWater)) {
     return { topic, status: "consistent", text: "Les émetteurs visibles correspondent au mode de chauffage indiqué par le DPE." };
@@ -148,28 +146,36 @@ function heatingCheck(rooms, zone, photoSignals) {
 }
 
 /**
- * Croisement entre les points cochés dans les pièces et le DPE lié.
+ * Croisement entre le plan (pièces et logement entier) et le DPE lié.
  * @param {object} params
  * @param {object[]} params.rooms - pièces du plan
+ * @param {object[]} [params.globalItems] - chantiers « Logement entier » (`plan.global.items`)
  * @param {{ score: number|null, fromPlan: boolean }} params.health - `computeHomeHealth`
  * @param {{ letter: string|null, zones: object[], date?: string|null }|null} params.dpe
  * @param {{ windowsAge?: string, heatingEquipments?: string[] }} [params.photoSignals] - équipements visibles (analyse)
  * @returns {{ topic: string, status: "consistent" | "to_check" | "possible_post_dpe_renovation", tone: string, title: string, text: string }[]}
  */
-export function dpeCoherence({ rooms = [], health = null, dpe = null, photoSignals = {} }) {
+export function dpeCoherence({ rooms = [], globalItems = [], health = null, dpe = null, photoSignals = {} }) {
   if (!dpe) return [];
   const zones = {};
   for (const z of dpe.zones || []) zones[z.id] = z;
   const out = [];
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dpe.date || ""));
   const date = iso ? `${iso[3]}/${iso[2]}/${iso[1]}` : dpe.date || null;
-  const windows = windowsCheck(rooms, zones.windows, photoSignals, date);
+  const windows = windowsCheck(globalItems, zones.windows, photoSignals, date);
   if (windows) out.push({ ...windows, title: "Fenêtres et DPE" });
-  const heating = heatingCheck(rooms, zones.heating, photoSignals);
+  const heating = heatingCheck(globalItems, zones.heating, photoSignals);
   if (heating) out.push({ ...heating, title: "Chauffage et DPE" });
 
   const ventilation = zones.ventilation;
-  if (anyRoomHas(rooms, ["humidity", "mold"]) && ventilation && ventilation.state && ventilation.state !== "good" && ventilation.state !== "unknown") {
+  if (
+    anyRoomHas(rooms, ["humidity", "mold"]) &&
+    !globalPlanned(globalItems, "ventilation") &&
+    ventilation &&
+    ventilation.state &&
+    ventilation.state !== "good" &&
+    ventilation.state !== "unknown"
+  ) {
     out.push({
       topic: "ventilation",
       status: "to_check",

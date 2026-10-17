@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { WORK_TYPES } from "../src/lib/photo-analysis/enums.js";
-import { ROOM_ISSUE_KEYS } from "../src/lib/works/works-issues.js";
+import { ANALYSIS_ISSUE_KEYS, ROOM_ISSUE_KEYS } from "../src/lib/works/works-issues.js";
 import {
   WORK_TYPE_TO_ISSUES,
   reconcileRoomCondition,
@@ -59,7 +59,7 @@ function listing46() {
 test("chaque type de travail de l'analyse a une correspondance vers des points connus", () => {
   for (const type of WORK_TYPES) {
     assert.ok(Array.isArray(WORK_TYPE_TO_ISSUES[type]), `type non couvert : ${type}`);
-    for (const key of WORK_TYPE_TO_ISSUES[type]) assert.ok(ROOM_ISSUE_KEYS.includes(key), `${type} → ${key}`);
+    for (const key of WORK_TYPE_TO_ISSUES[type]) assert.ok(ANALYSIS_ISSUE_KEYS.includes(key), `${type} → ${key}`);
   }
 });
 
@@ -88,9 +88,8 @@ test("pièce « Moyen » sans aucun défaut relevé : l'avis de l'IA n'est pas r
 
 test("état de l'IA aligné sur ses constats, dans les deux sens", () => {
   assert.deepEqual(reconcileRoomCondition("good", ["paint"]), { condition: "average", needsReview: false, adjusted: true, unsupported: null });
-  assert.equal(reconcileRoomCondition("good", ["windows"]).condition, "good", "fenêtres seules : les finitions restent bonnes");
   assert.deepEqual(reconcileRoomCondition("renovation_needed", []), { condition: "good", needsReview: false, adjusted: true, unsupported: "renovation_needed" });
-  assert.equal(reconcileRoomCondition("average", ["windows"]).condition, "average", "un point d'équipement suffit à justifier « Moyen »");
+  assert.equal(reconcileRoomCondition("average", ["humidity"]).condition, "average");
   assert.equal(reconcileRoomCondition("not_assessable", []).condition, "not_assessable");
   assert.equal(reconcileRoomCondition("not_assessable", ["bathroom_refresh"]).condition, "average");
 });

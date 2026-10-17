@@ -81,7 +81,7 @@
   <div class="card__body">
     <div class="card__headline">
       <a class="card__title" href="/listings/<%= listing.id %>">
-        <%= listing.title || (fmt.propertyTypeLabel(listing.property_type) || 'Annonce') + (listing.city ? ' · ' + listing.city : '') %>
+        <%= listing.title ? fmt.listingTitle(listing.title, listing.price) : (fmt.propertyTypeLabel(listing.property_type) || 'Annonce') + (listing.city ? ' · ' + listing.city : '') %>
       </a>
       <span class="card__price"><%= fmt.euro(listing.price) %></span>
     </div>

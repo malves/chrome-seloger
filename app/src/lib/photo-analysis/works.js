@@ -122,6 +122,9 @@ export function worksFromObservations(observations) {
   if (walls && ["damaged", "worn", "dated"].includes(walls.condition)) {
     add("painting", "cosmetic", walls.condition === "damaged" ? "medium" : "light", "murs défraîchis ou abîmés", walls.confidence);
   }
+  if ((walls?.defects || []).includes("cracks")) {
+    add("crack_investigation", "necessary", "unknown", "fissure visible sur un mur", walls.confidence);
+  }
 
   const ceiling = o.ceiling;
   const ceilingDefects = ceiling?.defects || [];

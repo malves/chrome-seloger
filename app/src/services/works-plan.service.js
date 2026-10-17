@@ -43,7 +43,7 @@ export default function createWorksPlanService({ repositories, photoAnalysisRun 
       };
     }
     return {
-      plan: seedWorksPlan(analysis, photos),
+      plan: seedWorksPlan(analysis, photos, { listing }),
       stored: false,
       aiStatus,
       aiAnalyzedAt,

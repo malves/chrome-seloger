@@ -1,0 +1,4 @@
+<%- include("listing-spec-row", primary) %>
+<% dependents.forEach(function (row) { %>
+  <%- include("listing-spec-row", row) %>
+<% }); %>

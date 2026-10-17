@@ -1,0 +1,46 @@
+---
+description: Design system — référence UI / UX obligatoire pour toute page, composant ou style du site
+alwaysApply: true
+---
+
+# Design system
+
+Avant de créer ou modifier une page, un partial, un composant ou du CSS du site, **lire** `app/src/views/admin/design-system.ejs` (rendu sur `/admin/design-system`). Les **pattern-ids** stables pour les prompts vivent dans `app/src/lib/design-system-patterns.js` (catalogue `#patterns`, ancres `#pattern-{id}`). Tokens : `app/src/lib/design-system.js`.
+
+## Index des patterns (prompts)
+
+Citer l’**id** (`action-btn-favorite`, `feedback-flash`, …) ou l’ancre `#pattern-{id}` sur `/admin/design-system`. Chaque entrée du registre `DESIGN_PATTERNS` a **exactement une** ancre sur la page (badge sur le spécimen, l’en-tête de section ou le catalogue pour `catalogOnly`).
+
+**Catalogue** : `/admin/design-system#patterns` · **Source** : `app/src/lib/design-system-patterns.js`.
+
+Groupes : `foundation-*`, `motion-interface`, `icon-*`, `layout-*`, `action-btn-*`, `filter-pills`, `badge-variants`, `form-*`, `data-*`, `feedback-*`, `state-empty`, `tooltip-data`, `nav-pagination`, `content-*`.
+
+## Règles
+
+- **Tokens uniquement** : couleurs, espacements, rayons, ombres et polices via `var(--…)` de `:root` (`app/public/css/app.css`). Jamais de code hexadécimal ni de valeur en dur. On choisit la couleur par son **rôle** (voir le catalogue).
+- **Réutiliser avant de créer** : `.btn`, `.pill`, `.badge`, `.form`/`.field`, `.panel`, `.card`, `.kv`, `.modal`, `.flash`, `.empty`, `.spinner`, `[data-tooltip]`, `<details>` repliable, `partials/pagination.ejs`… Pas de nouveau toast, modale de confirmation ou spinner « maison ». Formulaires : **pattern-id** du catalogue (`form-amount-stepper`, `form-date-picker-range`, …). Pas de `type="date"` ni `type="number"` natifs. **Encadrement rouge d'un panneau** : pattern `layout-panel-danger` (`.danger-zone` ou `.detail--rejected` sur la fiche) — pas pour la validation (`.form-errors` / `.field-error`) ni pour un champ désactivé.
+- **Une action principale par zone** (`.btn--green` ou `.btn--lime`), le reste en `.btn--ghost`. Toute suppression passe par `data-confirm`.
+- **Mouvement** : `opacity`/`transform` seulement, 150 à 300 ms (`ease` au survol, `cubic-bezier(0.22, 1, 0.36, 1)` à l'entrée), toujours un bloc `@media (prefers-reduced-motion: reduce)`. Boucles réservées au chargement et à un enregistrement en cours.
+- **Exception : micro-interaction d'icône** au `:hover`/`:focus-visible` du bouton parent, posée sur le `svg` : 0,45 à 0,75 s, `cubic-bezier(0.22, 1, 0.36, 1)`, `forwards`, une seule fois, 5 px / 22° / échelle 0,9–1,3 au plus. Toute nouvelle animation d'icône s'ajoute au tableau « Animations des icônes » de la page.
+- **Icônes** : Lucide uniquement, tracés dans `app/src/lib/icons.js` (sans paquet npm). Sprite d'abord (`partials/works-icons` + `<svg class="wi"><use href="#wi-NOM">`), `aria-hidden="true"`, trait 2 (actions) ou 1,8 (navigation, sprite). Pas d'emoji ni de caractère (★, ✓…) comme icône, hormis `↗` dans `.link-exit-arrow`.
+- **Alertes** : jamais `alert()`, `confirm()` ni `prompt()`, même en repli. Confirmer avec `data-confirm` (ouvre `#confirm-modal` de `layout.ejs`), informer avec `.flash` ou un toast, demander une saisie dans une `.modal` avec formulaire.
+- **États** : chaque bloc prévoit chargement, vide, erreur et données.
+- **Rédaction** : vouvoiement, boutons à l'infinitif, typographie française (« », espaces insécables, « … »).
+- Un CSS propre à une page va dans `app/public/css/<page>.css` (chargé via `styles`), préfixé et construit avec les tokens.
+
+## Faire évoluer le design system
+
+- Nouveau composant, variante ou token : l'ajouter **dans le même changement** à `design-system.ejs` (et à `lib/design-system.js` pour un token ; le test `design-system.test.js` vérifie la synchronisation avec `:root`).
+- **Nouveau pattern réutilisable** : entrée dans `lib/design-system-patterns.js` (`hasSpec: true`, id unique), ancre `#pattern-{id}` sur un spécimen (`patternId` dans `spec.ejs`) ou un en-tête (`pattern-label.ejs`), ligne dans le catalogue `#patterns`.
+- Nouvelle icône : l'ajouter à `ICONS` et à un groupe de `ICON_GROUPS` dans `lib/icons.js` ; le catalogue de la page se met à jour seul.
+- Ne pas reproduire ce qui figure dans la section « Écarts connus » de la page ; le corriger quand on touche la zone concernée.
+
+```text
+❌ .mon-bloc { color: #2e8b6b; transition: all .6s linear; }
+✅ .mon-bloc { color: var(--green-600); transition: background 0.15s ease; }
+
+❌ « Refais le tableau comme tu veux »
+✅ « Applique pattern data-table-numeric-admin (#pattern-data-table-numeric-admin) à admin/amortization.ejs »
+
+✅ « Zone suppression : layout-panel-danger (#pattern-layout-panel-danger) »
+```

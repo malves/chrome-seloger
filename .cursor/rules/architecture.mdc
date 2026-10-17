@@ -1,0 +1,31 @@
+---
+description: Architecture et conventions générales du projet Carnet de Visites
+alwaysApply: true
+---
+
+# Architecture
+
+Deux parties : `app/` (serveur Express 5 + site EJS/htmx, SQLite via better-sqlite3) et `chrome-extension/` (Chrome MV3, sans build).
+
+## Couches côté serveur
+
+- `routes/` : HTTP uniquement (validation, appel au service, rendu ou JSON). Pas de SQL.
+- `services/` : logique métier et appels externes.
+- `repositories/` : **seul** endroit où vit le SQL (requêtes préparées).
+- `lib/` : fonctions pures et testables (calculs de travaux, financement, DPE…), sans accès à la base ni à `req`/`res`.
+
+Les dépendances s'injectent par fabriques : `createXRepository(db)`, `createXService({ repositories })`, `createXRouter({ repositories, logger })`. Pas de singleton importé directement.
+
+## Conventions
+
+- JavaScript ESM, Node ≥ 22, pas de TypeScript ni d'étape de build.
+- Code, commentaires et textes d'interface en **français**.
+- Configuration lue uniquement via `app/src/config.js` (jamais `process.env` ailleurs).
+- Logs via le `logger` pino injecté, pas de `console.log`.
+- Exception : les scripts CLI (`app/src/scripts/`, `lib/dpe-cli.js`) peuvent écrire sur la console et lire leurs propres variables d'environnement.
+- **Aucune nouvelle dépendance npm** sans accord explicite : préférer l'API standard de Node.
+
+```text
+❌ db.prepare("SELECT …") dans une route
+✅ route → service → repository.byId(id, userId)
+```

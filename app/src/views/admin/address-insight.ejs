@@ -1,0 +1,102 @@
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content">
+    <div class="adrins" data-adrins>
+      <section class="panel adrins__intro">
+        <div class="panel__head">
+          <div>
+            <p class="panel__eyebrow">Marché immobilier</p>
+            <h2 class="panel__title">Infos adresse</h2>
+          </div>
+        </div>
+        <p class="field__hint">
+          Saisissez une adresse pour consulter le prix au m² autour du point (ventes réelles DVF),
+          l'évolution du marché, les dernières ventes à proximité et les DPE connus de la voie.
+        </p>
+        <% if (!dvfAvailable) { %>
+          <p class="adrins__warn">
+            La base DVF n'est pas encore importée : le prix au m² et les ventes resteront vides.
+            Lancez l'import depuis la section <a href="/admin/dvf">Import DVF</a>.
+          </p>
+        <% } %>
+
+        <form class="adrins__search" data-adrins-form autocomplete="off">
+          <div class="field adrins__field">
+            <label class="field__label" for="adrins-input">Adresse</label>
+            <div class="adrins__combo">
+              <input id="adrins-input" class="input adrins__input" type="text"
+                name="address" placeholder="12 rue de la Paix, 75002 Paris"
+                role="combobox" aria-expanded="false" aria-autocomplete="list"
+                aria-controls="adrins-suggest" autocomplete="off" />
+              <ul class="adrins__suggest" id="adrins-suggest" data-adrins-suggest role="listbox" hidden></ul>
+            </div>
+          </div>
+          <button type="submit" class="btn btn--green adrins__submit" data-adrins-submit>
+            Analyser
+          </button>
+        </form>
+      </section>
+
+      <noscript>
+        <p class="panel">Cette page a besoin de JavaScript.</p>
+      </noscript>
+
+      <p class="adrins__status" data-adrins-status hidden></p>
+
+      <div class="adrins__results" data-adrins-results hidden>
+        <section class="panel adrins__place">
+          <div class="adrins__place-head">
+            <svg class="adrins__place-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <div>
+              <p class="adrins__place-label" data-adrins-place></p>
+              <p class="adrins__place-meta" data-adrins-meta></p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Prix au m² par type de bien -->
+        <section class="panel">
+          <div class="panel__head"><h3 class="panel__title">Prix au m² autour de l'adresse</h3></div>
+          <div class="adrins__prices" data-adrins-prices></div>
+        </section>
+
+        <!-- Évolution -->
+        <section class="panel" data-adrins-evolution-wrap hidden>
+          <div class="panel__head"><h3 class="panel__title">Évolution du prix</h3></div>
+          <div class="adrins__evolution" data-adrins-evolution></div>
+        </section>
+
+        <!-- Ventes récentes -->
+        <section class="panel" data-adrins-sales-wrap hidden>
+          <div class="panel__head">
+            <h3 class="panel__title">Ventes récentes à proximité</h3>
+            <div class="adrins__seg" data-adrins-sales-seg role="tablist"></div>
+          </div>
+          <div class="adrins__table-scroll">
+            <table class="table adrins__table">
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col" class="adrins__num">Prix</th>
+                  <th scope="col" class="adrins__num">Surface</th>
+                  <th scope="col" class="adrins__num">€/m²</th>
+                  <th scope="col" class="adrins__num">Distance</th>
+                </tr>
+              </thead>
+              <tbody data-adrins-sales-rows></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- DPE -->
+        <section class="panel" data-adrins-dpe-wrap hidden>
+          <div class="panel__head"><h3 class="panel__title">DPE connus de la voie</h3></div>
+          <ul class="adrins__dpe" data-adrins-dpe></ul>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>

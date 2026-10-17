@@ -1,0 +1,39 @@
+---
+alwaysApply: true
+---
+# Base de données : autorisation obligatoire
+
+La base SQLite (`app/data/*.db`, `dpe_records` de plusieurs millions de lignes) est un actif de production. Toute action qui la modifie exige l'**accord explicite** de l'utilisateur dans la conversation en cours, **avant** d'écrire le code.
+
+## Interdit sans accord explicite
+
+- Créer, modifier, renommer ou supprimer un fichier dans `app/migrations/`.
+- Changer le schéma : `CREATE/ALTER/DROP TABLE`, index, triggers, vues, tables virtuelles (FTS5, R-Tree…).
+- Ajouter du DDL ou un backfill exécuté au démarrage (`openDatabase`, `migrate`, `ensure*`, `setImmediate`).
+- Exécuter une écriture : `INSERT/UPDATE/DELETE`, `VACUUM`, `REINDEX`, `ANALYZE`, `PRAGMA` persistant, `sqlite3` en écriture, scripts `seed`/`import-*`/`backfill-*`.
+- Supprimer, déplacer, copier par-dessus ou restaurer un fichier `.db`, `.db-wal`, `.db-shm`.
+
+Une demande fonctionnelle (« ajoute un filtre », « c'est lent ») **n'est pas** une autorisation de toucher à la base.
+
+## Procédure quand un changement de base semble utile
+
+1. S'arrêter avant toute édition et l'annoncer clairement.
+2. Présenter : objectif, SQL exact, tables touchées, volume estimé, durée et verrouillage au démarrage, espace disque, réversibilité, plan de rollback.
+3. Proposer d'abord les alternatives **sans** changement de schéma (requête, filtre obligatoire, pagination, cache applicatif).
+4. Demander la décision via `AskQuestion` et attendre la réponse.
+5. Après accord : migration numérotée, idempotente, petite, avec test ; rappeler de sauvegarder la base avant de redémarrer.
+
+## Autorisé sans demande
+
+- Lire le code des repositories et migrations.
+- Requêtes en lecture seule (`SELECT`, `EXPLAIN QUERY PLAN`) sur une base de test ou `:memory:`.
+- Modifier des requêtes SQL **en lecture** dans les repositories, sans changer le schéma.
+- Tests utilisant `createTestApp()` (base en mémoire).
+
+## Exemple
+
+```text
+❌ « La recherche est lente » → ajout direct d'une migration FTS5 + backfill.
+✅ « La recherche est lente » → explication de la cause, options (sans schéma / avec index),
+   coût de chaque option, puis question : « Tu m'autorises à ajouter une migration ? »
+```

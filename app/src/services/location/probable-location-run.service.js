@@ -7,6 +7,8 @@ import createProbableLocationService from "./probable-location.service.js";
 import {
   probableLocationFromCache,
   probableLocationCachePayload,
+  probableLocationCacheValid,
+  probableLocationInputFingerprint,
   PROBABLE_LOCATION_PROVIDER,
 } from "../../lib/probable-location-cache.js";
 
@@ -112,5 +114,55 @@ export default function createProbableLocationRunService({
     return { ready: false, status: "pending" };
   }
 
-  return { runForListing, readStored, engine };
+  /**
+   * Diagnostic admin : données utilisées pour la zone probable (cache enrichissement),
+   * indépendamment de l'affichage carte « adresse réelle ».
+   */
+  function readDebug(listing) {
+    const row = repositories.enrichments.findOne(
+      listing.id,
+      PROBABLE_LOCATION_PROVIDER
+    );
+    const description = String(listing?.description || "").trim();
+    const hasUserGeo =
+      Number.isFinite(listing?.user_lat) && Number.isFinite(listing?.user_lng);
+    const cachedEstimate =
+      row?.status === "ok" && row.data?.result ? row.data.result : null;
+
+    return {
+      listingId: listing.id,
+      inputs: {
+        city: listing.city || null,
+        postalCode: listing.postal_code || null,
+        descriptionLength: description.length,
+        descriptionPreview: description.slice(0, 1200),
+        userAddress: listing.user_address || null,
+        userGeocoded: hasUserGeo,
+        userLat: hasUserGeo ? listing.user_lat : null,
+        userLng: hasUserGeo ? listing.user_lng : null,
+      },
+      mapUi: {
+        mode: hasUserGeo ? "precise_address" : "probable_zone",
+        note: hasUserGeo
+          ? "La carte affiche l'adresse réelle ; le détail ci-dessous correspond au dernier calcul « zone probable » (cache), s'il existe."
+          : "La carte affiche la zone probable à partir du cache ci-dessous.",
+      },
+      enrichment: row
+        ? {
+            status: row.status,
+            error: row.error || null,
+            fetchedAt: row.fetched_at || null,
+          }
+        : null,
+      cache: {
+        currentFingerprint: probableLocationInputFingerprint(listing),
+        storedFingerprint: row?.data?.inputFingerprint || null,
+        valid: probableLocationCacheValid(row, listing),
+      },
+      clientStored: readStored(listing),
+      estimate: cachedEstimate,
+    };
+  }
+
+  return { runForListing, readStored, readDebug, engine };
 }

@@ -89,6 +89,7 @@ withFixtureApp("un nouveau provider est découvert sans inscription", async (ctx
     "financing",
     "delinquance",
     "delinquance-dept",
+    "population",
     "immo-data",
     "immo-data-dept",
     "dvf-local",

@@ -1,0 +1,147 @@
+<%
+  const pct = function (v) {
+    if (v == null || !isFinite(v)) return '—';
+    const s = (Math.round(v * 10) / 10).toLocaleString('fr-FR');
+    return (v > 0 ? '+' : '') + s + '\u00a0%';
+  };
+
+  const communeSeries = data.commune || {};
+  const communePts = communeSeries.points || [];
+  const deptPts = (data.department_series && data.department_series.points) || [];
+  const latest = communeSeries.latest || communePts[communePts.length - 1] || null;
+  const first = communeSeries.first || communePts[0] || null;
+  const variations = communeSeries.variations || {};
+
+  const cityLabel = data.commune_name || listing.city || 'Commune';
+  const deptLabel = deptPts.length && data.department
+    ? (data.department.name || data.department.code)
+    : null;
+
+  const yearSet = {};
+  communePts.forEach(function (p) { yearSet[p.year] = true; });
+  deptPts.forEach(function (p) { yearSet[p.year] = true; });
+  const years = Object.keys(yearSet).map(Number).sort(function (a, b) { return a - b; });
+  const pick = function (pts, year, field) {
+    const p = pts.find(function (row) { return row.year === year; });
+    return p && p[field] != null && isFinite(p[field]) ? p[field] : null;
+  };
+  const series = {
+    labels: years,
+    interval: 'yearly',
+    xLinear: true,
+    valueKind: 'population',
+    cityLabel: cityLabel,
+    deptLabel: deptLabel,
+    cityIndex: years.map(function (y) { return pick(communePts, y, 'index'); }),
+    cityValues: years.map(function (y) { return pick(communePts, y, 'population'); }),
+    deptIndex: years.map(function (y) { return pick(deptPts, y, 'index'); }),
+    deptValues: years.map(function (y) { return pick(deptPts, y, 'population'); }),
+  };
+  const seriesJson = JSON.stringify(series).replace(/</g, '\\u003c');
+
+  const horizons = [
+    { key: 5, label: '5 ans' },
+    { key: 10, label: '10 ans' },
+    { key: 'since_first', label: first ? 'Depuis ' + first.year : 'Depuis l\'origine' },
+  ];
+  const idPrefix = 'population';
+%>
+<% if (communePts.length >= 2) { %>
+  <details class="delinquance__details pricem2__evolution-details" data-pricem2-evolution>
+    <summary class="delinquance__summary">
+      <span class="delinquance__summary-text">
+        <span class="delinquance__summary-label">Évolution de la population</span>
+        <span class="delinquance__summary-hint">
+          <span class="delinquance__summary-hint--closed">
+            <% if (latest) { %><%= fmt.number(latest.population) %> hab. en <%= latest.year %><% } %><% if (variations[10] != null) { %> · <%= pct(variations[10]) %> sur 10 ans<% } %><% if (deptLabel) { %> · comparaison avec le département (<%= deptLabel %>)<% } %>
+          </span>
+          <span class="delinquance__summary-hint--open">Replier le graphique</span>
+        </span>
+      </span>
+      <span class="delinquance__summary-aside" aria-hidden="true">
+        <span class="delinquance__summary-chevron"></span>
+      </span>
+    </summary>
+
+    <div class="delinquance__details-body pricem2__evolution">
+      <div class="pricem2__type-panel is-active"
+        id="<%= idPrefix %>-panel"
+        data-pricem2-panel="population">
+
+        <div
+          class="pricem2__periods pricem2__periods--<%= horizons.length %>"
+          role="list"
+          aria-label="Variations de la population communale">
+          <% horizons.forEach(function (horizon) {
+            const value = variations[horizon.key];
+            const tone =
+              value != null
+                ? (value > 0 ? 'is-up' : value < 0 ? 'is-down' : 'is-flat')
+                : 'is-flat';
+          %>
+            <div class="pricem2__period" role="listitem">
+              <span class="pricem2__period-label"><%= horizon.label %></span>
+              <% if (value != null) { %>
+                <span class="pricem2__period-value <%= tone %>"><%= pct(value) %></span>
+              <% } else { %>
+                <span class="pricem2__period-value is-flat" aria-hidden="true">—</span>
+                <span class="visually-hidden">Variation <%= horizon.label %> : indisponible</span>
+              <% } %>
+            </div>
+          <% }); %>
+        </div>
+
+        <div class="pricem2__chart">
+          <canvas
+            data-pricem2-chart
+            role="img"
+            aria-label="Évolution indexée de la population à <%= cityLabel %><% if (deptLabel) { %> et dans le département <%= deptLabel %><% } %>"></canvas>
+          <script type="application/json" class="pricem2__chart-config"><%- seriesJson %></script>
+        </div>
+
+        <ul class="pricem2__legend" aria-label="Séries du graphique">
+          <li>
+            <button
+              type="button"
+              class="pricem2__legend-item is-on"
+              data-pricem2-legend-series="city"
+              aria-pressed="true">
+              <span class="pricem2__legend-swatch pricem2__legend-swatch--city" aria-hidden="true"></span>
+              <%= cityLabel %>
+            </button>
+          </li>
+          <% if (deptLabel) { %>
+            <li>
+              <button
+                type="button"
+                class="pricem2__legend-item is-on"
+                data-pricem2-legend-series="dept"
+                aria-pressed="true">
+                <span class="pricem2__legend-swatch pricem2__legend-swatch--dept" aria-hidden="true"></span>
+                <%= deptLabel %>
+              </button>
+            </li>
+          <% } %>
+        </ul>
+      </div>
+
+      <div class="delinquance__meta">
+        <% if (data.disclaimer) { %>
+          <p class="delinquance__note"><%= data.disclaimer %></p>
+        <% } %>
+        <% if (provider && provider.source) { %>
+          <p class="provider-source delinquance__source">
+            Source :
+            <% if (provider.sourceUrl) { %>
+              <a href="<%= provider.sourceUrl %>" target="_blank" rel="noreferrer noopener"><%= provider.source %></a>
+            <% } else { %>
+              <%= provider.source %>
+            <% } %>
+          </p>
+        <% } %>
+      </div>
+    </div>
+  </details>
+<% } else { %>
+  <p class="field__hint">Série de population insuffisante pour tracer l'évolution.</p>
+<% } %>

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Carnet de Visites",
   "short_name": "Carnet de Visites",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Temps de trajet, prix médians et données de la commune sur chaque annonce, puis sauvegarde du bien dans votre carnet.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -51,6 +51,7 @@
         "*://*.leboncoin.fr/*"
       ],
       "js": [
+        "src/listing-id.js",
         "src/listing-page.js",
         "src/seloger-ufrn.js",
         "src/listing.js",

@@ -1,0 +1,511 @@
+<%
+  const incomeChips = [
+    ["salary", "Salaire"],
+    ["bonus", "Primes, 13e mois"],
+    ["rental", "Loyers perçus"],
+    ["pension", "Retraite, pension"],
+    ["freelance", "Indépendant"],
+    ["benefits", "Allocations"],
+    ["other", "Autre"],
+  ];
+  const chargeChips = [
+    ["mortgage", "Crédit immobilier"],
+    ["consumer", "Crédit auto, conso"],
+    ["revolving", "Crédit renouvelable"],
+    ["lease", "LOA, LLD"],
+    ["alimony", "Pension versée"],
+    ["rent", "Loyer conservé"],
+    ["other", "Autre charge"],
+  ];
+  const plusIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+  const closeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+%>
+<div class="debt" data-debt>
+  <div class="page-head debt__head">
+    <div>
+      <h1 class="page-title">Mon taux d'endettement</h1>
+      <p class="page-subtitle debt__intro">
+        Ajoutez vos revenus puis vos crédits : le résultat se met à jour à chaque saisie.
+        Il vous manque un papier ? Laissez la case vide ou choisissez « Je ne sais pas »,
+        on estime et on vous indique ce qui reste à préciser.
+      </p>
+    </div>
+    <div class="debt__head-aside">
+      <span class="debt-save" data-save-status data-state="idle" role="status">
+        <span class="debt-save__dot" aria-hidden="true"></span>
+        <span data-save-text>Enregistré automatiquement</span>
+      </span>
+      <button type="button" class="btn btn--ghost btn--sm" data-reset>Tout effacer</button>
+    </div>
+  </div>
+
+  <noscript>
+    <p class="panel">Cette page a besoin de JavaScript pour calculer votre endettement.</p>
+  </noscript>
+
+  <div class="debt__grid">
+    <div class="debt__form">
+      <!-- Étape 1 : revenus -->
+      <section class="panel debt-section" id="debt-incomes" aria-labelledby="debt-incomes-title">
+        <div class="debt-section__head">
+          <span class="debt-step" aria-hidden="true">1</span>
+          <div>
+            <h2 class="panel__title" id="debt-incomes-title">Vos revenus</h2>
+            <p class="debt-section__sub">Ce qui entre chaque mois, avant impôt.</p>
+          </div>
+          <output class="debt-section__total" data-total="incomes"></output>
+        </div>
+
+        <ul class="debt-list" data-list="incomes"></ul>
+        <p class="debt-empty" data-empty="incomes">
+          Commencez par votre salaire : c'est la base du calcul.
+        </p>
+
+        <div class="debt-add" role="group" aria-label="Ajouter un revenu">
+          <span class="debt-add__label">Ajouter</span>
+          <% incomeChips.forEach(function ([type, label]) { %>
+            <button type="button" class="debt-chip" data-add="incomes" data-type="<%= type %>">
+              <%- plusIcon %><%= label %>
+            </button>
+          <% }) %>
+        </div>
+      </section>
+
+      <!-- Étape 2 : crédits et charges -->
+      <section class="panel debt-section" id="debt-charges" aria-labelledby="debt-charges-title">
+        <div class="debt-section__head">
+          <span class="debt-step" aria-hidden="true">2</span>
+          <div>
+            <h2 class="panel__title" id="debt-charges-title">Vos crédits et charges</h2>
+            <p class="debt-section__sub">Tout ce que la banque verra partir chaque mois sur vos relevés.</p>
+          </div>
+          <output class="debt-section__total" data-total="charges"></output>
+        </div>
+
+        <ul class="debt-list" data-list="charges"></ul>
+        <p class="debt-empty" data-empty="charges">
+          Aucun crédit en cours ? Rien à ajouter ici, votre marge est entière.
+        </p>
+
+        <div class="debt-add" role="group" aria-label="Ajouter un crédit ou une charge">
+          <span class="debt-add__label">Ajouter</span>
+          <% chargeChips.forEach(function ([type, label]) { %>
+            <button type="button" class="debt-chip" data-add="charges" data-type="<%= type %>">
+              <%- plusIcon %><%= label %>
+            </button>
+          <% }) %>
+        </div>
+      </section>
+
+      <!-- Étape 3 : projet -->
+      <section class="panel debt-section" id="debt-project" aria-labelledby="debt-project-title">
+        <div class="debt-section__head">
+          <span class="debt-step" aria-hidden="true">3</span>
+          <div>
+            <h2 class="panel__title" id="debt-project-title">Votre projet</h2>
+            <p class="debt-section__sub">Facultatif : vérifiez une mensualité précise ou découvrez votre capacité.</p>
+          </div>
+        </div>
+
+        <div class="debt-banner" data-prefill-banner hidden>
+          <p data-prefill-text></p>
+          <button type="button" class="btn btn--ghost btn--sm" data-prefill-undo>Ne pas l'utiliser</button>
+        </div>
+
+        <div class="debt-project">
+          <div class="debt-field debt-field--wide">
+            <label class="field__label" for="debt-project-monthly">Mensualité du futur crédit</label>
+            <div class="debt-money">
+              <input id="debt-project-monthly" class="input" type="text" inputmode="numeric" autocomplete="off" data-amount data-project-field="monthly" placeholder="Laissez vide si vous ne savez pas" aria-describedby="debt-project-monthly-hint" />
+              <span class="debt-money__unit">€ / mois</span>
+            </div>
+            <p class="field__hint" id="debt-project-monthly-hint">
+              Assurance comprise. Sans mensualité, on vous montre jusqu'où vous pouvez aller.
+            </p>
+          </div>
+
+          <fieldset class="debt-field">
+            <legend class="field__label">Durée envisagée</legend>
+            <div class="debt-seg" data-seg>
+              <% [15, 20, 25].forEach(function (years) { %>
+                <label class="debt-seg__opt">
+                  <input type="radio" name="debt-project-years" value="<%= years %>" data-project-field="years" />
+                  <span><%= years %> ans</span>
+                </label>
+              <% }) %>
+              <span class="debt-seg__thumb" aria-hidden="true"></span>
+            </div>
+          </fieldset>
+
+          <div class="debt-field">
+            <label class="field__label" for="debt-project-rate">Taux du crédit</label>
+            <div class="debt-money">
+              <input id="debt-project-rate" class="input" type="text" inputmode="decimal" autocomplete="off" data-project-field="rate" aria-describedby="debt-project-rate-hint" />
+              <span class="debt-money__unit">%</span>
+            </div>
+            <p class="field__hint" id="debt-project-rate-hint">Hors assurance. Taux moyen du moment pré-rempli.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Résultat -->
+    <aside class="debt__aside" aria-label="Résultat">
+      <div class="debt-result" id="debt-result" data-result>
+        <div class="debt-result__top">
+          <p class="panel__eyebrow" data-out="caption">Aujourd'hui</p>
+          <span class="debt-precision" data-precision hidden></span>
+        </div>
+
+        <div class="debt-gauge" data-zone="none">
+          <svg viewBox="0 0 200 116" class="debt-gauge__svg" aria-hidden="true">
+            <path class="debt-gauge__zone debt-gauge__zone--ok" d="M20 100 A80 80 0 0 1 180 100" pathLength="100" />
+            <path class="debt-gauge__zone debt-gauge__zone--warn" d="M20 100 A80 80 0 0 1 180 100" pathLength="100" />
+            <path class="debt-gauge__zone debt-gauge__zone--over" d="M20 100 A80 80 0 0 1 180 100" pathLength="100" />
+            <path class="debt-gauge__fill" d="M20 100 A80 80 0 0 1 180 100" pathLength="100" data-gauge-fill />
+            <line class="debt-gauge__tick" data-gauge-tick x1="0" y1="0" x2="0" y2="0" />
+            <text class="debt-gauge__tick-label" data-gauge-tick-label x="0" y="0" text-anchor="middle">35 %</text>
+            <g class="debt-gauge__ghost" data-gauge-ghost>
+              <line x1="100" y1="46" x2="100" y2="26" />
+            </g>
+            <g class="debt-gauge__needle" data-gauge-needle>
+              <path d="M100 48 L95 34 L100 14 L105 34 Z" />
+            </g>
+          </svg>
+          <div class="debt-gauge__value">
+            <strong data-out="ratio">—</strong>
+            <span class="debt-gauge__sub" data-out="ratio-now" hidden></span>
+            <span class="debt-delta" data-delta hidden></span>
+          </div>
+        </div>
+
+        <p class="debt-verdict" data-verdict aria-live="polite"></p>
+
+        <dl class="debt-stats">
+          <div class="debt-stats__row">
+            <dt>Revenus retenus</dt>
+            <dd data-out="income">—</dd>
+          </div>
+          <div class="debt-stats__row">
+            <dt>Crédits et charges</dt>
+            <dd data-out="charges">—</dd>
+          </div>
+          <div class="debt-stats__row" data-out-row="project" hidden>
+            <dt>Futur crédit</dt>
+            <dd data-out="project">—</dd>
+          </div>
+          <div class="debt-stats__row debt-stats__row--strong">
+            <dt data-out="room-label">Mensualité possible</dt>
+            <dd data-out="room">—</dd>
+          </div>
+          <div class="debt-stats__row debt-stats__row--strong">
+            <dt>
+              Capacité d'emprunt
+              <span class="debt-stats__sub" data-out="capacity-sub"></span>
+            </dt>
+            <dd data-out="capacity">—</dd>
+          </div>
+          <div class="debt-stats__row">
+            <dt>Reste à vivre</dt>
+            <dd data-out="rest">—</dd>
+          </div>
+        </dl>
+
+        <div class="debt-budget">
+          <p class="debt-budget__title">
+            Où partent vos <span data-out="limit">35 %</span>
+          </p>
+          <div class="debt-budget__bar" data-budget-bar>
+            <span class="debt-budget__limit" data-budget-limit aria-hidden="true"></span>
+          </div>
+          <ul class="debt-budget__legend" data-budget-legend></ul>
+        </div>
+
+        <ul class="debt-tips" data-tips aria-label="Conseils"></ul>
+
+        <p class="debt-result__note">
+          Estimation indicative fondée sur la règle du HCSF (35 % assurance comprise).
+          Chaque banque a ses usages : ce calcul prépare votre rendez-vous, il ne le remplace pas.
+        </p>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Résumé mobile : visible quand le résultat sort de l'écran. -->
+  <button type="button" class="debt-dock" data-dock data-zone="none" aria-hidden="true" tabindex="-1">
+    <span class="debt-dock__ratio" data-dock-ratio>—</span>
+    <span class="debt-dock__text" data-dock-text>Ajoutez un revenu</span>
+    <span class="debt-dock__cta">Voir le détail</span>
+  </button>
+
+  <div class="debt-toast" data-toast role="status" aria-live="polite">
+    <span data-toast-text></span>
+    <button type="button" class="debt-toast__undo" data-toast-undo>Annuler</button>
+  </div>
+
+  <!-- Modèles de lignes -->
+  <template id="debt-tpl-income">
+    <li class="debt-row" data-row>
+      <div class="debt-row__clip">
+        <div class="debt-row__card">
+          <div class="debt-row__head">
+            <span class="debt-row__type" data-type-label></span>
+            <input class="debt-row__name" type="text" maxlength="60" autocomplete="off" data-field="label" />
+            <output class="debt-row__value" data-row-value></output>
+            <button type="button" class="debt-row__remove" data-remove><%- closeIcon %></button>
+          </div>
+          <div class="debt-row__body">
+            <div class="debt-field">
+              <label class="field__label" data-label-for="amount">Montant</label>
+              <div class="debt-money">
+                <input class="input" type="text" inputmode="numeric" autocomplete="off" data-amount data-field="amount" placeholder="0" />
+                <span class="debt-money__unit">€</span>
+              </div>
+            </div>
+            <fieldset class="debt-field">
+              <legend class="field__label">Versé</legend>
+              <div class="debt-seg" data-seg>
+                <label class="debt-seg__opt"><input type="radio" value="month" data-field="frequency" /><span>par mois</span></label>
+                <label class="debt-seg__opt"><input type="radio" value="year" data-field="frequency" /><span>par an</span></label>
+                <span class="debt-seg__thumb" aria-hidden="true"></span>
+              </div>
+            </fieldset>
+          </div>
+          <label class="debt-check" data-only="benefits">
+            <input type="checkbox" data-field="counted" />
+            <span>Ma banque les prend en compte</span>
+          </label>
+          <p class="debt-row__hint" data-hint></p>
+          <ul class="debt-notes" data-notes></ul>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <template id="debt-tpl-charge">
+    <li class="debt-row" data-row>
+      <div class="debt-row__clip">
+        <div class="debt-row__card">
+          <div class="debt-row__head">
+            <span class="debt-row__type" data-type-label></span>
+            <input class="debt-row__name" type="text" maxlength="60" autocomplete="off" data-field="label" />
+            <output class="debt-row__value" data-row-value></output>
+            <button type="button" class="debt-row__remove" data-remove><%- closeIcon %></button>
+          </div>
+
+          <div class="debt-seg debt-seg--mode" data-seg data-only-kind="loan revolving">
+            <label class="debt-seg__opt"><input type="radio" value="known" data-field="mode" /><span>Je connais la mensualité</span></label>
+            <label class="debt-seg__opt"><input type="radio" value="estimate" data-field="mode" /><span>Je ne la connais pas</span></label>
+            <span class="debt-seg__thumb" aria-hidden="true"></span>
+          </div>
+
+          <div class="debt-reveal" data-reveal="known">
+            <div class="debt-reveal__inner">
+              <div class="debt-row__body">
+                <div class="debt-field">
+                  <label class="field__label" data-label-for="monthly" data-monthly-label>Mensualité</label>
+                  <div class="debt-money">
+                    <input class="input" type="text" inputmode="numeric" autocomplete="off" data-amount data-field="monthly" placeholder="0" />
+                    <span class="debt-money__unit" data-monthly-unit>€ / mois</span>
+                  </div>
+                </div>
+                <fieldset class="debt-field" data-only-kind="charge">
+                  <legend class="field__label">Payé</legend>
+                  <div class="debt-seg" data-seg>
+                    <label class="debt-seg__opt"><input type="radio" value="month" data-field="frequency" /><span>par mois</span></label>
+                    <label class="debt-seg__opt"><input type="radio" value="year" data-field="frequency" /><span>par an</span></label>
+                    <span class="debt-seg__thumb" aria-hidden="true"></span>
+                  </div>
+                </fieldset>
+              </div>
+              <label class="debt-check" data-only-kind="loan">
+                <input type="checkbox" data-field="insuranceIncluded" />
+                <span>L'assurance est comprise dans ce montant</span>
+              </label>
+              <div class="debt-reveal" data-reveal="insurance">
+                <div class="debt-reveal__inner">
+                  <div class="debt-field debt-field--inset">
+                    <label class="field__label" data-label-for="insurance">Assurance de ce crédit</label>
+                    <div class="debt-money">
+                      <input class="input" type="text" inputmode="numeric" autocomplete="off" data-amount data-field="insurance" placeholder="Laissez vide si vous ne savez pas" />
+                      <span class="debt-money__unit">€ / mois</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="debt-reveal" data-reveal="estimate-loan">
+            <div class="debt-reveal__inner">
+              <p class="debt-row__lead">
+                Pas de tableau d'amortissement sous la main ? Donnez ce que vous savez, même
+                arrondi : on calcule une mensualité approchée, assurance comprise.
+              </p>
+              <div class="debt-row__body debt-row__body--3">
+                <div class="debt-field">
+                  <label class="field__label" data-label-for="principal">Montant emprunté</label>
+                  <div class="debt-money">
+                    <input class="input" type="text" inputmode="numeric" autocomplete="off" data-amount data-field="principal" placeholder="0" />
+                    <span class="debt-money__unit">€</span>
+                  </div>
+                </div>
+                <div class="debt-field">
+                  <label class="field__label" data-label-for="years">Durée</label>
+                  <div class="debt-money">
+                    <input class="input" type="text" inputmode="decimal" autocomplete="off" data-field="years" placeholder="0" />
+                    <span class="debt-money__unit">ans</span>
+                  </div>
+                </div>
+                <div class="debt-field">
+                  <label class="field__label" data-label-for="rate">Taux <span class="debt-optional">facultatif</span></label>
+                  <div class="debt-money">
+                    <input class="input" type="text" inputmode="decimal" autocomplete="off" data-field="rate" data-rate-placeholder />
+                    <span class="debt-money__unit">%</span>
+                  </div>
+                </div>
+              </div>
+              <div class="debt-field debt-field--inset">
+                <label class="field__label" data-label-for="start">Début du crédit <span class="debt-optional">facultatif, sert à deviner la fin</span></label>
+                <div
+                  class="field date-range-picker debt-day-picker"
+                  data-debt-day-picker
+                  data-debt-day-placeholder="Choisir un mois"
+                >
+                  <input type="hidden" data-field="start" value="" />
+                  <button
+                    type="button"
+                    class="date-range-picker__trigger"
+                    data-cal-trigger
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                  >
+                    <svg class="date-range-picker__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <rect x="3" y="4" width="18" height="18" rx="2" />
+                      <path d="M16 2v4M8 2v4M3 10h18" />
+                    </svg>
+                    <span class="date-range-picker__label" data-cal-trigger-label>Choisir un mois</span>
+                    <svg class="date-range-picker__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                  <div
+                    class="date-range-picker__popover debt-day-picker__popover"
+                    data-cal-popover
+                    hidden
+                    role="dialog"
+                    aria-label="Choisir le mois de début du crédit"
+                  >
+                    <div class="calendar" data-calendar>
+                      <div class="calendar__head">
+                        <button type="button" class="calendar__nav" data-cal-prev aria-label="Mois précédent">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+                        </button>
+                        <span class="calendar__title" data-cal-title aria-live="polite"></span>
+                        <button type="button" class="calendar__nav" data-cal-next aria-label="Mois suivant">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+                        </button>
+                      </div>
+                      <div class="calendar__weekdays" aria-hidden="true">
+                        <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+                      </div>
+                      <div class="calendar__grid" data-cal-grid role="grid"></div>
+                    </div>
+                    <p class="date-range-picker__hint" data-cal-hint>Cliquez un jour du mois concerné.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="debt-reveal" data-reveal="estimate-revolving">
+            <div class="debt-reveal__inner">
+              <div class="debt-field debt-field--inset">
+                <label class="field__label" data-label-for="principal">Plafond autorisé</label>
+                <div class="debt-money">
+                  <input class="input" type="text" inputmode="numeric" autocomplete="off" data-amount data-field="principal" placeholder="0" />
+                  <span class="debt-money__unit">€</span>
+                </div>
+                <p class="field__hint">Inscrit sur votre relevé de compte renouvelable. On compte 3 % du plafond par mois, comme la plupart des banques.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="debt-reveal" data-reveal="end">
+            <div class="debt-reveal__inner">
+              <div class="debt-field debt-field--inset debt-end">
+                <label class="field__label" data-label-for="end">Fin du crédit</label>
+                <div class="debt-end__row">
+                  <div
+                    class="field date-range-picker debt-day-picker"
+                    data-debt-day-picker
+                    data-debt-day-placeholder="Choisir un mois"
+                  >
+                    <input type="hidden" data-field="end" value="" />
+                    <button
+                      type="button"
+                      class="date-range-picker__trigger"
+                      data-cal-trigger
+                      aria-haspopup="dialog"
+                      aria-expanded="false"
+                    >
+                      <svg class="date-range-picker__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="3" y="4" width="18" height="18" rx="2" />
+                        <path d="M16 2v4M8 2v4M3 10h18" />
+                      </svg>
+                      <span class="date-range-picker__label" data-cal-trigger-label>Choisir un mois</span>
+                      <svg class="date-range-picker__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                    <div
+                      class="date-range-picker__popover debt-day-picker__popover"
+                      data-cal-popover
+                      hidden
+                      role="dialog"
+                      aria-label="Choisir le mois de fin du crédit"
+                    >
+                      <div class="calendar" data-calendar>
+                        <div class="calendar__head">
+                          <button type="button" class="calendar__nav" data-cal-prev aria-label="Mois précédent">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+                          </button>
+                          <span class="calendar__title" data-cal-title aria-live="polite"></span>
+                          <button type="button" class="calendar__nav" data-cal-next aria-label="Mois suivant">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+                          </button>
+                        </div>
+                        <div class="calendar__weekdays" aria-hidden="true">
+                          <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+                        </div>
+                        <div class="calendar__grid" data-cal-grid role="grid"></div>
+                      </div>
+                      <p class="date-range-picker__hint" data-cal-hint>Cliquez un jour du mois concerné.</p>
+                    </div>
+                  </div>
+                  <button type="button" class="debt-link" data-end-unknown>Je ne sais pas</button>
+                </div>
+                <p class="field__hint">Vous ne connaissez que l'année ? Choisissez décembre, c'est suffisant.</p>
+              </div>
+            </div>
+          </div>
+
+          <label class="debt-check" data-only-kind="loan revolving lease">
+            <input type="checkbox" data-field="settled" />
+            <span>Il sera soldé avant ou au moment de l'achat (revente, rachat…)</span>
+          </label>
+
+          <p class="debt-row__hint" data-hint></p>
+          <ul class="debt-notes" data-notes></ul>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <script type="application/json" id="debt-initial"><%- JSON.stringify({
+    state: debtState,
+    defaults: debtDefaults,
+    prefill: debtPrefill,
+    isNew: debtIsNew,
+  }).replace(/</g, "\\u003c") %></script>
+</div>

@@ -1,0 +1,1560 @@
+<%#
+  Design system de Carnet de Visites — référence UI / UX du site.
+
+  Source de vérité pour toute nouvelle page ou fonctionnalité (voir la rule
+  `.cursor/rules/design-system.mdc`). Chaque spécimen est rendu avec le vrai
+  app.css : l'aperçu et le code affiché viennent du même extrait.
+
+  Tokens : `app/src/lib/design-system.js` (synchronisés avec `:root` par test).
+  Icônes : `app/src/lib/icons.js` (catalogue rendu depuis le sprite).
+  Patterns : `app/src/lib/design-system-patterns.js` (ids stables pour les prompts, ancres #pattern-*).
+  Nouveau composant ou nouvelle variante = l'ajouter ici dans le même changement.
+%>
+<%
+  // Écrit le tag EJS littéral dans les extraits sans fermer ce bloc.
+  const CSRF = "<" + "%= csrfToken %" + ">";
+  const ICON_PLUS = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>`;
+  const ICON_TRASH = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>`;
+  // Sans attribut fill : le remplissage or de l'étoile est piloté par le CSS.
+  const ICON_STAR = `<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.52 2.3a.53.53 0 0 1 .95 0l2.31 4.68a2.12 2.12 0 0 0 1.6 1.16l5.16.76a.53.53 0 0 1 .3.9l-3.74 3.64a2.12 2.12 0 0 0-.61 1.88l.88 5.14a.53.53 0 0 1-.77.56l-4.62-2.43a2.12 2.12 0 0 0-1.97 0L6.4 21.01a.53.53 0 0 1-.77-.56l.88-5.14a2.12 2.12 0 0 0-.61-1.88L2.16 9.8a.53.53 0 0 1 .3-.9l5.16-.76a2.12 2.12 0 0 0 1.6-1.16z" /></svg>`;
+
+  const S = {};
+
+  S.btnVariants = `
+<div class="btn-row">
+  <button type="button" class="btn btn--green">Enregistrer</button>
+  <button type="button" class="btn btn--lime">Ajouter au projet</button>
+  <button type="button" class="btn btn--dark">Exporter</button>
+  <button type="button" class="btn btn--ghost">Annuler</button>
+  <button type="button" class="btn">Par défaut</button>
+</div>`;
+
+  S.btnDanger = `
+<div class="btn-row">
+  <button type="button" class="btn btn--danger">Supprimer le projet</button>
+  <button type="button" class="btn btn--danger-solid">Supprimer</button>
+  <button type="button" class="btn btn--ghost btn--sm btn--danger-ghost">Retirer</button>
+</div>`;
+
+  S.btnSizes = `
+<div class="btn-row">
+  <button type="button" class="btn btn--green btn--sm">Petit</button>
+  <button type="button" class="btn btn--ghost btn--icon-only" aria-label="Ajouter">${ICON_PLUS}</button>
+  <button type="button" class="btn btn--green">${ICON_PLUS} Avec icône</button>
+  <button type="button" class="btn btn--green" disabled>Désactivé</button>
+  <button type="submit" class="btn btn--green" disabled><span class="btn__spinner" aria-hidden="true"></span> Envoi…</button>
+</div>`;
+
+  S.btnFav = `
+<div class="btn-row">
+  <button type="button" class="btn btn--sm btn--icon-only btn--ghost btn--fav-add detail-head__fav-btn" aria-label="Ajouter aux favoris" aria-pressed="false">${ICON_STAR}</button>
+  <button type="button" class="btn btn--sm btn--icon-only btn--gold detail-head__fav-btn" aria-label="Retirer des favoris" aria-pressed="true">${ICON_STAR}</button>
+</div>`;
+
+  S.pills = `
+<div class="filters">
+  <div class="filters__group">
+    <a class="pill is-active" href="#pastilles" aria-current="true">Toutes <span class="pill__count">24</span></a>
+    <a class="pill" href="#pastilles">À visiter <span class="pill__count">6</span></a>
+    <a class="pill" href="#pastilles">Visitées <span class="pill__count">3</span></a>
+  </div>
+  <span class="filters__divider" aria-hidden="true"></span>
+  <label class="field-inline">Trier
+    <select class="select select--pill">
+      <option>Plus récentes</option>
+      <option>Prix croissant</option>
+    </select>
+  </label>
+</div>`;
+
+  S.badges = `
+<div class="btn-row">
+  <span class="badge badge--neutral">Neutre</span>
+  <span class="badge badge--muted">Archivée</span>
+  <span class="badge badge--info">Nouveau</span>
+  <span class="badge badge--accent">À visiter</span>
+  <span class="badge badge--success">Offre acceptée</span>
+  <span class="badge badge--warn">Location</span>
+  <span class="badge badge--error">Refusée</span>
+  <span class="badge badge--down">Baisse 5 %</span>
+  <span class="badge badge--up">Hausse 3 %</span>
+  <span class="badge badge--dpe">DPE C</span>
+</div>`;
+
+  S.sourceBadges = `
+<div class="btn-row">
+  <span class="visit-source visit-source--structured" title="Donnée de l'annonce">Annonce</span>
+  <span class="visit-source visit-source--description" title="Extrait de la description">Description</span>
+  <span class="visit-source visit-source--ai_photo" title="Analyse IA des photos">IA photos</span>
+  <span class="visit-source visit-source--user" title="Corrigé depuis la fiche">Vous</span>
+  <span class="visit-source visit-source--computed" title="Calculé : prix ÷ surface habitable">Calculé</span>
+  <span class="visit-source visit-source--reference" title="Déduit d'un référentiel public">Référentiel</span>
+  <span class="kv__prev" title="Ancienne valeur (Donnée de l'annonce)">
+    <svg class="wi" aria-hidden="true"><use href="#wi-undo"></use></svg>
+    62 m²
+  </span>
+</div>`;
+
+  S.amountStepper = `
+<div class="field">
+  <label class="field__label" for="ds-rate">Taux nominal (%)</label>
+  <div class="amount-stepper">
+    <input id="ds-rate" class="input input--sm" type="text" inputmode="decimal" autocomplete="off" name="rate"
+      data-step="0.01" data-min="0" data-max="25" data-decimals="2" value="3,45" />
+    <span class="amount-stepper__controls">
+      <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le taux de 0,01 point"></button>
+      <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le taux de 0,01 point"></button>
+    </span>
+  </div>
+</div>`;
+
+  S.datePickerRange = `
+<div class="field date-range-picker" data-date-range-picker>
+  <span class="field__label" id="ds-range-label">Période</span>
+  <input type="hidden" name="date_from" data-cal-from />
+  <input type="hidden" name="date_to" data-cal-to />
+  <button type="button" class="date-range-picker__trigger" data-cal-trigger aria-labelledby="ds-range-label" aria-expanded="false" aria-haspopup="dialog">
+    <svg class="date-range-picker__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
+    </svg>
+    <span class="date-range-picker__label" data-cal-trigger-label>Choisir une plage de dates</span>
+    <svg class="date-range-picker__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  </button>
+  <div class="date-range-picker__popover" data-cal-popover hidden role="dialog" aria-label="Choisir une plage de dates">
+    <div class="calendar" data-calendar>
+      <div class="calendar__head">
+        <button type="button" class="calendar__nav" data-cal-prev aria-label="Mois précédent">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+        </button>
+        <span class="calendar__title" data-cal-title aria-live="polite"></span>
+        <button type="button" class="calendar__nav" data-cal-next aria-label="Mois suivant">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+        </button>
+      </div>
+      <div class="calendar__weekdays" aria-hidden="true">
+        <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+      </div>
+      <div class="calendar__grid" data-cal-grid role="grid"></div>
+    </div>
+    <p class="date-range-picker__hint" data-cal-hint>Cliquez la date de début, puis la date de fin.</p>
+  </div>
+</div>`;
+
+  S.datePickerSingle = `
+<div class="field date-range-picker" data-ds-cal-demo data-date-placeholder="Choisir une date">
+  <span class="field__label" id="ds-day-label">Date</span>
+  <input type="hidden" name="start_date" data-field="start_date" value="" />
+  <button type="button" class="date-range-picker__trigger" data-cal-trigger aria-labelledby="ds-day-label" aria-expanded="false" aria-haspopup="dialog">
+    <svg class="date-range-picker__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
+    </svg>
+    <span class="date-range-picker__label" data-cal-trigger-label>Choisir une date</span>
+    <svg class="date-range-picker__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  </button>
+  <div class="date-range-picker__popover" data-cal-popover hidden role="dialog" aria-label="Choisir une date">
+    <div class="calendar" data-calendar>
+      <div class="calendar__head">
+        <button type="button" class="calendar__nav" data-cal-prev aria-label="Mois précédent">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+        </button>
+        <span class="calendar__title" data-cal-title aria-live="polite"></span>
+        <button type="button" class="calendar__nav" data-cal-next aria-label="Mois suivant">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+        </button>
+      </div>
+      <div class="calendar__weekdays" aria-hidden="true">
+        <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+      </div>
+      <div class="calendar__grid" data-cal-grid role="grid"></div>
+    </div>
+    <p class="date-range-picker__hint" data-cal-hint>Cliquez un jour.</p>
+  </div>
+</div>`;
+
+  S.form = `
+<form class="form" method="post" action="/exemple">
+  <input type="hidden" name="_csrf" value="${CSRF}" />
+
+  <div class="form-errors" role="alert">
+    <ul><li>Le nom du projet est obligatoire.</li></ul>
+  </div>
+
+  <div class="field">
+    <label class="field__label" for="ds-name">Nom du projet</label>
+    <input class="input" id="ds-name" name="name" type="text" required />
+    <p class="field-error">Le nom du projet est obligatoire.</p>
+  </div>
+
+  <div class="field">
+    <label class="field__label" for="ds-budget">Budget maximum <span class="field__optional">(facultatif)</span></label>
+    <input class="input input--narrow" id="ds-budget" name="budget" type="text" inputmode="numeric" />
+    <p class="field__hint">En euros, frais de notaire compris.</p>
+  </div>
+
+  <div class="field">
+    <label class="field__label" for="ds-type">Type de bien</label>
+    <select class="select" id="ds-type" name="type">
+      <option>Maison</option>
+      <option>Appartement</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label class="field__label" for="ds-notes">Notes</label>
+    <textarea class="textarea" id="ds-notes" name="notes"></textarea>
+  </div>
+
+  <div class="btn-row">
+    <button type="submit" class="btn btn--green">Enregistrer</button>
+    <a class="btn btn--ghost" href="/projects">Annuler</a>
+  </div>
+</form>`;
+
+  S.panel = `
+<section class="panel">
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Marché local</p>
+      <h2 class="panel__title">Prix au m²</h2>
+    </div>
+    <div class="panel__head-aside">
+      <button type="button" class="btn btn--ghost btn--sm">Actualiser</button>
+    </div>
+  </div>
+  <p>Contenu du panneau : chiffres, listes clé / valeur, graphiques.</p>
+  <p class="panel__note">Source : DVF, ventes 2021–2025.</p>
+</section>`;
+
+  S.panelVariants = `
+<div class="ds-grid ds-grid--2">
+  <section class="panel panel--green">
+    <p class="panel__eyebrow">Verdict</p>
+    <h2 class="panel__title">Bon rapport qualité-prix</h2>
+    <p>Mise en avant d'une synthèse. <a href="#panneaux">Lien lime</a></p>
+  </section>
+  <section class="panel panel--dark">
+    <p class="panel__eyebrow">Extension</p>
+    <h2 class="panel__title">Données brutes</h2>
+    <p>Bloc technique ou contrasté.</p>
+  </section>
+  <section class="panel panel--flat">
+    <p class="panel__eyebrow">Imbriqué</p>
+    <h2 class="panel__title">Sans ombre</h2>
+    <p>Panneau posé dans un autre conteneur.</p>
+  </section>
+</div>`;
+
+  S.panelDanger = `
+<div class="ds-grid ds-grid--2">
+  <section class="panel danger-zone">
+    <div class="danger-zone__grid">
+      <div class="danger-zone__copy">
+        <div class="panel__head danger-zone__head">
+          <h2 class="panel__title">Supprimer cette annonce</h2>
+        </div>
+        <p class="field__hint">
+          Action irréversible : photos, notes et historique de prix.
+        </p>
+      </div>
+      <div class="danger-zone__actions">
+        <button type="button" class="btn btn--danger">Supprimer l'annonce</button>
+      </div>
+    </div>
+  </section>
+  <div class="detail detail--rejected">
+    <p class="field__hint">
+      <span class="badge badge--error">Cette annonce est écartée</span>
+      — la classe sur le conteneur colore la bordure de chaque <code>.panel</code> enfant.
+    </p>
+    <section class="panel">
+      <div class="panel__head">
+        <h2 class="panel__title">Parcours gelé</h2>
+      </div>
+      <p>Le rouge signale une sortie du pipeline, pas une erreur de saisie.</p>
+    </section>
+    <section class="panel">
+      <p class="panel__eyebrow">Localisation</p>
+      <h2 class="panel__title">Carte</h2>
+      <p>Les panneaux suivants héritent du même trait sans classe supplémentaire.</p>
+    </section>
+  </div>
+</div>`;
+
+  S.card = `
+<div class="grid">
+  <article class="card">
+    <a class="card__media" href="#cartes">
+      <span class="card__media--empty">Pas de photo</span>
+      <span class="card__badges">
+        <span class="badge badge--accent">À visiter</span>
+        <span class="badge badge--down">Baisse 4 %</span>
+      </span>
+    </a>
+    <div class="card__body">
+      <div class="card__headline">
+        <a class="card__title" href="#cartes">Maison 5 pièces · Rambouillet</a>
+        <span class="card__price">385 000 €</span>
+      </div>
+      <p class="card__meta">Maison · 120 m² · 5 pièces · 3 ch.</p>
+      <p class="card__meta card__meta--split">
+        <span>3 208 €/m²</span>
+        <span class="badge badge--dpe">DPE C</span>
+      </p>
+    </div>
+    <div class="card__foot">
+      <span class="card__foot-note">SeLoger · il y a 2 jours</span>
+    </div>
+  </article>
+</div>`;
+
+  S.kv = `
+<div class="kv">
+  <div class="kv__row"><span class="kv__key">Surface</span><span class="kv__value">120 m²</span></div>
+  <div class="kv__row"><span class="kv__key">Terrain</span><span class="kv__value">640 m²</span></div>
+  <div class="kv__row"><span class="kv__key">Année de construction</span><span class="kv__value">1978</span></div>
+</div>`;
+
+  S.tags = `
+<ul class="tags">
+  <li class="badge badge--neutral">Jardin</li>
+  <li class="badge badge--neutral">Garage</li>
+  <li class="badge badge--neutral">Cave</li>
+</ul>`;
+
+  S.steps = `
+<ol class="steps">
+  <li><div><strong>Installez l'extension</strong><br />Elle enrichit chaque annonce.</div></li>
+  <li><div><strong>Authentifiez-vous</strong><br />Un clic, rien à copier.</div></li>
+  <li><div><strong>Enregistrez une annonce</strong><br />Choisissez le projet puis sauvegardez.</div></li>
+</ol>`;
+
+  S.collapse = `
+<details class="delinquance__details">
+  <summary class="delinquance__summary">
+    <span class="delinquance__summary-text">
+      <span class="delinquance__summary-label">Détail par type d'infraction</span>
+      <span class="delinquance__summary-hint">
+        <span class="delinquance__summary-hint--closed">Afficher les indicateurs · taux pour 1&nbsp;000 hab.</span>
+        <span class="delinquance__summary-hint--open">Replier le détail</span>
+      </span>
+    </span>
+    <span class="delinquance__summary-aside" aria-hidden="true">
+      <span class="delinquance__summary-count">12</span>
+      <span class="delinquance__summary-chevron"></span>
+    </span>
+  </summary>
+  <div class="delinquance__details-body">
+    <p>Contenu secondaire : détail, méthode, données brutes.</p>
+  </div>
+</details>`;
+
+  S.modal = `
+<div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="ds-modal-title">
+  <h2 class="modal__title" id="ds-modal-title">Supprimer l'annonce</h2>
+  <p class="modal__message">Supprimer cette annonce ? Cette action est irréversible.</p>
+  <div class="modal__actions">
+    <button type="button" class="btn btn--ghost">Annuler</button>
+    <button type="button" class="btn btn--danger-solid">Supprimer</button>
+  </div>
+</div>`;
+
+  S.confirm = `
+<form method="get" action="/admin/design-system"
+  data-confirm="Supprimer « Maison Rambouillet » du carnet ? Elle sera retirée de tous les projets."
+  data-confirm-title="Supprimer l'annonce"
+  data-confirm-label="Supprimer">
+  <button type="submit" class="btn btn--danger">${ICON_TRASH} Essayer la confirmation</button>
+</form>`;
+
+  S.flash = `
+<div class="flash flash--success" role="status">Projet enregistré.</div>
+<div class="flash flash--info" role="status">Import lancé : vous pouvez quitter cette page.</div>
+<div class="flash flash--error" role="status">Ce compte n'existe plus.</div>`;
+
+  S.toast = `
+<div class="works-toast" role="status">
+  <span>Poste « Toiture » supprimé.</span>
+  <button type="button" class="works-toast__action">Annuler</button>
+</div>`;
+
+  S.loading = `
+<div class="btn-row">
+  <span class="spinner" role="status" aria-label="Chargement"></span>
+  <span class="spinner spinner--sm" aria-hidden="true"></span>
+  <p class="field__hint">Chargement…</p>
+</div>`;
+
+  S.empty = `
+<div class="empty">
+  <h2 class="empty__title">Aucun projet</h2>
+  <p class="empty__lead">Un projet regroupe les annonces d'une même recherche : une ville, un budget, des adresses de référence.</p>
+  <a class="btn btn--green" href="/projects">${ICON_PLUS} Créer un projet</a>
+</div>`;
+
+  S.tooltip = `
+<div class="btn-row">
+  <button type="button" class="btn btn--ghost btn--icon-only" data-tooltip="Actualiser les données" aria-label="Actualiser les données"><svg class="wi" aria-hidden="true"><use href="#wi-reset"></use></svg></button>
+  <span class="badge badge--neutral" tabindex="0" data-tooltip="Moyenne France · indice 100">Indice 112</span>
+</div>`;
+
+  S.pagination = `
+<nav class="pagination" aria-label="Pagination des annonces">
+  <p class="pagination__summary">25–48 sur 112 annonces</p>
+  <ul class="pagination__list">
+    <li><a class="pagination__nav" href="#pagination" rel="prev" aria-label="Page précédente"><span>Précédent</span></a></li>
+    <li><a class="pagination__page" href="#pagination" aria-label="Page 1">1</a></li>
+    <li><a class="pagination__page is-active" href="#pagination" aria-current="page" aria-label="Page 2">2</a></li>
+    <li><a class="pagination__page" href="#pagination" aria-label="Page 3">3</a></li>
+    <li><span class="pagination__gap" aria-hidden="true">…</span></li>
+    <li><a class="pagination__page" href="#pagination" aria-label="Page 5">5</a></li>
+    <li><a class="pagination__nav" href="#pagination" rel="next" aria-label="Page suivante"><span>Suivant</span></a></li>
+  </ul>
+</nav>`;
+
+  S.pageHead = `
+<div class="page-head">
+  <div>
+    <p class="page-eyebrow"><a href="/projects">Projets</a> · Rambouillet</p>
+    <h1 class="page-title">Mes annonces <span class="page-title__muted">24 enregistrées</span></h1>
+    <p class="page-subtitle">Classées par date d'enregistrement.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn--ghost">Filtrer</button>
+    <button type="button" class="btn btn--green">${ICON_PLUS} Ajouter une annonce</button>
+  </div>
+</div>`;
+
+  S.iconSprite = `
+<div class="btn-row">
+  <button type="button" class="btn btn--ghost btn--sm"><svg class="wi" aria-hidden="true"><use href="#wi-pencil"></use></svg> Modifier</button>
+  <button type="button" class="btn btn--ghost btn--icon-only" aria-label="Copier le lien"><svg class="wi" aria-hidden="true"><use href="#wi-copy"></use></svg></button>
+  <span class="badge badge--warn"><svg class="wi" aria-hidden="true"><use href="#wi-alert"></use></svg> Humidité</span>
+</div>`;
+
+  S.iconInline = `
+<div class="btn-row">
+  <button type="button" class="btn btn--green">${ICON_PLUS} Ajouter une annonce</button>
+  <button type="button" class="btn btn--ghost btn--sm btn--danger-ghost">${ICON_TRASH} Retirer</button>
+</div>`;
+
+  S.iconMotion = `
+<div class="btn-row">
+  <button type="button" class="btn btn--sm btn--icon-only btn--ghost btn--fav-add detail-head__fav-btn" aria-label="Ajouter aux favoris" aria-pressed="false">${ICON_STAR}</button>
+  <button type="button" class="btn btn--sm btn--icon-only btn--gold detail-head__fav-btn" aria-label="Retirer des favoris" aria-pressed="true">${ICON_STAR}</button>
+  <button type="button" class="btn btn--sm btn--ghost btn--danger-ghost btn--icon-only detail-head__delete-btn" aria-label="Supprimer l'annonce">${ICON_TRASH}</button>
+  <a class="btn btn--ghost btn--sm detail-head__origin-link" href="#icones">Voir l'annonce d'origine <span class="link-exit-arrow" aria-hidden="true">↗</span></a>
+  <button type="button" class="btn btn--sm btn--danger status-pipe__reject"><span class="status-pipe__reject-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8" /><path d="m9 9 6 6M15 9l-6 6" /></svg></span> Écarter cette annonce</button>
+</div>`;
+
+  const TYPE_SCALE = [
+    { sample: "Titre de page", size: "clamp(28px, 4vw, 44px)", weight: 700, where: ".page-title" },
+    { sample: "Titre de section", size: "22px", weight: 700, where: ".empty__title, .settings-menu__title" },
+    { sample: "Titre de modale", size: "20px", weight: 700, where: ".modal__title" },
+    { sample: "Titre de panneau", size: "18px", weight: 700, where: ".panel__title" },
+    { sample: "385 000 €", size: "17px", weight: 700, where: ".card__price" },
+    { sample: "Titre de carte", size: "16px", weight: 700, where: ".card__title" },
+    { sample: "Texte courant du site, interligne 1,5.", size: "15px", weight: 400, where: "body" },
+    { sample: "Bouton, champ, flash", size: "14px", weight: 600, where: ".btn, .input, .flash" },
+    { sample: "Libellé de champ, pastille, méta", size: "13px", weight: 600, where: ".field__label, .pill, .card__meta" },
+    { sample: "Aide, badge, note de bas de bloc", size: "12px", weight: 500, where: ".field__hint, .badge, .panel__note" },
+    { sample: "SURTITRE", size: "11px", weight: 700, where: ".panel__eyebrow (majuscules, +0,08em)" },
+  ];
+
+  const MOTION = [
+    { use: "Survol : couleur, fond, bordure", duration: "0.15s", easing: "ease", example: ".btn, .pill, .card, .settings-menu__item" },
+    { use: "Apparition de modale", duration: "0.15s – 0.16s", easing: "ease", example: "modal-fade, modal-pop (translateY 8px, scale 0.98)" },
+    { use: "Chevron de repli, menu", duration: "0.18s – 0.2s", easing: "ease", example: ".delinquance__summary-chevron" },
+    { use: "Entrée d'un élément (toast, vue, ligne)", duration: "0.3s", easing: "cubic-bezier(0.22, 1, 0.36, 1)", example: "works-toast-in, debt-slide-in" },
+    { use: "Sortie d'un élément", duration: "0.2s", easing: "ease, forwards", example: "works-toast-out" },
+    { use: "Micro-interaction d'icône (survol, focus)", duration: "0.45s – 0.75s", easing: "cubic-bezier(0.22, 1, 0.36, 1), forwards", example: "detail-fav-star-pop, detail-delete-bin, link-exit-arrow (voir Icônes)" },
+    { use: "Chargement", duration: "0.7s", easing: "linear infinite", example: ".spinner" },
+    { use: "Enregistrement en cours", duration: "0.9s", easing: "ease-in-out infinite", example: "works-blink, v-blink, debt-blink (pastille d'état)" },
+  ];
+
+  S.tableNumeric = `
+<div class="ds-table-scroll-demo">
+  <table class="table ds-table-numeric-demo">
+    <thead>
+      <tr>
+        <th scope="col">#</th>
+        <th scope="col">Date</th>
+        <th scope="col" class="ds-table-numeric-demo__num">Échéance</th>
+        <th scope="col" class="ds-table-numeric-demo__num">Capital</th>
+        <th scope="col" class="ds-table-numeric-demo__num">Intérêts</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>janv. 2027</td><td class="ds-table-numeric-demo__num">1 245,00 €</td><td class="ds-table-numeric-demo__num">892,00 €</td><td class="ds-table-numeric-demo__num">353,00 €</td></tr>
+      <tr><td>2</td><td>févr. 2027</td><td class="ds-table-numeric-demo__num">1 245,00 €</td><td class="ds-table-numeric-demo__num">896,50 €</td><td class="ds-table-numeric-demo__num">348,50 €</td></tr>
+    </tbody>
+  </table>
+</div>`;
+
+  const PATTERN_GROUP_LABEL = {
+    foundation: "Fondations",
+    motion: "Mouvement",
+    icon: "Icônes",
+    layout: "Mise en page",
+    action: "Actions",
+    filter: "Filtres et badges",
+    form: "Formulaires et saisie",
+    data: "Données",
+    feedback: "Retours",
+    nav: "Navigation",
+    content: "Contenu et gouvernance",
+  };
+
+  const PATTERN_CATALOG_GROUPS = [
+    "foundation", "motion", "icon", "layout", "action", "filter", "form", "data", "feedback", "nav", "content",
+  ];
+
+  const ICON_MOTION = [
+    { icon: "Étoile favori (à ajouter)", keyframes: "detail-fav-star-pop", duration: "0.58s", gesture: "Rebond ×1,28 avec rotation −22° → 0°, se remplit d'or avec un halo.", where: ".detail-head__fav-btn.btn--fav-add, .card__fav-btn" },
+    { icon: "Étoile favori (active)", keyframes: "detail-fav-star-glow", duration: "0.52s", gesture: "Pulsation ×1,2 puis se pose à ×1,08, halo or.", where: ".detail-head__fav-btn.btn--gold, .card__fav-btn" },
+    { icon: "Corbeille", keyframes: "detail-delete-bin", duration: "0.5s", gesture: "Bascule de −16° en se soulevant de 2 px, reste inclinée à −12°.", where: ".detail-head__delete-btn, .card__delete-btn" },
+    { icon: "Flèche ↗ de lien externe", keyframes: "link-exit-arrow", duration: "0.72s", gesture: "Double saut en diagonale (4 px, −5 px), revient en place.", where: ".link-exit-arrow (annonce d'origine, Google Maps)" },
+    { icon: "Pipeline : étape faite", keyframes: "status-pipe-icon-check", duration: "0.48s", gesture: "Pop ×1,22 puis ×0,92, revient à 1.", where: ".status-pipe__step.is-done" },
+    { icon: "Pipeline : étapes à faire", keyframes: "status-pipe-icon-doc, -phone, -calendar, -house, -offer", duration: "0.5s – 0.52s", gesture: "Le document se lève de 3 px, le téléphone sonne (±14°), le calendrier pulse (×1,15), la maison saute de 4 px, le cadenas tangue (±2 px).", where: ".status-pipe__step.is-todo [data-pipeline-step]" },
+    { icon: "Écarter l'annonce", keyframes: "status-pipe-reject-wiggle", duration: "0.5s", gesture: "Secousse amortie ±10° avec ×1,08.", where: ".status-pipe__reject" },
+    { icon: "Chevron de sélecteur", keyframes: "project-select-chevron-nudge", duration: "0.45s", gesture: "Descend de 3 px puis rebondit, menu fermé uniquement.", where: ".project-select__chevron" },
+    { icon: "Validation des travaux", keyframes: "works-done-check", duration: "0.45s", gesture: "Se tasse (×0,9) puis grossit (×1,2), se pose à ×1,08.", where: ".works-modal__done .wi" },
+  ];
+
+  const BREAKPOINTS = [
+    { width: "≤ 480px", role: "Petit mobile : une colonne, boutons pleine largeur si besoin." },
+    { width: "≤ 640px", role: "Mobile : marges réduites, actions empilées." },
+    { width: "≤ 720px", role: "Tablette portrait : grilles à une colonne, menu burger." },
+    { width: "≤ 900px", role: "Tablette : menus latéraux au-dessus du contenu." },
+    { width: "≥ 1480px", role: "Grand écran : colonnes latérales supplémentaires (fiche annonce)." },
+  ];
+
+  const GAPS = [
+    { issue: "Couleurs en dur", detail: "Environ 270 codes hexadécimaux dans app.css hors :root, quelques-uns dans les vues (home.ejs, bear-toggle.ejs).", target: "Remplacer par les tokens existants ou en créer un." },
+    { issue: "Palette parallèle", detail: "debt.css définit --debt-warn #d98a00 et --debt-over #c8321f à côté de --warn et --danger.", target: "Fusionner avec les signaux globaux." },
+    { issue: "Token inexistant", detail: ".modal__close utilise var(--green-700, #0b3d2c) ; --green-700 n'est défini nulle part.", target: "Utiliser --green-900." },
+    { issue: "Toasts multiples", detail: ".works-toast, .offer-toast, .visit-toast et .debt-toast, chacun avec ses keyframes.", target: "Un composant .toast unique (référence : .works-toast)." },
+    { issue: "Repli non générique", detail: "Le repli <details> s'appelle .delinquance__details / __summary et est réutilisé dans le prix au m².", target: "Renommer en composant .collapse." },
+    { issue: "Modales dupliquées", detail: "Chaque modale réimplémente ouverture, fermeture et touche Échap dans son propre script.", target: "Un contrôleur de modale commun dans app.js." },
+    { issue: "Pas de tokens de mouvement", detail: "Durées 0.12 / 0.14 / 0.15 / 0.16 / 0.18 / 0.2 / 0.25 / 0.3 s ; la courbe cubic-bezier(0.22, 1, 0.36, 1) est redéclarée (--w-ease, --debt-ease).", target: "--motion-fast, --motion-base, --ease-out." },
+    { issue: "Pas d'échelle typographique", detail: "Tailles 11 à 22 px écrites en dur.", target: "--text-xs … --text-xl." },
+    { issue: "Points de rupture dispersés", detail: "16 largeurs différentes (360, 420, 460, 480, 520, 560, 600, 640, 720, 760, 820, 860, 900, 1023, 1040, 1480).", target: "S'en tenir à 480 / 640 / 720 / 900." },
+    { issue: "Styles en ligne", detail: "Quelques style=\"margin-top: var(--space-4)\" dans les vues.", target: "Classes utilitaires ou modificateurs BEM." },
+    { issue: "Repli window.confirm", detail: "Le gestionnaire data-confirm de app.js appelle window.confirm si #confirm-modal est absent du DOM.", target: "Supprimer le repli : toute page qui confirme passe par layout.ejs." },
+    { issue: "Icônes recopiées", detail: "Une quarantaine de SVG en ligne hors catalogue, dupliqués d'un fichier à l'autre (nav.ejs, admin/sidebar.ejs, settings.ejs, debt.ejs, admin/dpe.ejs, modales…).", target: "Ajouter l'icône à lib/icons.js et passer par le sprite." },
+    { issue: "Icônes hors Lucide", detail: "Étoile favori en polygon Feather (detail-header.ejs, listing-card.ejs) ; crayon et icônes de la barre d'administration issus de Feather ; pictos du pipeline de statut dessinés à la main (status-pipeline.ejs).", target: "Équivalent Lucide (star, pencil, circle-x…)." },
+    { issue: "Épaisseurs de trait", detail: "1,5, 1,75 et 2,2 en plus des valeurs prévues (1,8 et 2).", target: "1,8 ou 2 uniquement." },
+    { issue: "Caractères comme icônes", detail: "★ dans le filtre Favoris (listings.ejs), ✓ dans listing-location.ejs, listing-linked-dpe.ejs et home.ejs.", target: "Icônes star et check du sprite." },
+    { issue: "Boucles décoratives", detail: "offer-cta-pulse (3,4 s), works-pulse (2 s), dpe-house-pulse (2 s) et h-ping (2,4 s) tournent sans fin.", target: "Jouer une fois à l'apparition, ou supprimer." },
+  ];
+%>
+
+<%- include("../partials/works-icons") %>
+<div class="ds">
+  <nav class="ds-toc" aria-label="Sommaire du design system">
+    <p class="ds-toc__title">Design system</p>
+    <ul class="ds-toc__list">
+      <li class="ds-toc__group">Fondations</li>
+      <li><a class="ds-toc__link" href="#esprit">Esprit</a></li>
+      <li><a class="ds-toc__link" href="#couleurs">Couleurs</a></li>
+      <li><a class="ds-toc__link" href="#typographie">Typographie</a></li>
+      <li><a class="ds-toc__link" href="#espacements">Espacements et formes</a></li>
+      <li><a class="ds-toc__link" href="#mouvement">Mouvement</a></li>
+      <li><a class="ds-toc__link" href="#mise-en-page">Mise en page</a></li>
+      <li><a class="ds-toc__link" href="#icones">Icônes</a></li>
+      <li class="ds-toc__group">Composants</li>
+      <li><a class="ds-toc__link" href="#patterns">Catalogue des patterns</a></li>
+      <li><a class="ds-toc__link" href="#boutons">Boutons</a></li>
+      <li><a class="ds-toc__link" href="#pastilles">Pastilles et badges</a></li>
+      <li><a class="ds-toc__link" href="#formulaires">Formulaires</a></li>
+      <li><a class="ds-toc__link ds-toc__link--sub" href="#formulaires-references">Références existantes</a></li>
+      <li><a class="ds-toc__link ds-toc__link--sub" href="#amount-stepper">Stepper numérique</a></li>
+      <li><a class="ds-toc__link ds-toc__link--sub" href="#date-picker">Calendrier</a></li>
+      <li><a class="ds-toc__link" href="#panneaux">Panneaux</a></li>
+      <li><a class="ds-toc__link" href="#cartes">Cartes</a></li>
+      <li><a class="ds-toc__link" href="#listes">Listes</a></li>
+      <li><a class="ds-toc__link" href="#repli">Repli</a></li>
+      <li><a class="ds-toc__link" href="#modales">Modales</a></li>
+      <li><a class="ds-toc__link" href="#retours">Retours et états</a></li>
+      <li><a class="ds-toc__link" href="#infobulle">Infobulle</a></li>
+      <li><a class="ds-toc__link" href="#pagination">Pagination</a></li>
+      <li><a class="ds-toc__link" href="#tableaux">Tableaux</a></li>
+      <li><a class="ds-toc__link" href="#donnees">Données métier</a></li>
+      <li class="ds-toc__group">Expérience</li>
+      <li><a class="ds-toc__link" href="#ux">Patterns UX</a></li>
+      <li><a class="ds-toc__link" href="#redaction">Rédaction</a></li>
+      <li><a class="ds-toc__link" href="#a-eviter">À éviter</a></li>
+      <li><a class="ds-toc__link" href="#ecarts">Écarts connus</a></li>
+    </ul>
+  </nav>
+
+  <div class="ds-content">
+    <header class="panel panel--green ds-hero">
+      <p class="panel__eyebrow"><a href="/admin">Administration</a> · Référence UI / UX</p>
+      <h1 class="ds-hero__title">Design system</h1>
+      <p class="ds-hero__lead">
+        Tout ce qui définit l'interface de Carnet de Visites : couleurs, typographie,
+        composants, mouvement et règles d'ergonomie. Une nouvelle page s'appuie
+        sur ces briques ; un besoin qui n'y figure pas s'ajoute ici avant d'être utilisé ailleurs.
+      </p>
+      <div class="ds-hero__meta">
+        <span class="badge badge--success">app.css</span>
+        <span class="badge badge--success">EJS + htmx</span>
+        <span class="badge badge--success">Icônes Lucide</span>
+        <span class="badge badge--success">Sans dépendance</span>
+      </div>
+    </header>
+
+    <%# ============================== FONDATIONS ============================== %>
+
+    <section class="ds-section" id="esprit">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Esprit <%- include("../partials/design-system/pattern-label", { patternId: "foundation-esprit" }) %></h2>
+        <p class="ds-section__lead">
+          Un carnet personnel pour suivre une recherche immobilière : calme, dense en
+          informations utiles, jamais tape-à-l'œil. L'utilisateur doit sentir que ses
+          données sont rangées, sourcées et à lui seul.
+        </p>
+      </div>
+      <div class="ds-principles">
+        <div class="panel ds-principle">
+          <span class="ds-principle__num">1</span>
+          <h3 class="ds-principle__title">Calme et privé</h3>
+          <p>Fond crème, surfaces blanches, verts profonds. Pas de couleurs criardes hors des signaux. Les données restent visibles du seul titulaire.</p>
+        </div>
+        <div class="panel ds-principle">
+          <span class="ds-principle__num">2</span>
+          <h3 class="ds-principle__title">La donnée d'abord</h3>
+          <p>Chiffres lisibles et alignés, comparaisons explicites (commune, département, France), source et année toujours citées.</p>
+        </div>
+        <div class="panel ds-principle">
+          <span class="ds-principle__num">3</span>
+          <h3 class="ds-principle__title">Une action principale par zone</h3>
+          <p>Un seul bouton plein (vert ou lime) par bloc. Le reste en fantôme. Le destructif est rouge et toujours confirmé.</p>
+        </div>
+        <div class="panel ds-principle">
+          <span class="ds-principle__num">4</span>
+          <h3 class="ds-principle__title">Le serveur rend, htmx rafraîchit</h3>
+          <p>Chaque page fonctionne avec des liens et des formulaires classiques ; htmx remplace des fragments. Aucun script en ligne, aucune bibliothèque externe.</p>
+        </div>
+        <div class="panel ds-principle">
+          <span class="ds-principle__num">5</span>
+          <h3 class="ds-principle__title">Le mouvement informe</h3>
+          <p>Une animation accompagne un changement (valeur, ajout, ouverture). Courte, discrète, coupée si le système demande moins d'animations.</p>
+        </div>
+        <div class="panel ds-principle">
+          <span class="ds-principle__num">6</span>
+          <h3 class="ds-principle__title">Accessible par défaut</h3>
+          <p>Un label par champ, un focus vert visible, de vrais boutons, des graphiques décrits par <code>aria-label</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="couleurs">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Couleurs <%- include("../partials/design-system/pattern-label", { patternId: "foundation-colors" }) %></h2>
+        <p class="ds-section__lead">
+          Toujours via <code>var(--token)</code>, jamais un code hexadécimal. Chaque couleur a
+          un rôle : on choisit le rôle, pas la teinte.
+        </p>
+      </div>
+
+      <% colorGroups.forEach(function (group) { %>
+        <h3 class="ds-subtitle"><%= group.title %></h3>
+        <div class="ds-swatches">
+          <% group.tokens.forEach(function (token) { %>
+            <div class="ds-swatch">
+              <span class="ds-swatch__chip" style="background: var(<%= token.name %>)"></span>
+              <span class="ds-swatch__body">
+                <span class="ds-swatch__name"><%= token.name %></span>
+                <span class="ds-swatch__value"><%= token.value %></span>
+                <span class="ds-swatch__role"><%= token.role %></span>
+              </span>
+            </div>
+          <% }) %>
+        </div>
+      <% }) %>
+
+      <h3 class="ds-subtitle">Associations fond / texte</h3>
+      <p class="ds-section__lead">Un fond doux s'associe toujours à sa couleur pleine pour le texte.</p>
+      <div class="ds-pairs">
+        <div class="ds-pair" style="background: var(--green-100); color: var(--green-800)">Succès, accent<code>--green-100 / --green-800</code></div>
+        <div class="ds-pair" style="background: var(--lime); color: var(--green-900)">Mise en avant<code>--lime / --green-900</code></div>
+        <div class="ds-pair" style="background: var(--info-soft); color: var(--info)">Information<code>--info-soft / --info</code></div>
+        <div class="ds-pair" style="background: var(--warn-soft); color: var(--warn)">Avertissement<code>--warn-soft / --warn</code></div>
+        <div class="ds-pair" style="background: var(--danger-soft); color: var(--danger)">Erreur<code>--danger-soft / --danger</code></div>
+        <div class="ds-pair" style="background: var(--gold-soft); color: var(--gold-ink)">Favori<code>--gold-soft / --gold-ink</code></div>
+        <div class="ds-pair" style="background: var(--green-900); color: var(--ink-inverse)">Marque<code>--green-900 / --ink-inverse</code></div>
+        <div class="ds-pair" style="background: var(--panel); color: var(--ink-inverse)">Sombre<code>--panel / --ink-inverse</code></div>
+      </div>
+
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Règle</span>
+          <p><strong>Or</strong> = favoris uniquement. <strong>Rouge</strong> = erreur ou destruction. <strong>Rouge vif</strong> = indices prix défavorables uniquement.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Exception</span>
+          <p>Les étiquettes DPE (vert → rouge) et GES (bleus) suivent la palette officielle, déclarée dans <code>partials/energy-performance.ejs</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="typographie">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Typographie <%- include("../partials/design-system/pattern-label", { patternId: "foundation-typography" }) %></h2>
+        <p class="ds-section__lead">
+          Police système (<code>--font</code>), aucune webfont. Titres en 700, interlignage 1,15,
+          approche −0,02em. Corps 15 px, interligne 1,5. Chiffres alignés avec
+          <code>font-variant-numeric: tabular-nums</code> dans les tableaux et compteurs.
+        </p>
+      </div>
+      <div class="ds-type">
+        <% TYPE_SCALE.forEach(function (row) { %>
+          <div class="ds-type__row">
+            <span class="ds-type__meta">
+              <code><%= row.size %> · <%= row.weight %></code>
+              <span><%= row.where %></span>
+            </span>
+            <span style="font-size: <%= row.size %>; font-weight: <%= row.weight %>; line-height: 1.2<%= row.size === '11px' ? '; letter-spacing: 0.08em; color: var(--ink-muted)' : '' %>"><%= row.sample %></span>
+          </div>
+        <% }) %>
+      </div>
+      <div class="ds-grid ds-grid--2">
+        <% fontTokens.forEach(function (token) { %>
+          <div class="ds-rule">
+            <span class="ds-rule__label"><%= token.name %></span>
+            <p style="font-family: var(<%= token.name %>)"><%= token.role %> — 0123456789 €</p>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+
+    <section class="ds-section" id="espacements">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Espacements et formes <%- include("../partials/design-system/pattern-label", { patternId: "foundation-spacing" }) %></h2>
+        <p class="ds-section__lead">
+          Échelle de 4 px. Les écarts se font avec <code>gap</code> sur des grilles ou flex,
+          pas avec des marges sur les enfants.
+        </p>
+      </div>
+      <div class="ds-scale">
+        <% spaceTokens.forEach(function (token) { %>
+          <div class="ds-scale__row">
+            <span class="ds-scale__name"><%= token.name %></span>
+            <span class="ds-scale__value"><%= token.value %></span>
+            <span>
+              <span class="ds-scale__bar" style="display: block; width: var(<%= token.name %>)"></span>
+              <span class="field__hint"><%= token.role %></span>
+            </span>
+          </div>
+        <% }) %>
+      </div>
+
+      <h3 class="ds-subtitle">Rayons</h3>
+      <div class="ds-grid">
+        <% radiusTokens.forEach(function (token) { %>
+          <div class="ds-shape" style="border-radius: var(<%= token.name %>)">
+            <span><strong><%= token.name %></strong> · <%= token.value %><br /><%= token.role %></span>
+          </div>
+        <% }) %>
+      </div>
+
+      <h3 class="ds-subtitle">Ombres</h3>
+      <div class="ds-grid">
+        <% shadowTokens.forEach(function (token) { %>
+          <div class="ds-shape ds-shape--shadow" style="box-shadow: var(<%= token.name %>)">
+            <span><strong><%= token.name %></strong><br /><%= token.role %></span>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+
+    <section class="ds-section" id="mouvement">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Mouvement <%- include("../partials/design-system/pattern-label", { patternId: "motion-interface" }) %></h2>
+        <p class="ds-section__lead">
+          Animer uniquement <code>opacity</code> et <code>transform</code> (plus <code>fill</code> et
+          <code>filter</code> pour l'étoile favori), déplacement de 12 px maximum. Deux familles de durées :
+          l'interface (150 à 300 ms) et les micro-interactions d'icônes (450 à 750 ms, voir
+          <a href="#icones">Icônes</a>). Boucles réservées au chargement et à un enregistrement en cours.
+          Chaque animation a son bloc <code>@media (prefers-reduced-motion: reduce)</code> qui la coupe.
+        </p>
+      </div>
+      <div class="ds-table-wrap">
+        <table class="ds-table">
+          <thead><tr><th>Usage</th><th>Durée</th><th>Courbe</th><th>Exemples</th></tr></thead>
+          <tbody>
+            <% MOTION.forEach(function (m) { %>
+              <tr><td><%= m.use %></td><td><code><%= m.duration %></code></td><td><code><%= m.easing %></code></td><td><%= m.example %></td></tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <div class="ds-grid">
+        <div class="panel ds-motion" tabindex="0">
+          <span class="ds-motion__box" style="transition-duration: 0.15s; transition-timing-function: ease"></span>
+          <span><strong>Survol</strong> · 0.15s ease</span>
+          <span class="field__hint">Survolez la carte.</span>
+        </div>
+        <div class="panel ds-motion" tabindex="0">
+          <span class="ds-motion__box" style="transition-duration: 0.3s; transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1)"></span>
+          <span><strong>Entrée</strong> · 0.3s cubic-bezier(0.22, 1, 0.36, 1)</span>
+          <span class="field__hint">Démarre vite, se pose en douceur.</span>
+        </div>
+        <div class="panel ds-motion" tabindex="0">
+          <span class="ds-motion__box" style="transition-duration: 0.6s; transition-timing-function: linear"></span>
+          <span><strong>À éviter</strong> · 0.6s linear</span>
+          <span class="field__hint">Trop long, mécanique.</span>
+        </div>
+      </div>
+      <div class="ds-spec__code dpe-cmd">
+        <pre class="dpe-cmd__code">@media (prefers-reduced-motion: reduce) {
+  .mon-composant {
+    animation: none;
+    transition: none;
+  }
+}</pre>
+        <button type="button" class="btn btn--ghost btn--sm dpe-cmd__copy" data-copy>Copier</button>
+      </div>
+    </section>
+
+    <section class="ds-section" id="mise-en-page">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Mise en page</h2>
+        <p class="ds-section__lead">
+          Contenu centré dans <code>.page</code> (max <code>--page-max</code>, 1280 px). Une page commence
+          par <code>.page-head</code>, puis des panneaux ou une grille de cartes. Les espaces
+          de paramétrage (réglages, administration) utilisent <code>.settings-layout</code> :
+          menu latéral de 300 px + <code>.settings-content</code>.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "layout-page-head",
+        title: "En-tête de page", cls: ".page-head",
+        usage: "Fil d'Ariane facultatif, titre avec complément atténué, sous-titre, puis les actions de la page à droite (l'action principale en dernier).",
+        html: S.pageHead,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+      <div class="ds-table-wrap">
+        <table class="ds-table">
+          <thead><tr><th>Point de rupture</th><th>Comportement</th></tr></thead>
+          <tbody>
+            <% BREAKPOINTS.forEach(function (b) { %>
+              <tr><td><code><%= b.width %></code></td><td><%= b.role %></td></tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <p class="field__hint">Tout doit rester utilisable à 360 px de large ; les tableaux larges défilent horizontalement dans leur conteneur.</p>
+    </section>
+
+    <section class="ds-section" id="icones">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Icônes</h2>
+        <p class="ds-section__lead">
+          Une seule bibliothèque : <strong>Lucide</strong> (<a href="https://lucide.dev" target="_blank" rel="noopener noreferrer">lucide.dev</a>,
+          licence ISC). Les tracés sont recopiés dans <code>app/src/lib/icons.js</code>, sans paquet npm,
+          sans police d'icônes ni emoji. Grille 24 × 24, trait <code>currentColor</code>, extrémités arrondies.
+        </p>
+      </div>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Source</span>
+          <p>Chercher d'abord dans le catalogue ci-dessous. Icône manquante : reprendre le tracé sur lucide.dev, l'ajouter à <code>lib/icons.js</code> et à un groupe de <code>ICON_GROUPS</code>. Jamais d'icône dessinée à la main ni d'une autre bibliothèque.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Sprite d'abord</span>
+          <p>Inclure <code>partials/works-icons</code> une fois dans la page, puis <code>&lt;svg class="wi"&gt;&lt;use href="#wi-NOM"&gt;</code>. <code>.wi</code> suit la taille du texte (1,15 em).</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">SVG en ligne</span>
+          <p>Seulement si l'icône doit changer de remplissage (étoile favori) ou si la page n'inclut pas le sprite : copier le tracé de <code>lib/icons.js</code> avec les attributs standard.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Taille et trait</span>
+          <p>16 px dans un bouton avec texte, 18 px dans un bouton icône seule, 14 px dans un tableau. Trait 2 pour les actions, 1,8 pour la navigation, les menus et le sprite. Aucune autre valeur.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Accessibilité</span>
+          <p>Toujours <code>aria-hidden="true"</code> sur le SVG. Une icône seule dans un bouton impose un <code>aria-label</code> à l'infinitif (« Supprimer l'annonce »).</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Caractères</span>
+          <p>Pas de ★, ☆, ✓, ↻ ni d'emoji comme icône : utiliser <code>star</code>, <code>check</code>, <code>reset</code>. Seules exceptions : <code>↗</code> dans <code>.link-exit-arrow</code> après un lien vers un autre site, et les flèches → dans une phrase.</p>
+        </div>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "icon-sprite",
+        title: "Icône du sprite", cls: "svg.wi > use",
+        usage: "Cas général : icône devant un libellé, dans un bouton icône seule ou dans un badge. La couleur suit le texte.",
+        html: S.iconSprite,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "icon-inline",
+        title: "Icône en ligne", cls: "<svg viewBox=\"0 0 24 24\">",
+        usage: "Attributs obligatoires : viewBox 0 0 24 24, width et height, fill none, stroke currentColor, stroke-width 2 (ou 1,8), stroke-linecap et stroke-linejoin round, aria-hidden.",
+        html: S.iconInline,
+      }) %>
+
+      <h3 class="ds-subtitle">Catalogue</h3>
+      <p class="ds-section__lead">
+        <%= iconGroups.reduce(function (n, g) { return n + g.names.length; }, 0) %> icônes, rendues depuis
+        <code>lib/icons.js</code>. Le nom affiché est celui du sprite (<code>#wi-NOM</code>) ; il peut différer du nom Lucide.
+      </p>
+      <% iconGroups.forEach(function (group) { %>
+        <div class="ds-icon-group">
+          <h4 class="ds-icon-group__title"><%= group.title %> <span class="field__hint"><%= group.usage %></span></h4>
+          <ul class="ds-icons">
+            <% group.names.forEach(function (name) { %>
+              <li class="ds-icon">
+                <svg class="ds-icon__glyph" aria-hidden="true"><use href="#wi-<%= name %>"></use></svg>
+                <code class="ds-icon__name"><%= name %></code>
+              </li>
+            <% }) %>
+          </ul>
+        </div>
+      <% }) %>
+
+      <h3 class="ds-subtitle">Animations des icônes</h3>
+      <p class="ds-section__lead">
+        Signature du site : au survol ou au focus d'un bouton, son icône mime l'action (la corbeille
+        s'ouvre, le téléphone sonne, la flèche part). C'est la seule exception à la règle des 150 à 300 ms.
+      </p>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Déclencheur</span>
+          <p><code>:hover</code> et <code>:focus-visible</code> du bouton ou du lien parent ; l'animation se pose sur le <code>svg</code>, jamais sur le bouton.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Timing</span>
+          <p>0,45 à 0,75 s, <code>cubic-bezier(0.22, 1, 0.36, 1)</code>, <code>forwards</code> : une seule fois, l'icône garde sa pose finale tant que le survol dure.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Amplitude</span>
+          <p><code>transform</code> uniquement (plus <code>fill</code> et <code>filter</code> pour le favori), 5 px et 22° au plus, échelle entre 0,9 et 1,3, <code>transform-origin</code> réglé sur le pivot du dessin.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Mouvement réduit</span>
+          <p><code>animation: none</code>, avec au besoin une pose finale statique (légère inclinaison, échelle 1,06).</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Nommage</span>
+          <p>Keyframes <code>composant-icône</code> déclarées dans app.css à côté du composant, puis ajoutées au tableau ci-dessous.</p>
+        </div>
+      </div>
+      <div class="ds-table-wrap">
+        <table class="ds-table">
+          <thead><tr><th>Icône</th><th>Keyframes</th><th>Durée</th><th>Geste</th><th>Où</th></tr></thead>
+          <tbody>
+            <% ICON_MOTION.forEach(function (m) { %>
+              <tr><td><strong><%= m.icon %></strong></td><td><code><%= m.keyframes %></code></td><td><code><%= m.duration %></code></td><td><%= m.gesture %></td><td><code><%= m.where %></code></td></tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "icon-motion-demo",
+        title: "Démonstration", cls: "svg (survol, focus)",
+        usage: "Survolez ou tabulez sur chaque bouton : mêmes classes que sur la fiche annonce.",
+        html: S.iconMotion,
+      }) %>
+    </section>
+
+    <%# ============================== COMPOSANTS ============================== %>
+
+    <section class="ds-section" id="patterns">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Catalogue des patterns</h2>
+        <p class="ds-section__lead">
+          Identifiants stables pour les prompts et les règles Cursor : citez
+          <code>form-amount-stepper</code> ou <code>#pattern-form-amount-stepper</code>
+          (ancre sur cette page). Source : <code>app/src/lib/design-system-patterns.js</code>.
+        </p>
+      </div>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Dans un prompt</span>
+          <p>« Applique le pattern <code>data-table-numeric-admin</code> du design system à … » + <code>@.cursor/rules/design-system.mdc</code>.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Dans le code</span>
+          <p>Copier le markup depuis le fichier <strong>Référence</strong> ; le spécimen ci-dessous ou la section liée montre le rendu.</p>
+        </div>
+      </div>
+      <% PATTERN_CATALOG_GROUPS.forEach(function (groupKey) {
+           const rows = designPatterns.filter(function (p) { return p.group === groupKey; });
+           if (!rows.length) return;
+      %>
+        <h3 class="ds-subtitle"><%= PATTERN_GROUP_LABEL[groupKey] || groupKey %></h3>
+        <div class="ds-table-wrap">
+          <table class="ds-table">
+            <thead><tr><th>Pattern (prompt)</th><th>Composant</th><th>Usage</th><th>Référence</th></tr></thead>
+            <tbody>
+              <% rows.forEach(function (p) { %>
+                <tr>
+                  <td>
+                    <% if (p.catalogOnly) { %><span id="pattern-<%= p.id %>" class="visually-hidden" tabindex="-1"></span><% } %>
+                    <a class="ds-pattern-id" href="#pattern-<%= p.id %>"><%= p.id %></a>
+                  </td>
+                  <td><code><%= p.classes %></code></td>
+                  <td><%= p.usage %><% if (p.script) { %> <span class="field__hint">· <%= p.script %></span><% } %></td>
+                  <td><code><%= p.referenceFile %></code><% if (p.anchor) { %> · <a href="#<%= p.anchor %>">section</a><% } %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% }) %>
+    </section>
+
+    <section class="ds-section" id="boutons">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Boutons</h2>
+        <p class="ds-section__lead">
+          Forme pilule, 14 px semi-gras. <code>&lt;button&gt;</code> pour une action, <code>&lt;a class="btn"&gt;</code>
+          pour une navigation. Groupés dans <code>.btn-row</code>, action principale en dernier.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "action-btn-variants",
+        title: "Variantes", cls: ".btn--green · --lime · --dark · --ghost",
+        usage: "Vert : action principale (une par zone). Lime : action positive mise en avant, surtout sur fond sombre. Sombre : action forte neutre. Fantôme : actions secondaires (Annuler, Filtrer).",
+        html: S.btnVariants,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "action-btn-danger",
+        title: "Destructif", cls: ".btn--danger · --danger-solid · --danger-ghost",
+        usage: "Contour rouge : déclencheur de suppression. Rouge plein : uniquement le bouton de confirmation dans la modale. Fantôme rouge : suppression discrète dans une liste (rouge au survol).",
+        html: S.btnDanger,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "action-btn-sizes",
+        title: "Tailles et états", cls: ".btn--sm · --icon-only · --block · :disabled · .btn__spinner",
+        usage: "Petit dans les tableaux et en-têtes de panneau. Icône seule avec aria-label. Pendant une requête : bouton désactivé et .btn__spinner, masqué par défaut et affiché par une règle du formulaire (.mon-form.htmx-request .btn__spinner ou .is-loading).",
+        html: S.btnSizes,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "action-btn-favorite",
+        title: "Favoris", cls: ".btn--fav-add · .btn--gold",
+        usage: "Réservé aux favoris : fantôme qui passe à l'or au survol, or plein une fois actif (aria-pressed).",
+        html: S.btnFav,
+      }) %>
+    </section>
+
+    <section class="ds-section" id="pastilles">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Pastilles et badges</h2>
+        <p class="ds-section__lead">
+          <strong>Pastille</strong> (<code>.pill</code>) = filtre cliquable, active en sombre.
+          <strong>Badge</strong> (<code>.badge</code>) = étiquette d'état non cliquable.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "filter-pills",
+        title: "Filtres", cls: ".filters · .pill · .select--pill",
+        usage: "Barre de filtres d'une liste : liens avec compteur, séparateur, tri en select pilule (soumission automatique avec data-autosubmit sur le formulaire).",
+        html: S.pills,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "badge-variants",
+        title: "Badges", cls: ".badge--*",
+        usage: "Accent : statut en cours. Succès : aboutissement. Warn : attention ou location. Error : refus. Down / up : évolution de prix (baisse = favorable). DPE : classe énergétique en mono.",
+        html: S.badges,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "badge-source",
+        title: "Badge de provenance", cls: ".visit-source--* · .kv__prev",
+        usage: "Origine d'une valeur, à droite de la cellule : Annonce (colonne de l'annonce), Description (extrait du texte), IA photos, Vous (correction de visite ou depuis la fiche), Calculé (dérivé d'autres valeurs), Référentiel (base publique, ex. code INSEE). L'info-bulle précise la source ; l'ancienne valeur suit en .kv__prev quand une correction l'a remplacée. Partial : partials/listing-spec-source.ejs.",
+        html: S.sourceBadges,
+      }) %>
+    </section>
+
+    <section class="ds-section" id="formulaires">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Formulaires</h2>
+        <p class="ds-section__lead">
+          <code>.form</code> empile des <code>.field</code> (label, champ, aide ou erreur). Les erreurs serveur
+          s'affichent en résumé <code>.form-errors</code> en tête et sous le champ concerné ;
+          les valeurs saisies sont conservées. Le champ caché <code>_csrf</code> est obligatoire.
+          <strong>Avant d'inventer un champ ou un menu</strong>, reprendre le markup d'une page existante
+          listée dans le <a href="#patterns">catalogue des patterns</a> : même classes,
+          même structure, même script d'initialisation.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "form-stack",
+        title: "Formulaire complet", cls: ".form · .field · .input · .select · .textarea",
+        usage: "Label au-dessus, (facultatif) plutôt qu'astérisque, aide sous le champ, focus vert avec halo. Boutons à gauche en fin de formulaire : Enregistrer puis Annuler.",
+        html: S.form,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Interdit</span>
+          <p><code>type="date"</code>, <code>type="number"</code> natifs du navigateur, spinners du système, selects ou champs « maison » qui ne reprennent pas les composants du site.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Saisie numérique</span>
+          <p><code>type="text"</code> + <code>inputmode="decimal"</code> ou <code>numeric</code> (virgule française). Ajustement par pas : <code>.amount-stepper</code> (voir <a href="#amount-stepper">Stepper</a>).</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Dates</span>
+          <p>Calendrier en popover <code>.date-range-picker</code>, jamais l'input natif. Référence visuelle : import DPE (voir <a href="#date-picker">Calendrier</a>).</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Variantes</span>
+          <p><code>.input--sm</code> dans les tableaux et filtres, <code>.input--narrow</code> pour une valeur courte, <code>.field-inline</code> pour un libellé à côté du champ.</p>
+        </div>
+      </div>
+
+      <h3 class="ds-subtitle" id="formulaires-references">Références existantes</h3>
+      <p class="ds-section__lead">
+        Tableau complet avec ids de prompt : <a href="#patterns">Catalogue des patterns</a>
+        (ancre legacy <code>#formulaires-references</code>).
+      </p>
+
+      <h3 class="ds-subtitle" id="amount-stepper">Stepper numérique · <code>form-amount-stepper</code></h3>
+      <p class="ds-section__lead">
+        Champ texte avec deux boutons (flèche haute / flèche basse) pour incrémenter ou décrémenter par pas.
+        Géré globalement dans <code>app.js</code> (<code>data-amount-step</code>, touches ↑ ↓ sur le champ).
+        Les flèches sont dessinées en CSS (<code>.amount-stepper__btn--up/down</code>).
+      </p>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Structure</span>
+          <p><code>.amount-stepper</code> &gt; <code>.input</code> (souvent <code>.input--sm</code>) + <code>.amount-stepper__controls</code> avec deux <code>button[type=button]</code> <code>data-amount-step="1"</code> et <code>"-1"</code>.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Attributs de l'input</span>
+          <p><code>data-step</code> (pas, ex. 0,01 ou 1000), <code>data-min</code>, <code>data-max</code>, <code>data-decimals</code> (0 pour un entier). Montants en euros : ajouter <code>data-amount</code> (espaces milliers, pas de 1 000 €).</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Accessibilité</span>
+          <p>Chaque bouton a un <code>aria-label</code> qui dit l'unité et le pas (« Augmenter le taux de 0,01 point »).</p>
+        </div>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "form-amount-stepper",
+        title: "Stepper", cls: ".amount-stepper",
+        usage: "Modèle identique à Administration → Financement et à la fiche Financement d'une annonce.",
+        html: S.amountStepper,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+
+      <h3 class="ds-subtitle" id="date-picker">Calendrier (date picker)</h3>
+      <p class="ds-section__lead">
+        Même UI partout : déclencheur pilule (icône calendrier, libellé, chevron), popover avec grille
+        <code>.calendar</code> (Lun–Dim, navigation mois, titre cliquable pour choisir l'année en mode mois).
+        Styles dans <code>app.css</code> (<code>.date-range-picker</code>, <code>.calendar__*</code>).
+      </p>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Plage de dates (référence)</span>
+          <p>Markup exact de <code>admin/dpe.ejs</code> (import). Champs cachés <code>data-cal-from</code> / <code>data-cal-to</code>, initialisation dans <code>app.js</code> (<code>initImportCalendar</code>) — une seule instance par page. Calendrier interactif : onglet Import de <a href="/admin/dpe">Administration → DPE</a>.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Un jour ou un mois</span>
+          <p>Même markup sans <code>data-date-range-picker</code> sur le conteneur ; champ caché <code>input[type=hidden][data-field]</code>. Script <code>calendar-picker.js</code> : <code>CalendarPicker.mountSingleDay(picker, { storeAsMonth: false | true })</code>. Exemples : <code>debt.ejs</code> (mois), <code>admin/amortization.ejs</code> (jour).</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Icônes</span>
+          <p>Calendrier et chevrons : même SVG que l'import DPE (grille 24 × 24, trait 1,8 / 2).</p>
+        </div>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "form-date-picker-range",
+        title: "Plage (markup import DPE)", cls: ".date-range-picker · .calendar",
+        usage: "Copier depuis admin/dpe.ejs. Ne pas utiliser sur cette page : initImportCalendar ne cible que la première instance.",
+        html: S.datePickerRange,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "form-date-picker-day",
+        title: "Un jour (démonstration interactive)", cls: ".date-range-picker + calendar-picker.js",
+        usage: "Survolez et cliquez : même comportement que le début de crédit (Endettement) en mode jour.",
+        html: S.datePickerSingle,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+    </section>
+
+    <section class="ds-section" id="tableaux">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Tableaux</h2>
+        <p class="ds-section__lead">
+          Pattern prompt <code>data-table-numeric-admin</code> : tableau dans un panneau,
+          en-tête collant au scroll, montants alignés à droite avec chiffres tabulaires.
+        </p>
+      </div>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Structure</span>
+          <p><code>.panel</code> &gt; conteneur <code>.{prefix}__table-scroll</code> (overflow + bordure) &gt; <code>table.table.{prefix}__table</code>. Colonnes chiffrées : classe <code>.{prefix}__num</code> + <code>font-variant-numeric: tabular-nums</code> sur le tableau.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Références</span>
+          <p>Échéancier : <code>admin/amortization.ejs</code> + <code>amortization.css</code>. Données admin volumineuses : <code>partials/admin/dpe-table.ejs</code> (<code>.dpe-table-wrap</code>).</p>
+        </div>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "data-table-numeric-admin",
+        title: "Tableau chiffré", cls: ".table · __table-scroll · __num",
+        usage: "Aperçu simplifié ; copier la structure depuis l'amortissement ou le tableau DPE admin.",
+        html: S.tableNumeric,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+    </section>
+
+    <section class="ds-section" id="panneaux">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Panneaux</h2>
+        <p class="ds-section__lead">
+          Le conteneur de base d'un bloc d'information : surface blanche, rayon large,
+          ombre légère. Deux panneaux qui se suivent sont espacés automatiquement.
+          Pour un encadrement rouge (danger ou annonce écartée), voir le pattern
+          <a href="#pattern-layout-panel-danger"><code>layout-panel-danger</code></a>.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "layout-panel",
+        title: "Panneau", cls: ".panel · .panel__head · .panel__eyebrow · .panel__title",
+        usage: "Surtitre court en majuscules, titre, actions secondaires à droite dans .panel__head-aside, note de source en pied.",
+        html: S.panel,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "layout-panel-variants",
+        title: "Variantes", cls: ".panel--green · --dark · --flat",
+        usage: "Vert : synthèse ou verdict mis en avant (un par page). Sombre : bloc technique. Plat : panneau imbriqué.",
+        html: S.panelVariants,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "layout-panel-danger",
+        title: "Bordure danger", cls: ".danger-zone · .detail--rejected",
+        usage: "Un seul panneau isolé pour une action destructive (.danger-zone, grille danger-zone__*, bouton .btn--danger, confirmation data-confirm). Sur une fiche annonce écartée, poser .detail--rejected sur le conteneur .detail pour teinter tous les .panel. Ne pas confondre avec .form-errors (validation) ni avec :disabled (opacité seule).",
+        html: S.panelDanger,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+    </section>
+
+    <section class="ds-section" id="cartes">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Cartes</h2>
+        <p class="ds-section__lead">
+          Une annonce dans une liste. Grille <code>.grid</code> (colonnes de 320 px minimum). La carte
+          se soulève au survol ; les actions favori et suppression apparaissent sur la photo.
+          Implémentation réelle : <code>partials/listing-card.ejs</code>.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "data-card-listing",
+        title: "Carte d'annonce", cls: ".card · .card__media · .card__body · .card__foot",
+        usage: "Photo 16/10 avec badges d'état, titre et prix sur la même ligne, métadonnées séparées par « · », pied avec statut et source.",
+        html: S.card,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+    </section>
+
+    <section class="ds-section" id="listes">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Listes</h2>
+        <p class="ds-section__lead">Trois formes selon la nature du contenu.</p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "data-kv",
+        title: "Clé / valeur", cls: ".kv · .kv__row",
+        usage: "Caractéristiques d'un bien : clé atténuée à gauche, valeur en gras à droite. .kv--grid pour plusieurs colonnes.",
+        html: S.kv,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "data-tags",
+        title: "Étiquettes", cls: ".tags",
+        usage: "Liste d'atouts ou de mots-clés sous forme de badges neutres.",
+        html: S.tags,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "data-steps",
+        title: "Étapes", cls: ".steps",
+        usage: "Parcours numéroté (onboarding, état vide). Trois à cinq étapes, un titre en gras et une phrase.",
+        html: S.steps,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+    </section>
+
+    <section class="ds-section" id="repli">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Repli</h2>
+        <p class="ds-section__lead">
+          Pour le détail secondaire (méthode, indicateurs, données brutes) : <code>&lt;details&gt;</code>
+          natif, sans JavaScript. Le résumé dit ce qu'on va voir, l'aide change à l'ouverture
+          (« Replier le détail ») et le chevron pivote de 180° en 0,18 s.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "layout-collapse",
+        title: "Bloc repliable", cls: "details.delinquance__details",
+        usage: "Classes historiques du bloc délinquance, à réutiliser telles quelles en attendant un composant .collapse (voir Écarts connus). Compteur facultatif à côté du chevron.",
+        html: S.collapse,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+    </section>
+
+    <section class="ds-section" id="modales">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Modales</h2>
+        <p class="ds-section__lead">
+          Structure <code>.modal</code> &gt; <code>.modal__overlay</code> + <code>.modal__dialog</code> (420 px,
+          <code>--wide</code> pour les contenus riches). Fermeture par l'overlay, le bouton
+          <code>.modal__close</code> (aria-label « Fermer ») et la touche Échap. À l'ouverture :
+          <code>body.is-modal-open</code> bloque le défilement et le focus va sur l'action.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "modal-dialog",
+        title: "Boîte de dialogue", cls: ".modal__dialog",
+        usage: "Titre = action (« Supprimer l'annonce »), message = conséquence, Annuler à gauche, action à droite.",
+        html: S.modal,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "feedback-confirm-modal",
+        title: "Confirmation d'une action destructrice", cls: "form[data-confirm]",
+        usage: "Ne jamais créer de modale de confirmation : ajouter data-confirm (message), data-confirm-title et data-confirm-label au formulaire. app.js ouvre #confirm-modal, y compris pour les formulaires htmx.",
+        html: S.confirm,
+      }) %>
+      <h3 class="ds-subtitle">Politique d'alertes <%- include("../partials/design-system/pattern-label", { patternId: "feedback-alerts-policy" }) %></h3>
+      <div class="ds-rules">
+        <div class="ds-rule ds-rule--dont">
+          <span class="ds-rule__label">Interdit</span>
+          <p><code>alert()</code>, <code>confirm()</code> et <code>prompt()</code> : boîtes du navigateur bloquantes, hors charte, impossibles à styler ou à tester. Aucune exception, y compris en repli.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Confirmer</span>
+          <p><code>data-confirm</code> sur le formulaire ou l'élément htmx : app.js ouvre <code>#confirm-modal</code>, déclarée une fois dans <code>layout.ejs</code>.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Informer</span>
+          <p>Message <code>.flash</code> après redirection, ou toast en page pour une action htmx ou script. Une erreur de champ va sous le champ.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Demander une saisie</span>
+          <p>Une <code>.modal</code> contenant un vrai formulaire (label, champ, Annuler / action), avec la structure décrite ci-dessus.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="retours">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Retours et états</h2>
+        <p class="ds-section__lead">
+          Chaque bloc prévoit quatre états : chargement, vide, erreur, données.
+          L'utilisateur sait toujours ce qui se passe et quoi faire ensuite.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "feedback-flash",
+        title: "Message flash", cls: ".flash--success · --info · --error",
+        usage: "Résultat d'un formulaire classique, après redirection (req.session.flash), rendu par partials/flash.ejs en haut de page. Une phrase, au passé pour un succès.",
+        html: S.flash,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "feedback-toast-works",
+        title: "Toast", cls: ".works-toast",
+        usage: "Retour éphémère d'une action en page (htmx ou script), avec annulation possible. Bas de l'écran, sombre, action en lime, entrée 0,3 s. Référence actuelle : celui du planificateur de travaux.",
+        html: S.toast,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "feedback-loading",
+        title: "Chargement", cls: ".spinner · .spinner--sm",
+        usage: "Spinner pour un bloc qui charge, texte « Chargement… » pour un contenu de modale. Les éléments htmx reçoivent la classe .htmx-request pendant la requête.",
+        html: S.loading,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "state-empty",
+        title: "État vide", cls: ".empty",
+        usage: "Bordure pointillée, titre qui constate, phrase qui explique l'intérêt, une action pour en sortir. Modèle complet : partials/empty-listings.ejs.",
+        html: S.empty,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+    </section>
+
+    <section class="ds-section" id="infobulle">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Infobulle</h2>
+        <p class="ds-section__lead">
+          Attribut <code>data-tooltip</code>, pur CSS, affiché à droite au survol et au focus.
+          Texte court sur une ligne. Jamais pour une information indispensable : elle est
+          invisible sur mobile.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "tooltip-data",
+        title: "Infobulle", cls: "[data-tooltip]",
+        usage: "Sur un élément non interactif, ajouter tabindex=\"0\" et un aria-label équivalent.",
+        html: S.tooltip,
+      }) %>
+    </section>
+
+    <section class="ds-section" id="pagination">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Pagination</h2>
+        <p class="ds-section__lead">
+          Pagination serveur par liens (fonctionne sans JavaScript), fenêtre compacte avec
+          ellipses et résumé « 25–48 sur 112 ». Implémentation : <code>partials/pagination.ejs</code>.
+        </p>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "nav-pagination",
+        title: "Pagination", cls: ".pagination",
+        usage: "Sous la liste. Page courante avec aria-current, Précédent / Suivant désactivés aux extrémités.",
+        html: S.pagination,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+    </section>
+
+    <section class="ds-section" id="donnees">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Données métier</h2>
+        <p class="ds-section__lead">
+          Les visualisations propres à l'immobilier réutilisent leurs partials existants plutôt
+          que d'être redessinées.
+        </p>
+      </div>
+      <article class="ds-spec" id="pattern-data-dpe-scale">
+        <header class="ds-spec__head">
+          <h3 class="ds-spec__title"><code class="ds-spec__pattern-id">data-dpe-scale</code> Étiquettes DPE et GES <code>partials/energy-performance.ejs</code></h3>
+          <p class="ds-spec__usage">Échelle A → G aux couleurs officielles, classe active agrandie avec sa lettre.</p>
+        </header>
+        <div class="ds-spec__demo ds-spec__demo--stack">
+          <%- include("../partials/energy-performance", { listing: { dpe: "C", ges: "E" } }) %>
+        </div>
+        <div class="ds-spec__code dpe-cmd">
+          <pre class="dpe-cmd__code">&lt;%- include("partials/energy-performance", { listing }) %&gt;</pre>
+          <button type="button" class="btn btn--ghost btn--sm dpe-cmd__copy" data-copy>Copier</button>
+        </div>
+      </article>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Comparer</span>
+          <p>Un chiffre seul ne dit rien : le situer face au département et à la France (jauge, barre avec repère), comme dans le bloc délinquance.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Sourcer</span>
+          <p>Chaque donnée externe affiche sa source et son année avec <code>.provider-source</code> en pied de bloc.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Formater</span>
+          <p>Nombres, montants et dates via les helpers <code>fmt</code> (fr-FR) : <code>fmt.euro</code>, <code>fmt.number</code>, <code>fmt.surface</code>, <code>fmt.relative</code>. Valeur absente : « — ».</p>
+        </div>
+      </div>
+    </section>
+
+    <%# ============================== EXPÉRIENCE ============================== %>
+
+    <section class="ds-section" id="ux">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Patterns UX <%- include("../partials/design-system/pattern-label", { patternId: "content-ux-patterns" }) %></h2>
+        <p class="ds-section__lead">Les comportements attendus, à reproduire à l'identique d'une page à l'autre.</p>
+      </div>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Formulaire classique</span>
+          <p><code>POST</code> + <code>_csrf</code> → validation zod → succès : redirection et flash ; erreur : statut 422, même page, valeurs conservées et <code>.form-errors</code>.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Formulaire htmx</span>
+          <p><code>hx-post</code> + <code>hx-target</code> ; la route rend un partial de <code>views/partials/</code>, jamais une page. Le formulaire garde <code>method</code> et <code>action</code> pour fonctionner sans JavaScript.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Suppression</span>
+          <p>Toujours <code>data-confirm</code>, message qui nomme l'objet et la conséquence : « Supprimer « X » ? Cette action est irréversible. »</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Alerte</span>
+          <p>Jamais <code>alert()</code>, <code>confirm()</code> ni <code>prompt()</code> : confirmation par <code>#confirm-modal</code> (<code>data-confirm</code>), information par flash ou toast (voir <a href="#modales">Modales</a>).</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Action longue</span>
+          <p>Bouton désactivé avec spinner pendant la requête ; pour un traitement serveur (import), préciser « Vous pouvez quitter cette page ».</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Détail secondaire</span>
+          <p>Montrer la synthèse, replier le détail (<code>&lt;details&gt;</code>), ouvrir le très détaillé en modale large.</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Clavier</span>
+          <p>Tout est atteignable au clavier, Échap ferme menus et modales et rend le focus au déclencheur.</p>
+        </div>
+      </div>
+      <div class="ds-spec__code dpe-cmd">
+        <pre class="dpe-cmd__code">&lt;form method="post" action="/projects/12/notes"
+  hx-post="/projects/12/notes" hx-target="#project-notes" hx-swap="outerHTML"&gt;
+  &lt;input type="hidden" name="_csrf" value="&lt;%= csrfToken %&gt;" /&gt;
+  …
+&lt;/form&gt;</pre>
+        <button type="button" class="btn btn--ghost btn--sm dpe-cmd__copy" data-copy>Copier</button>
+      </div>
+    </section>
+
+    <section class="ds-section" id="redaction">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Rédaction <%- include("../partials/design-system/pattern-label", { patternId: "content-redaction" }) %></h2>
+        <p class="ds-section__lead">Le ton : direct, précis, bienveillant. On parle à un particulier, pas à un technicien.</p>
+      </div>
+      <ul class="ds-list">
+        <li><strong>Vouvoiement</strong> : « Votre carnet est vide », « Vous pouvez quitter cette page ».</li>
+        <li><strong>Boutons à l'infinitif</strong>, verbe d'abord : « Enregistrer », « Ajouter une annonce », « Supprimer le compte ». Pas de « OK » ni « Valider ».</li>
+        <li><strong>Typographie française</strong> : guillemets « », espace insécable avant « % », « € », « : » et dans « 1&nbsp;000 », points de suspension en un seul caractère « … ».</li>
+        <li><strong>Messages</strong> : succès au passé (« Projet enregistré. »), erreur qui dit quoi faire (« Choisissez au moins une date dans le calendrier. »).</li>
+        <li><strong>Pas de jargon</strong> : « Diagnostic de performance énergétique » en aria-label, sigle DPE à l'écran.</li>
+      </ul>
+    </section>
+
+    <section class="ds-section" id="a-eviter">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">À éviter <%- include("../partials/design-system/pattern-label", { patternId: "content-a-eviter" }) %></h2>
+      </div>
+      <div class="ds-rules ds-rules--pairs">
+        <div class="ds-rule ds-rule--dont"><span class="ds-rule__label">Non</span><p><code>color: #2e8b6b</code></p></div>
+        <div class="ds-rule"><span class="ds-rule__label">Oui</span><p><code>color: var(--green-600)</code></p></div>
+        <div class="ds-rule ds-rule--dont"><span class="ds-rule__label">Non</span><p>Un nouveau <code>.mon-bloc-toast</code> avec ses keyframes.</p></div>
+        <div class="ds-rule"><span class="ds-rule__label">Oui</span><p>Le toast de référence, ou un composant ajouté à cette page.</p></div>
+        <div class="ds-rule ds-rule--dont"><span class="ds-rule__label">Non</span><p><code>&lt;div onclick="…"&gt;</code> ou <code>&lt;script&gt;</code> en ligne.</p></div>
+        <div class="ds-rule"><span class="ds-rule__label">Oui</span><p><code>&lt;button&gt;</code> + écouteur délégué dans <code>app/public/js/</code>.</p></div>
+        <div class="ds-rule ds-rule--dont"><span class="ds-rule__label">Non</span><p>Deux boutons verts côte à côte, ou une suppression sans confirmation.</p></div>
+        <div class="ds-rule"><span class="ds-rule__label">Oui</span><p>Un bouton vert, les autres fantômes ; <code>data-confirm</code> sur le destructif.</p></div>
+        <div class="ds-rule ds-rule--dont"><span class="ds-rule__label">Non</span><p>Une transition d'interface de 600 ms linéaire, une boucle décorative, ou une animation sans <code>prefers-reduced-motion</code>.</p></div>
+        <div class="ds-rule"><span class="ds-rule__label">Oui</span><p>150 à 300 ms pour l'interface, 450 à 750 ms pour une micro-interaction d'icône ; une fois, coupée si demandé.</p></div>
+        <div class="ds-rule ds-rule--dont"><span class="ds-rule__label">Non</span><p><code>alert("Enregistré")</code>, <code>if (confirm("Supprimer ?"))</code> ou <code>prompt()</code>.</p></div>
+        <div class="ds-rule"><span class="ds-rule__label">Oui</span><p><code>data-confirm</code> (ouvre <code>#confirm-modal</code>), flash ou toast pour informer.</p></div>
+        <div class="ds-rule ds-rule--dont"><span class="ds-rule__label">Non</span><p>★, ✓ ou un emoji en guise d'icône, un SVG dessiné à la main ou pris dans une autre bibliothèque.</p></div>
+        <div class="ds-rule"><span class="ds-rule__label">Oui</span><p><code>&lt;svg class="wi"&gt;&lt;use href="#wi-star"&gt;</code>, ou un tracé Lucide ajouté à <code>lib/icons.js</code>.</p></div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="ecarts">
+      <div class="ds-section__head">
+        <h2 class="ds-section__title">Écarts connus <%- include("../partials/design-system/pattern-label", { patternId: "content-ecarts-connus" }) %></h2>
+        <p class="ds-section__lead">
+          L'existant qui ne respecte pas encore ces règles. Ne pas le reproduire ; le corriger
+          quand on touche la zone concernée.
+        </p>
+      </div>
+      <div class="ds-table-wrap">
+        <table class="ds-table">
+          <thead><tr><th>Écart</th><th>Constat</th><th>Cible</th></tr></thead>
+          <tbody>
+            <% GAPS.forEach(function (gap) { %>
+              <tr><td><strong><%= gap.issue %></strong></td><td><%= gap.detail %></td><td><%= gap.target %></td></tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>

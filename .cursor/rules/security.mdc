@@ -1,0 +1,36 @@
+---
+description: Sécurité serveur — cloisonnement par utilisateur, validation, erreurs, CSRF, quotas
+globs: app/src/routes/**,app/src/services/**,app/src/repositories/**,app/src/middlewares/**,app/src/schemas/**
+alwaysApply: false
+---
+
+# Sécurité serveur
+
+## Cloisonnement par compte (risque n°1)
+
+Toute requête sur une donnée d'utilisateur filtre sur `user_id`, **y compris** les `UPDATE` et `DELETE`. Une ressource d'un autre compte doit répondre 404, pas 403 (on ne révèle pas son existence).
+
+```text
+❌ db.prepare("DELETE FROM projects WHERE id = ?")
+✅ db.prepare("DELETE FROM projects WHERE id = ? AND user_id = ?")
+```
+
+## Entrées
+
+- Toute route nouvelle ou modifiée valide body, query et params avec un schéma zod dans `app/src/schemas/`.
+- Ne jamais interpoler une valeur dans du SQL : paramètres `?` ou `@nom` uniquement.
+
+## Erreurs
+
+- Lever `HttpError` (`app/src/lib/http-error.js`) ; le middleware `errors.js` gère le rendu.
+- Ne jamais exposer le message, la stack ou le SQL d'une erreur 500.
+
+## Requêtes mutantes du site
+
+Toute requête `POST`/`PUT`/`PATCH`/`DELETE` hors `/api/v1` renvoie le jeton CSRF (`_csrf` ou `X-CSRF-Token`). Ne jamais exempter une route du middleware `csrf`.
+
+## Quotas et secrets
+
+- Toute route qui consomme un quota externe partagé (OpenRouteService, vision…) a son propre `rateLimit`.
+- Secrets uniquement dans `.env`, lus via `config.js`. `.env.example` ne contient que des valeurs factices.
+- Ne jamais logger un mot de passe, un jeton de session ou une clé d'API.

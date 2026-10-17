@@ -1,24 +1,31 @@
 /**
  * Chiffrage des travaux à partir de la surface du bien, du plan pièces
- * (cases cochées) et du DPE lié. Montants TTC indicatifs.
+ * (cases cochées), des chantiers « Logement entier » et du DPE lié.
+ * Montants TTC indicatifs.
  *
- * Module sans import : il est aussi servi tel quel au navigateur.
+ * N'importe que des modules eux-mêmes servis au navigateur.
  */
 
-export const FULL_RENOVATION_EUR_M2 = { min: 1500, max: 2000 };
+import {
+  ENERGY_ZONE_TO_GLOBAL,
+  globalHealthPenalty,
+  globalWorkLines,
+} from "./works-global.js";
 
-/** Parts de l'enveloppe intérieure « tout refait » (somme = 1). */
-export const INTERIOR_POST_SHARES = {
-  floor: 0.14,
-  walls: 0.19,
-  ceiling: 0.07,
-  humidity: 0.06,
-  joinery: 0.08,
-  electricity: 0.14,
-  heating: 0.08,
-  kitchen: 0.12,
-  bathroom: 0.12,
-};
+/**
+ * Enveloppe des finitions et équipements de pièce « tout refait » : 70 % d'une
+ * rénovation complète à 1 500–2 000 €/m², le reste (électricité, chauffage,
+ * menuiseries) étant chiffré dans les chantiers du logement entier.
+ */
+export const ROOM_RENOVATION_EUR_M2 = { min: 1050, max: 1400 };
+
+const POST_WEIGHTS = { floor: 14, walls: 19, ceiling: 7, humidity: 6, kitchen: 12, bathroom: 12 };
+const POST_WEIGHT_SUM = Object.values(POST_WEIGHTS).reduce((a, b) => a + b, 0);
+
+/** Parts de l'enveloppe des pièces (somme = 1). */
+export const INTERIOR_POST_SHARES = Object.fromEntries(
+  Object.entries(POST_WEIGHTS).map(([post, w]) => [post, w / POST_WEIGHT_SUM])
+);
 
 /** Intensité sur le budget poste × part de surface de la pièce. */
 export const ISSUE_INTENSITY = {
@@ -26,7 +33,6 @@ export const ISSUE_INTENSITY = {
   floor_redo: { post: "floor", min: 0.88, max: 1 },
   paint: { post: "walls", min: 0.48, max: 0.62 },
   walls_damaged: { post: "walls", min: 0.92, max: 1 },
-  cracks: { post: "walls", min: 0.35, max: 0.55 },
   ceiling_paint: { post: "ceiling", min: 0.45, max: 0.6 },
   ceiling_damaged: { post: "ceiling", min: 0.9, max: 1 },
   humidity: { post: "humidity", min: 0.55, max: 0.75 },
@@ -35,10 +41,6 @@ export const ISSUE_INTENSITY = {
   kitchen_redo: { post: "kitchen", min: 0.85, max: 1 },
   bathroom_refresh: { post: "bathroom", min: 0.35, max: 0.5 },
   bathroom_redo: { post: "bathroom", min: 0.85, max: 1 },
-  windows: { post: "joinery", min: 0.7, max: 0.95 },
-  joinery: { post: "joinery", min: 0.35, max: 0.5 },
-  electricity: { post: "electricity", min: 0.55, max: 0.75 },
-  heating: { post: "heating", min: 0.45, max: 0.65 },
 };
 
 export const ENERGY_SURFACE_REF_M2 = 70;
@@ -83,6 +85,7 @@ function scaleEnergyCost(min, max, surface, refM2) {
  * @param {number|null|undefined} params.surface
  * @param {string} params.propertyType
  * @param {object[]} params.rooms
+ * @param {object[]} [params.globalItems] - chantiers « Logement entier » (`plan.global.items`)
  * @param {Record<string, { state?: string }>} params.dpeZones
  * @param {object} params.costs - sortie de costsOptions()
  * @param {(key: string) => string} [params.issueLabel]
@@ -94,6 +97,7 @@ export function estimateWorksCosts(params) {
     surface,
     propertyType,
     rooms = [],
+    globalItems = [],
     dpeZones = {},
     costs,
     issueLabel = (k) => k,
@@ -144,6 +148,7 @@ export function estimateWorksCosts(params) {
         copro: Boolean(data.copro),
         rooms: [],
         roomIds: [],
+        detail: "",
         min: 0,
         max: 0,
       };
@@ -162,7 +167,6 @@ export function estimateWorksCosts(params) {
     }
   }
 
-  const issueKeys = new Set();
   for (const room of rooms) {
     if (shares.get(room.id) == null) continue;
     const keys = (room.issues || []).filter((k) => ISSUE_INTENSITY[k]);
@@ -176,7 +180,6 @@ export function estimateWorksCosts(params) {
     }
     for (const k of keys) {
       const intensity = ISSUE_INTENSITY[k];
-      issueKeys.add(k);
       const roomShare = postShares[intensity.post]
         ? postShares[intensity.post].get(room.id) ?? shares.get(room.id)
         : shares.get(room.id);
@@ -192,20 +195,25 @@ export function estimateWorksCosts(params) {
         },
         room.id,
         roomName(room),
-        surf * FULL_RENOVATION_EUR_M2.min * budget * roomShare * intensity.min / Math.max(1, sum.min),
-        surf * FULL_RENOVATION_EUR_M2.max * budget * roomShare * intensity.max / Math.max(1, sum.max)
+        surf * ROOM_RENOVATION_EUR_M2.min * budget * roomShare * intensity.min / Math.max(1, sum.min),
+        surf * ROOM_RENOVATION_EUR_M2.max * budget * roomShare * intensity.max / Math.max(1, sum.max)
       );
     }
   }
 
-  const covered = {
-    windows: issueKeys.has("windows") || issueKeys.has("joinery"),
-    heating: issueKeys.has("heating"),
-  };
+  const global = globalWorkLines({ items: globalItems, rooms, surface: surf, propertyType });
+  for (const line of global.lines) {
+    items[line.id] = { ...line };
+    order.push(line.id);
+  }
+
+  // Zone DPE faible : chiffrée en repli tant que le chantier correspondant n'a
+  // été ni coché ni écarté dans « Logement entier ».
+  const evaluated = new Set((globalItems || []).map((i) => i && i.key));
   for (const id of Object.keys(energy)) {
     const zone = dpeZones[id];
     const e = energy[id];
-    if (!zone || zone.state !== "poor" || covered[id]) continue;
+    if (!zone || zone.state !== "poor" || evaluated.has(ENERGY_ZONE_TO_GLOBAL[id])) continue;
     const copro = propertyType === "apartment" && e.building;
     const scaled = scaleEnergyCost(e.min, e.max, surf, energyRef);
     add(
@@ -219,27 +227,28 @@ export function estimateWorksCosts(params) {
   }
 
   const list = order.map((id) => items[id]);
-  const counted = list.filter((i) => !i.copro);
+  const isRoomLine = (i) => i.post !== "energy" && !i.global;
 
   let interiorMin = 0;
   let interiorMax = 0;
-  let energyMin = 0;
-  let energyMax = 0;
-  counted.forEach((i) => {
-    if (i.post === "energy") {
-      energyMin += i.min;
-      energyMax += i.max;
-    } else {
+  let otherMin = 0;
+  let otherMax = 0;
+  list.forEach((i) => {
+    if (i.copro) return;
+    if (isRoomLine(i)) {
       interiorMin += i.min;
       interiorMax += i.max;
+    } else {
+      otherMin += i.min;
+      otherMax += i.max;
     }
   });
-  // Au-delà de l'enveloppe « tout refait », chaque ligne est réduite au prorata.
-  const capMin = interiorMin > 0 ? Math.min(1, (surf * FULL_RENOVATION_EUR_M2.min) / interiorMin) : 1;
-  const capMax = interiorMax > 0 ? Math.min(1, (surf * FULL_RENOVATION_EUR_M2.max) / interiorMax) : 1;
+  // Au-delà de l'enveloppe « tout refait » des pièces, chaque ligne de pièce est réduite au prorata.
+  const capMin = interiorMin > 0 ? Math.min(1, (surf * ROOM_RENOVATION_EUR_M2.min) / interiorMin) : 1;
+  const capMax = interiorMax > 0 ? Math.min(1, (surf * ROOM_RENOVATION_EUR_M2.max) / interiorMax) : 1;
   if (capMin < 1 || capMax < 1) {
     list.forEach((i) => {
-      if (i.post === "energy") return;
+      if (!isRoomLine(i)) return;
       i.min *= capMin;
       i.max *= capMax;
     });
@@ -248,8 +257,23 @@ export function estimateWorksCosts(params) {
       r.max *= capMax;
     });
   }
-  const totalMin = interiorMin * capMin + energyMin;
-  const totalMax = interiorMax * capMax + energyMax;
+  const baseMin = interiorMin * capMin + otherMin;
+  const baseMax = interiorMax * capMax + otherMax;
+
+  // Frais de chantier : un pourcentage des autres travaux (copropriété exclue), sans cumul entre eux.
+  let percentMin = 0;
+  let percentMax = 0;
+  if (baseMax > 0) {
+    for (const line of global.percents) {
+      const item = { ...line, min: baseMin * line.rate.min, max: baseMax * line.rate.max };
+      percentMin += item.min;
+      percentMax += item.max;
+      list.push(item);
+    }
+  }
+  const counted = list.filter((i) => !i.copro);
+  const totalMin = baseMin + percentMin;
+  const totalMax = baseMax + percentMax;
 
   const posts = (costs.posts || [])
     .map((p) => {
@@ -289,15 +313,17 @@ export const CONDITION_SCORES = {
 
 /**
  * État général du logement d'après le plan des pièces (moyenne pondérée par
- * pièce, moins une pénalité par point coché). Le score de l'IA sert de repli
- * tant qu'aucune pièce n'est évaluée.
+ * pièce, moins une pénalité par point coché), moins une pénalité pour les
+ * chantiers de sécurité du logement entier (électricité, plomberie). Le score
+ * de l'IA sert de repli tant qu'aucune pièce n'est évaluée.
  * @param {object} params
  * @param {object[]} params.rooms
+ * @param {object[]} [params.globalItems] - `plan.global.items`
  * @param {Record<string, number>} [params.roomTypeFactors]
  * @param {Record<string, string>} [params.issueTones] - clé du point → "average" | "poor"
  * @param {number|null} [params.fallbackScore]
  */
-export function computeHomeHealth({ rooms = [], roomTypeFactors = {}, issueTones = {}, fallbackScore = null }) {
+export function computeHomeHealth({ rooms = [], globalItems = [], roomTypeFactors = {}, issueTones = {}, fallbackScore = null }) {
   let total = 0;
   let weights = 0;
   let assessed = 0;
@@ -311,7 +337,11 @@ export function computeHomeHealth({ rooms = [], roomTypeFactors = {}, issueTones
     weights += w;
     assessed += 1;
   }
-  const score = weights ? Math.round(total / weights) : typeof fallbackScore === "number" ? fallbackScore : null;
+  const score = weights
+    ? Math.max(0, Math.round(total / weights) - globalHealthPenalty(globalItems))
+    : typeof fallbackScore === "number"
+      ? fallbackScore
+      : null;
   const tone = score == null ? "unknown" : score >= 68 ? "good" : score >= 45 ? "average" : "poor";
   const verdict =
     score == null

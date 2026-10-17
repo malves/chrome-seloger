@@ -804,6 +804,38 @@ withApp("le tableau de financement se recalcule", async (ctx) => {
   assert.ok(stored.data.result.totalMonthly > 0);
 });
 
+withApp("financement : rendement brut locatif dans le tableau", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "yield@example.com");
+  const { id } = listingsService.save(user, listingPayload());
+  repositories.enrichments.saveListingResult(id, "rent-estimate", {
+    status: "ok",
+    data: {
+      version: 2,
+      granularity: "commune",
+      rent_m2: { low: 18, mid: 21, high: 25 },
+      rent_control: { applies: false },
+      confidence: 0.8,
+      sources: [],
+    },
+  });
+  const agent = await loginAgent(app, "yield@example.com");
+  const page = await agent.get(`/listings/${id}`).expect(200);
+  assert.match(page.text, /Rendement brut locatif/);
+  assert.match(page.text, /data-financing-annual-rent="30240"/);
+});
+
+withApp("financement : ligne rendement visible même sans estimation locative", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "yield-pending@example.com");
+  const { id } = listingsService.save(user, listingPayload());
+  const agent = await loginAgent(app, "yield-pending@example.com");
+  const page = await agent.get(`/listings/${id}`).expect(200);
+  assert.match(page.text, /Rendement brut locatif/);
+  assert.match(page.text, /data-financing-gross-yield/);
+  assert.doesNotMatch(page.text, /data-financing-annual-rent="/);
+});
+
 withApp("un provider inconnu ne peut pas être relancé", async (ctx) => {
   const { app, repositories, listingsService } = ctx;
   const user = await createUser(repositories, "a@example.com");

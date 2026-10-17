@@ -16,6 +16,8 @@ import createDpeOpendataService from "../services/dpe-opendata.service.js";
 import createSsmsiImportService from "../services/ssmsi-import.service.js";
 import createDvfImportService from "../services/dvf-import.service.js";
 import createHexasmalImportService from "../services/hexasmal-import.service.js";
+import createAddressInsightService from "../services/address-insight.service.js";
+import { buildAmortization } from "../lib/amortization.js";
 import { cleanPostalInseeQuery } from "../repositories/postal-insee.repo.js";
 import {
   buildImportDashboard,
@@ -24,6 +26,16 @@ import {
 import { buildJsonViewHtml, jsonForClipboard } from "../lib/json-view.js";
 import { logActivity } from "../lib/activity.js";
 import { buildDetailView } from "../lib/dpe-detail.js";
+import {
+  COLOR_GROUPS,
+  FONT_TOKENS,
+  LAYOUT_TOKENS,
+  RADIUS_TOKENS,
+  SHADOW_TOKENS,
+  SPACE_TOKENS,
+} from "../lib/design-system.js";
+import { ICON_GROUPS } from "../lib/icons.js";
+import { DESIGN_PATTERNS, patternAnchor } from "../lib/design-system-patterns.js";
 import {
   financingRatesSnapshot,
   readAdminFinancingForm,
@@ -92,6 +104,7 @@ function readSearchFilters(query) {
     : null;
   const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
   return {
+    adresse: cleanText(query.adresse),
     codePostal: cleanText(query.code_postal),
     dateModif: cleanDay(query.date_modif),
     typeBatiment,
@@ -108,6 +121,37 @@ function readSearchFilters(query) {
         ? anneeMin
         : anneeMax,
     page,
+  };
+}
+
+/** Au moins un filtre actif (évite COUNT/SELECT sur toute la base au chargement). */
+function hasDpeSearchFilters(filters) {
+  return Boolean(
+    filters.codePostal ||
+      filters.dateModif ||
+      filters.typeBatiment ||
+      filters.etiquette ||
+      filters.etiquetteGes ||
+      filters.surfaceMin != null ||
+      filters.surfaceMax != null ||
+      filters.anneeMin != null ||
+      filters.anneeMax != null ||
+      (filters.adresse && filters.codePostal)
+  );
+}
+
+function emptyDpeSearchResults(filters, searchState) {
+  return {
+    records: [],
+    filters,
+    searchState,
+    pagination: {
+      page: 1,
+      pageCount: 1,
+      total: 0,
+      from: 0,
+      to: 0,
+    },
   };
 }
 
@@ -167,6 +211,11 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
   const ssmsiImport = createSsmsiImportService({ repositories, logger });
   const dvfImport = createDvfImportService({ repositories, logger });
   const hexasmalImport = createHexasmalImportService({ repositories });
+  const addressInsight = createAddressInsightService({
+    repositories,
+    config,
+    logger,
+  });
   router.use("/admin", requireAdmin);
   router.use("/admin", (req, res, next) => {
     res.locals.adminEmails = config.adminEmails;
@@ -175,10 +224,18 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
 
   /** Résultats de recherche paginés pour les filtres donnés. */
   function searchResults(filters) {
+    if (filters.adresse && !filters.codePostal) {
+      return emptyDpeSearchResults(filters, "adresse-needs-postal");
+    }
+    if (!hasDpeSearchFilters(filters)) {
+      return emptyDpeSearchResults(filters, "needs-filters");
+    }
+
     const offset = (filters.page - 1) * PER_PAGE;
     const total = repositories.dpe.countSearch(filters);
     const records = repositories.dpe.search({
       ...filters,
+      listOnly: true,
       limit: PER_PAGE,
       offset,
     });
@@ -186,6 +243,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     return {
       records,
       filters,
+      searchState: null,
       pagination: {
         page: filters.page,
         pageCount,
@@ -402,17 +460,29 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
 
   router.get("/admin/dpe", (req, res) => {
     const filters = readSearchFilters(req.query);
-    const status = importStatusView();
+    const dpeTab = readDpeTab(req.query);
+    const status =
+      dpeTab === "search"
+        ? {
+            activeJobs: [],
+            importDashboard: { blockNewImport: false },
+            jobView: { blockNewImport: false },
+            recentJobs: [],
+          }
+        : importStatusView();
     res.render("admin/dpe", {
       title: "Administration — DPE",
       adminSection: "dpe",
-      dpeTab: readDpeTab(req.query),
+      dpeTab,
       ...adminSidebarLocals(),
       activeJobs: status.activeJobs,
       importDashboard: status.importDashboard,
-      jobView: status.importDashboard,
+      jobView: status.jobView ?? status.importDashboard,
       recentJobs: status.recentJobs,
-      dpeImportCalendar: repositories.dpe.listImportCalendarDays(),
+      dpeImportCalendar:
+        dpeTab === "search"
+          ? { complete: [], partial: [] }
+          : repositories.dpe.listImportCalendarDays(),
       labels: DPE_LABELS,
       buildingTypes: DPE_BUILDING_TYPES,
       search: searchResults(filters),
@@ -480,6 +550,23 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       adminSection: "financing",
       ...adminSidebarLocals(),
       financing: financingRatesSnapshot(),
+    });
+  });
+
+  router.get("/admin/design-system", (req, res) => {
+    res.render("admin/design-system", {
+      title: "Design system",
+      styles: ["/public/css/design-system.css"],
+      scripts: ["/public/js/calendar-picker.js", "/public/js/design-system-admin.js"],
+      colorGroups: COLOR_GROUPS,
+      spaceTokens: SPACE_TOKENS,
+      radiusTokens: RADIUS_TOKENS,
+      shadowTokens: SHADOW_TOKENS,
+      fontTokens: FONT_TOKENS,
+      layoutTokens: LAYOUT_TOKENS,
+      iconGroups: ICON_GROUPS,
+      designPatterns: DESIGN_PATTERNS,
+      patternAnchor,
     });
   });
 
@@ -1051,6 +1138,88 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     };
     return redirectAdmin(res, "users");
   });
+
+  /* ----------------------- Infos adresse (marché) ---------------------- */
+
+  router.get("/admin/adresse", (req, res) => {
+    res.render("admin/address-insight", {
+      title: "Administration — Infos adresse",
+      adminSection: "address-insight",
+      styles: ["/public/css/address-insight.css"],
+      scripts: ["/public/js/address-insight.js"],
+      ...adminSidebarLocals(),
+      dvfAvailable: repositories.dvf.hasData(),
+    });
+  });
+
+  /** Autocomplétion d'adresse (proxy BAN), limitée aux administrateurs. */
+  router.get("/admin/adresse/autocomplete", async (req, res, next) => {
+    try {
+      const suggestions = await addressInsight.suggest(req.query.q, {
+        limit: 6,
+      });
+      return res.json({ suggestions });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  /** Analyse d'une adresse : prix m², évolution, ventes, DPE. */
+  router.post(
+    "/admin/adresse",
+    express.json({ limit: "16kb" }),
+    async (req, res, next) => {
+      const address = String(req.body?.address || "").trim();
+      if (address.length < 3 || address.length > 240) {
+        return res.status(422).json({ error: "Adresse invalide." });
+      }
+      try {
+        const result = await addressInsight.analyze(address);
+        logActivity(logger, req, "analyse d'adresse (admin)", {
+          status: result.status,
+        });
+        return res.json(result);
+      } catch (err) {
+        return next(err);
+      }
+    }
+  );
+
+  /* ------------------------ Tableau d'amortissement -------------------- */
+
+  router.get("/admin/amortissement", (req, res) => {
+    const rates = financingRatesSnapshot();
+    res.render("admin/amortization", {
+      title: "Administration — Tableau d'amortissement",
+      adminSection: "amortization",
+      styles: ["/public/css/amortization.css"],
+      scripts: ["/public/js/calendar-picker.js", "/public/js/amortization.js"],
+      ...adminSidebarLocals(),
+      amortDefaults: {
+        interestRate: rates.interestRate,
+        insuranceRate: rates.insuranceRate,
+        years: rates.years,
+      },
+    });
+  });
+
+  /** Calcule le tableau d'amortissement (différé partiel optionnel). */
+  router.post(
+    "/admin/amortissement",
+    express.json({ limit: "16kb" }),
+    (req, res) => {
+      const body = req.body || {};
+      const result = buildAmortization({
+        amount: Number(body.amount),
+        years: Number(body.years),
+        interestRate: Number(body.interestRate),
+        insuranceRate: Number(body.insuranceRate),
+        deferredMonths: Number(body.deferredMonths),
+        startDate: body.startDate,
+      });
+      return res.json(result);
+    }
+  );
 
   return router;
 }

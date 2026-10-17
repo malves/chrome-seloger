@@ -1,0 +1,267 @@
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content">
+    <div class="amort" data-amort>
+      <section class="panel amort__intro">
+        <div class="panel__head">
+          <div>
+            <p class="panel__eyebrow">Simulateur de crédit</p>
+            <h2 class="panel__title">Tableau d'amortissement</h2>
+          </div>
+        </div>
+      </section>
+
+      <noscript>
+        <p class="panel">Cette page a besoin de JavaScript pour calculer le tableau.</p>
+      </noscript>
+
+      <section class="panel amort__sim" aria-label="Simulation de crédit">
+        <div class="amort__perf" data-amort-summary aria-live="polite">
+          <p class="amort__summary-empty" data-amort-empty>
+            Renseignez un montant et une durée pour afficher la synthèse.
+          </p>
+          <div class="amort__summary-body" data-amort-body hidden>
+            <div class="amort__kpi amort__kpi--main">
+              <span class="amort__kpi-label">Mensualité (hors différé)</span>
+              <span class="amort__kpi-value" data-k="amortizingMonthlyTotal"></span>
+              <span class="amort__kpi-sub" data-k="amortizingMonthlyTotalSub"></span>
+            </div>
+            <dl class="amort__stats">
+              <div class="amort__stat" data-row-deferred hidden>
+                <dt>Pendant le différé</dt>
+                <dd data-k="firstMonthlyTotal"></dd>
+              </div>
+              <div class="amort__stat">
+                <dt>Coût total du crédit</dt>
+                <dd data-k="totalCreditCost"></dd>
+              </div>
+              <div class="amort__stat">
+                <dt>Dont intérêts</dt>
+                <dd data-k="totalInterest"></dd>
+              </div>
+              <div class="amort__stat">
+                <dt>Dont assurance</dt>
+                <dd data-k="totalInsurance"></dd>
+              </div>
+              <div class="amort__stat">
+                <dt>Total remboursé</dt>
+                <dd data-k="totalRepaid"></dd>
+              </div>
+              <div class="amort__stat" data-row-end hidden>
+                <dt>Dernière échéance</dt>
+                <dd data-k="endDate"></dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <form data-amort-form class="form amort__form">
+            <div class="amort__fields">
+              <div class="field">
+                <label class="field__label" for="amort-amount">Montant emprunté (€)</label>
+                <div class="amount-stepper">
+                  <input
+                    id="amort-amount"
+                    class="input"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    name="amount"
+                    data-amount
+                    data-step="1000"
+                    data-min="0"
+                    data-decimals="0"
+                    value="200 000"
+                  />
+                  <span class="amount-stepper__controls">
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le montant de 1 000 euros"></button>
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le montant de 1 000 euros"></button>
+                  </span>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="amort-years">Durée (ans)</label>
+                <div class="amount-stepper">
+                  <input
+                    id="amort-years"
+                    class="input"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    name="years"
+                    data-step="1"
+                    data-min="1"
+                    data-max="40"
+                    data-decimals="0"
+                    value="<%= amortDefaults.years %>"
+                  />
+                  <span class="amount-stepper__controls">
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter la durée d'un an"></button>
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer la durée d'un an"></button>
+                  </span>
+                </div>
+              </div>
+
+              <div class="field">
+                <span class="field__label" id="amort-start-label">Début du crédit <span class="field__optional">(facultatif)</span></span>
+                <div
+                  class="date-range-picker"
+                  data-amort-start-picker
+                  data-date-placeholder="Choisir une date de début"
+                >
+                  <input type="hidden" name="startDate" data-field="startDate" value="" />
+                  <button
+                    type="button"
+                    class="date-range-picker__trigger"
+                    data-cal-trigger
+                    aria-labelledby="amort-start-label"
+                    aria-expanded="false"
+                    aria-haspopup="dialog"
+                  >
+                    <svg class="date-range-picker__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <rect x="3" y="4" width="18" height="18" rx="2" />
+                      <path d="M16 2v4M8 2v4M3 10h18" />
+                    </svg>
+                    <span class="date-range-picker__label" data-cal-trigger-label>Choisir une date de début</span>
+                    <svg class="date-range-picker__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                  <div class="date-range-picker__popover" data-cal-popover hidden role="dialog" aria-label="Choisir la date de début du crédit">
+                    <div class="calendar" data-calendar>
+                      <div class="calendar__head">
+                        <button type="button" class="calendar__nav" data-cal-prev aria-label="Mois précédent">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+                        </button>
+                        <span class="calendar__title" data-cal-title aria-live="polite"></span>
+                        <button type="button" class="calendar__nav" data-cal-next aria-label="Mois suivant">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+                        </button>
+                      </div>
+                      <div class="calendar__weekdays" aria-hidden="true">
+                        <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+                      </div>
+                      <div class="calendar__grid" data-cal-grid role="grid"></div>
+                    </div>
+                    <p class="date-range-picker__hint" data-cal-hint>Cliquez un jour.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="amort-interest">Taux nominal (%)</label>
+                <div class="amount-stepper">
+                  <input
+                    id="amort-interest"
+                    class="input"
+                    type="text"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    name="interestRate"
+                    data-step="0.01"
+                    data-min="0"
+                    data-max="25"
+                    data-decimals="2"
+                    value="<%= (amortDefaults.interestRate * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) %>"
+                  />
+                  <span class="amount-stepper__controls">
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le taux nominal de 0,01 point"></button>
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le taux nominal de 0,01 point"></button>
+                  </span>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="amort-insurance">Assurance (%/an)</label>
+                <div class="amount-stepper">
+                  <input
+                    id="amort-insurance"
+                    class="input"
+                    type="text"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    name="insuranceRate"
+                    data-step="0.01"
+                    data-min="0"
+                    data-max="5"
+                    data-decimals="2"
+                    value="<%= (amortDefaults.insuranceRate * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) %>"
+                  />
+                  <span class="amount-stepper__controls">
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter l'assurance de 0,01 point"></button>
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer l'assurance de 0,01 point"></button>
+                  </span>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="amort-deferred">Différé du capital (mois)</label>
+                <div class="amount-stepper">
+                  <input
+                    id="amort-deferred"
+                    class="input"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    name="deferredMonths"
+                    data-step="1"
+                    data-min="0"
+                    data-max="120"
+                    data-decimals="0"
+                    value="0"
+                  />
+                  <span class="amount-stepper__controls">
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter le différé d'un mois"></button>
+                    <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer le différé d'un mois"></button>
+                  </span>
+                </div>
+                <p class="field__hint amort__field-hint">
+                  Nombre de mois où le capital n'est pas remboursé (intérêts seuls).
+                </p>
+              </div>
+            </div>
+        </form>
+      </section>
+
+      <section class="panel amort__table-wrap" data-amort-table-wrap hidden>
+        <div class="panel__head">
+          <h3 class="panel__title">Échéancier</h3>
+          <span class="amort__count" data-amort-count></span>
+        </div>
+        <dl class="amort__table-totals" data-amort-table-totals aria-label="Totaux du crédit">
+          <div class="amort__table-totals-item">
+            <dt>Total des intérêts</dt>
+            <dd data-k="tableTotalInterest">—</dd>
+          </div>
+          <div class="amort__table-totals-item">
+            <dt>Total assurance</dt>
+            <dd data-k="tableTotalInsurance">—</dd>
+          </div>
+          <div class="amort__table-totals-item">
+            <dt>Total remboursé</dt>
+            <dd data-k="tableTotalRepaid">—</dd>
+          </div>
+        </dl>
+        <div class="amort__table-scroll">
+          <table class="table amort__table">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">Date</th>
+                <th scope="col" class="amort__num">Échéance</th>
+                <th scope="col" class="amort__num">Capital</th>
+                <th scope="col" class="amort__num">Intérêts</th>
+                <th scope="col" class="amort__num">Assurance</th>
+                <th scope="col" class="amort__num">Capital restant</th>
+              </tr>
+            </thead>
+            <tbody data-amort-rows></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <script type="application/json" id="amort-defaults"><%- JSON.stringify(amortDefaults).replace(/</g, "\\u003c") %></script>
+  </div>
+</div>

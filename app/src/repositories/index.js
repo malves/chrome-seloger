@@ -18,6 +18,7 @@ import createDvfRepository from "./dvf.repo.js";
 import createPostalInseeRepository from "./postal-insee.repo.js";
 import createGeocodeCacheRepository from "./geocode-cache.repo.js";
 import createWorksPlansRepository from "./works-plans.repo.js";
+import createVisitOverridesRepository from "./visit-overrides.repo.js";
 
 export default function createRepositories(db) {
   const projects = createProjectsRepository(db);
@@ -36,6 +37,7 @@ export default function createRepositories(db) {
     postalInsee: createPostalInseeRepository(db),
     geocodeCache: createGeocodeCacheRepository(db),
     worksPlans: createWorksPlansRepository(db),
+    visitOverrides: createVisitOverridesRepository(db),
 
     /** Exécute plusieurs écritures de façon atomique. */
     transaction(fn) {

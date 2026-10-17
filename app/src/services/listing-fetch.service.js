@@ -15,6 +15,7 @@
 
 import config from "../config.js";
 import { parseFloorFromText } from "../lib/dpe-floor.js";
+import { listingIdFromPath } from "../lib/listing-id-from-path.js";
 import {
   energyDetailsFromSeLogerSections,
   resolveSeLogerSalePrice,
@@ -42,18 +43,6 @@ const LBC_PROPERTY_TYPES = {
 export function sourceForHostname(hostname) {
   const match = SOURCES.find(([pattern]) => pattern.test(hostname));
   return match ? match[1] : null;
-}
-
-/** Identifiant annonce dans le chemin (aligné sur listings.service.js). */
-function listingIdFromPath(pathname) {
-  const path = String(pathname || "").replace(/\/+$/, "");
-  const legacy = path.match(/(\d{5,})\.htm(?:l)?$/i);
-  if (legacy) return legacy[1];
-  if (/\/annonces?\//i.test(path)) {
-    const last = path.split("/").filter(Boolean).pop();
-    if (last && /^[A-Za-z0-9]+$/.test(last)) return last.toUpperCase();
-  }
-  return null;
 }
 
 /**
@@ -288,6 +277,20 @@ function pickScalar(nodes, path) {
   return undefined;
 }
 
+/**
+ * Chemin JSON-LD à la racine du nœud ou sous itemOffered (RealEstateListing SeLoger).
+ */
+function pickLodgingPath(nodes, path) {
+  return pick(nodes, path) ?? pick(nodes, ["itemOffered", ...path]);
+}
+
+/** Propriété quantitative ou scalaire (numberOfRooms, floorSize…). */
+function pickLodgingProperty(nodes, key) {
+  return (
+    pickLodgingPath(nodes, [key, "value"]) ?? pickLodgingPath(nodes, [key])
+  );
+}
+
 function priceCaptureRaw(resolved) {
   return {
     price_capture: {
@@ -318,19 +321,15 @@ function fromJsonLd(nodes) {
     price:
       integerFrom(pick(nodes, ["offers", "price"])) ??
       integerFrom(pick(nodes, ["offers", "priceSpecification", "price"])),
-    surface: decimalFrom(pick(nodes, ["floorSize", "value"])),
-    rooms:
-      integerFrom(pick(nodes, ["numberOfRooms", "value"])) ??
-      integerFrom(pick(nodes, ["numberOfRooms"])),
-    bedrooms:
-      integerFrom(pick(nodes, ["numberOfBedrooms", "value"])) ??
-      integerFrom(pick(nodes, ["numberOfBedrooms"])),
+    surface: decimalFrom(pickLodgingProperty(nodes, "floorSize")),
+    rooms: integerFrom(pickLodgingProperty(nodes, "numberOfRooms")),
+    bedrooms: integerFrom(pickLodgingProperty(nodes, "numberOfBedrooms")),
     photos: httpsOnly(images),
     location: {
-      city: pick(nodes, ["address", "addressLocality"]),
-      postal_code: pick(nodes, ["address", "postalCode"]),
-      lat: decimalFrom(pick(nodes, ["geo", "latitude"])),
-      lng: decimalFrom(pick(nodes, ["geo", "longitude"])),
+      city: pickLodgingPath(nodes, ["address", "addressLocality"]),
+      postal_code: pickLodgingPath(nodes, ["address", "postalCode"]),
+      lat: decimalFrom(pickLodgingPath(nodes, ["geo", "latitude"])),
+      lng: decimalFrom(pickLodgingPath(nodes, ["geo", "longitude"])),
     },
   };
 }

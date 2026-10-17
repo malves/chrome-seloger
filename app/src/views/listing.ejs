@@ -1,32 +1,6 @@
 <%
-  const specs = [
-    ["Type de bien", fmt.propertyTypeLabel(listing.property_type)],
-    ["Transaction", fmt.transactionLabel(listing.transaction_type)],
-    ["Prix", listing.price !== null ? fmt.euro(listing.price) : null],
-    ["Prix au m²", listing.price_per_m2 ? fmt.euro(listing.price_per_m2) + " / m²" : null],
-    ["Surface habitable", listing.surface ? fmt.surface(listing.surface) : null],
-    ["Surface du terrain", listing.land_surface ? fmt.surface(listing.land_surface) : null],
-    ["Pièces", listing.rooms || null],
-    ["Chambres", listing.bedrooms || null],
-    ["Étage", listing.floor !== null && listing.floor !== undefined ? listing.floor : null],
-    ["Année de construction", listing.year_built || null],
-    ["État", listing.property_condition],
-    ["Chauffage", listing.heating_system],
-    ["Source d'énergie", listing.energy_source],
-    ["Construction", listing.is_new_build ? "Neuf" : null],
-    ["Commune", listing.city],
-    ["Code postal", listing.postal_code],
-    ["Code INSEE", typeof postalInseeCode !== "undefined" ? postalInseeCode : null],
-    ["Agence", listing.agency && listing.agency.name ? listing.agency.name : null],
-    ["Téléphone", listing.agency && listing.agency.phone ? listing.agency.phone : null],
-    [
-      "Honoraires d'agence",
-      listing.agency && listing.agency.fees_percent
-        ? listing.agency.fees_percent + " %" + (listing.agency.fees_included ? " (inclus)" : "")
-        : null,
-    ],
-    ["Identifiant source", listing.source_id],
-  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+  const specs =
+    (typeof listingSpecs !== "undefined" && listingSpecs) || [];
   const hasEnergyData = listing.dpe || listing.ges;
 %>
 
@@ -39,7 +13,7 @@
 
   <!-- 3. Galerie (carrousel : flèches, compteur, miniatures, clavier) -->
   <% if (photos.length) { %>
-    <section class="panel">
+    <section class="panel" id="listing-photos" data-toc-label="Photos">
       <div class="panel__head">
         <div>
           <p class="panel__eyebrow">Photos</p>
@@ -108,7 +82,8 @@
   <% } %>
 
   <!-- 4. Caractéristiques -->
-  <section class="panel">
+  <%- include("partials/works-icons") %>
+  <section class="panel" id="listing-specs" data-toc-label="Caractéristiques">
     <div class="panel__head">
       <div>
         <p class="panel__eyebrow">Le bien</p>
@@ -118,11 +93,18 @@
 
     <% if (specs.length) { %>
       <div class="kv kv--grid">
-        <% specs.forEach(function ([label, value]) { %>
-          <div class="kv__row">
-            <span class="kv__key"><%= label %></span>
-            <span class="kv__value"><%= value %></span>
-          </div>
+        <% specs.forEach(function (row) { %>
+          <%- include("partials/listing-spec-row", {
+            listing: listing,
+            specKey: row.key,
+            label: row.label,
+            display: row.display,
+            fieldKey: row.fieldKey,
+            rawValue: row.rawValue,
+            source: row.source,
+            fieldInputKind: row.fieldInputKind,
+            csrfToken: csrfToken,
+          }) %>
         <% }); %>
       </div>
     <% } else { %>
@@ -178,10 +160,10 @@
 
   <!-- 4a. Travaux : pièces et état (modale), analyse des photos -->
   <% var worksHasPhotos = photos.length; %>
-  <%- include("partials/works-icons") %>
   <section
     class="panel works<%= worksHasPhotos ? '' : ' works--dpe-only' %>"
     id="listing-works"
+    data-toc-label="État général"
     aria-labelledby="listing-works-title"
   >
     <div class="panel__head works__head">
@@ -252,14 +234,14 @@
 
   <!-- 7. Financement -->
   <% if (listing.transaction_type !== 'rent') { %>
-    <section class="panel" id="financement">
+    <section class="panel" id="financement" data-toc-label="Financement">
       <%- include("partials/financing", { listing: listing, financing: financing }) %>
     </section>
   <% } %>
 
   <!-- 8. Historique de prix -->
   <% if (priceHistory.length >= 2) { %>
-    <section class="panel">
+    <section class="panel" id="listing-price-history" data-toc-label="Historique de prix">
       <div class="panel__head">
         <div>
           <p class="panel__eyebrow">Suivi</p>
@@ -289,7 +271,7 @@
   <% } %>
 
   <!-- 9. Notes personnelles -->
-  <section class="panel">
+  <section class="panel" id="listing-notes" data-toc-label="Notes">
     <div class="panel__head">
       <div>
         <p class="panel__eyebrow">Vous</p>
@@ -339,3 +321,10 @@
     </div>
   </section>
 </div>
+
+<!-- Sommaire flottant : alimenté par les sections `[data-toc-label]` (voir app.js). -->
+<nav class="listing-toc" aria-label="Sommaire de l'annonce" data-listing-toc hidden>
+  <span class="listing-toc__rail" aria-hidden="true"></span>
+  <span class="listing-toc__fill" aria-hidden="true"></span>
+  <ol class="listing-toc__list" data-listing-toc-list></ol>
+</nav>
