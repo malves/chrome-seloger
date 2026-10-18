@@ -138,6 +138,18 @@ export const DESIGN_PATTERNS = [
     hasSpec: true,
   },
   {
+    id: "layout-sticky-condensed",
+    title: "En-tête collant condensé",
+    group: "layout",
+    classes: ".detail--sticky-head · .is-head-stuck · .detail-lead__head · .detail-lead__collapsible",
+    referenceFile: "partials/listing-lead.ejs, partials/detail-header.ejs",
+    usage:
+      "Fiche annonce, à partir de 721 px : dès que le panneau d'en-tête touche la barre haute, il colle ; titre, badges et prix se replient (grid-template-rows 1fr → 0fr, fondu et translateY −8 px, 0,5 s, plus lent que les 300 ms de l'interface pour un repli de grande hauteur) ; fond var(--green-900) et ombre apparaissent en fondu (pseudo-éléments), boutons inversés (fantômes en contour clair, « Écarter » en pastille blanche, focus lime). Seules les actions restent ; la barre de suivi défile avec la page et remonte en douceur pendant le repli.",
+    script: "app.js (initStickyListingHead)",
+    hasSpec: true,
+    catalogOnly: true,
+  },
+  {
     id: "tabs-admin",
     title: "Onglets administration",
     group: "layout",

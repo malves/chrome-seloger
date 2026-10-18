@@ -7742,6 +7742,86 @@
     clampListingDescriptionExcerpt(excerpt);
   });
 
+  /* -------- Fiche annonce : en-tête collant qui se condense au défilement -------- */
+  // Hauteur occupée par l'en-tête condensé (0 s'il n'est pas actif), pour les décalages de défilement.
+  function stickyListingHeadHeight() {
+    var detail = document.querySelector(".detail.detail--sticky-head");
+    if (!detail) return 0;
+    return parseFloat(detail.style.getPropertyValue("--detail-head-compact")) || 0;
+  }
+
+  (function initStickyListingHead() {
+    var detail = document.querySelector(".detail");
+    if (!detail || !document.getElementById("listing-lead")) return;
+    var media = window.matchMedia("(min-width: 721px)");
+    var frame = 0;
+    var measureFrame = 0;
+
+    function head() {
+      return document.getElementById("listing-head");
+    }
+
+    // Bascule l'état sans transition le temps de lire la hauteur condensée :
+    // tout se passe dans la même tâche, rien n'est peint entre-temps.
+    function measure() {
+      measureFrame = 0;
+      var el = head();
+      if (!el || !detail.classList.contains("detail--sticky-head")) return;
+      var stuck = detail.classList.contains("is-head-stuck");
+      detail.classList.add("is-head-measuring");
+      detail.classList.add("is-head-stuck");
+      var compact = el.offsetHeight;
+      detail.classList.toggle("is-head-stuck", stuck);
+      void el.offsetHeight;
+      detail.classList.remove("is-head-measuring");
+      detail.style.setProperty("--detail-head-compact", compact + "px");
+      update();
+    }
+
+    // Le panneau est le premier élément de `.detail` : le haut de `.detail` donne
+    // sa position naturelle, indépendante de l'état collant. Il se condense dès
+    // qu'il atteint la barre haute.
+    function update() {
+      frame = 0;
+      if (!head()) return;
+      var topbar = document.querySelector(".topbar");
+      var topbarHeight = topbar ? topbar.offsetHeight : 0;
+      detail.style.setProperty("--detail-head-top", topbarHeight + "px");
+      var gap = parseFloat(window.getComputedStyle(detail).getPropertyValue("--space-2")) || 0;
+      var stuck = detail.getBoundingClientRect().top <= topbarHeight + gap + 1;
+      detail.classList.toggle("is-head-stuck", stuck);
+    }
+
+    function schedule() {
+      if (!frame) frame = window.requestAnimationFrame(update);
+    }
+
+    function scheduleMeasure() {
+      if (!measureFrame) measureFrame = window.requestAnimationFrame(measure);
+    }
+
+    function apply() {
+      if (!media.matches) {
+        detail.classList.remove("detail--sticky-head", "is-head-stuck");
+        return;
+      }
+      detail.classList.add("detail--sticky-head");
+      measure();
+    }
+
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", function () {
+      schedule();
+      scheduleMeasure();
+    });
+    media.addEventListener("change", apply);
+    document.body.addEventListener("htmx:afterSettle", function (event) {
+      if (event.target && event.target.id === "listing-lead") scheduleMeasure();
+    });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleMeasure);
+    apply();
+  })();
+
   (function initListingToc() {
     var nav = document.querySelector("[data-listing-toc]");
     if (!nav) return;
@@ -7754,7 +7834,7 @@
 
     function topOffset() {
       var topbar = document.querySelector(".topbar");
-      return (topbar ? topbar.offsetHeight : 0) + 16;
+      return (topbar ? topbar.offsetHeight : 0) + stickyListingHeadHeight() + 16;
     }
 
     function visibleSections() {
@@ -7861,10 +7941,12 @@
       if (!target) return;
       event.preventDefault();
       var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      window.scrollTo({
-        top: target.getBoundingClientRect().top + window.scrollY - topOffset(),
-        behavior: reduceMotion ? "auto" : "smooth",
-      });
+      // En-tête collant : sa position à l'écran n'indique plus sa place dans la page.
+      var top =
+        target.id === "listing-head"
+          ? 0
+          : target.getBoundingClientRect().top + window.scrollY - topOffset();
+      window.scrollTo({ top: top, behavior: reduceMotion ? "auto" : "smooth" });
     });
 
     window.addEventListener("scroll", schedule, { passive: true });

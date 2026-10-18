@@ -2080,6 +2080,186 @@ body.is-modal-open {
   margin-top: 0;
 }
 
+/* --- En-tête collant condensé (pattern layout-sticky-condensed) ----------
+   `.detail--sticky-head` et `.is-head-stuck` sont posés par app.js sur `.detail`,
+   qui n'est jamais remplacé par htmx : un `#listing-lead` swapé naît directement
+   dans le bon état. `#listing-lead` passe en `display: contents` pour que seul
+   le panneau d'en-tête colle (sur toute la hauteur de `.detail`) ; la barre de
+   suivi défile normalement et remonte en douceur pendant le repli. */
+.detail--sticky-head {
+  --detail-head-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --detail-head-duration: 0.5s;
+  --detail-head-stick: calc(var(--detail-head-top, 0px) + var(--space-2));
+  /* Sans cela, Chrome recale le défilement quand l'en-tête rétrécit : la page
+     remonte d'autant, et près du haut l'en-tête se décolle en boucle. */
+  overflow-anchor: none;
+}
+
+.detail--sticky-head > #listing-lead {
+  display: contents;
+}
+
+.detail--sticky-head > [id],
+.detail--sticky-head .detail-lead > [id] {
+  scroll-margin-top: calc(
+    var(--detail-head-stick) + var(--detail-head-compact, 0px) + var(--space-4)
+  );
+}
+
+.detail--sticky-head .detail-lead__head {
+  position: sticky;
+  top: var(--detail-head-stick);
+  z-index: 15;
+  transition: padding var(--detail-head-duration) var(--detail-head-ease);
+}
+
+/* Teinte et ombre vivent sur des pseudo-éléments pour n'animer que leur opacité.
+   `z-index: -1` place la teinte sous le contenu : le panneau collant (z-index)
+   forme son propre contexte d'empilement. */
+.detail--sticky-head .detail-lead__head::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--green-900);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--detail-head-duration) ease;
+}
+
+.detail--sticky-head .detail-lead__head::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: var(--shadow-raised);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--detail-head-duration) ease;
+}
+
+.detail--sticky-head .detail-head {
+  grid-template-rows: 1fr auto;
+  transition: grid-template-rows var(--detail-head-duration) var(--detail-head-ease), row-gap var(--detail-head-duration) var(--detail-head-ease);
+}
+
+.detail--sticky-head .detail-head__intro,
+.detail--sticky-head .detail-head__price {
+  align-self: stretch;
+  min-height: 0;
+  overflow: hidden;
+  transition:
+    opacity calc(var(--detail-head-duration) * 0.8) ease calc(var(--detail-head-duration) * 0.2),
+    transform var(--detail-head-duration) var(--detail-head-ease),
+    visibility 0s;
+}
+
+.detail--sticky-head.is-head-stuck .detail-lead__head {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+/* Barre condensée : les boutons les plus hauts reprennent la hauteur de `.btn--sm`. */
+.detail--sticky-head.is-head-stuck .detail-head__offer-btn,
+.detail--sticky-head.is-head-stuck .detail-head .status-pipe__reject {
+  padding-top: 5px;
+  padding-bottom: 7px;
+}
+
+.detail--sticky-head.is-head-stuck .detail-lead__head::before,
+.detail--sticky-head.is-head-stuck .detail-lead__head::after {
+  opacity: 1;
+}
+
+/* Annonce écartée : la bordure rouge reste visible autour du fond vert. */
+.detail--sticky-head.detail--rejected .detail-lead__head::before {
+  inset: 0;
+}
+
+/* Boutons inversés sur le fond vert foncé de la barre condensée. */
+.detail--sticky-head.is-head-stuck .detail-head .btn--ghost,
+.detail--sticky-head.is-head-stuck .detail-head .project-select__trigger {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--ink-inverse) 35%, transparent);
+  color: var(--ink-inverse);
+}
+
+.detail--sticky-head.is-head-stuck .detail-head .btn--ghost:hover:not(.btn--fav-add):not(.btn--danger-ghost),
+.detail--sticky-head.is-head-stuck .detail-head .project-select__trigger:hover {
+  background: color-mix(in srgb, var(--ink-inverse) 12%, transparent);
+  filter: none;
+}
+
+.detail--sticky-head.is-head-stuck .detail-head .btn--ghost.btn--fav-add:hover,
+.detail--sticky-head.is-head-stuck .detail-head .btn--ghost.btn--fav-add:focus-visible {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--on-gold);
+}
+
+.detail--sticky-head.is-head-stuck .detail-head .btn--ghost.btn--danger-ghost:hover,
+.detail--sticky-head.is-head-stuck .detail-head .btn--ghost.btn--danger-ghost:focus-visible {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.detail--sticky-head.is-head-stuck .detail-head .status-pipe__reject.btn--danger {
+  background: var(--surface);
+  border-color: var(--surface);
+}
+
+.detail--sticky-head.is-head-stuck .detail-head .status-pipe__reject.btn--danger:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger-soft);
+}
+
+/* La pastille de projet prend souvent la couleur du fond : un anneau clair la détache. */
+.detail--sticky-head.is-head-stuck .detail-head .project-select__trigger .project-dot {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink-inverse) 70%, transparent);
+}
+
+.detail--sticky-head.is-head-stuck :focus-visible {
+  outline-color: var(--lime);
+}
+
+.detail--sticky-head.is-head-stuck .detail-head {
+  grid-template-rows: 0fr auto;
+  row-gap: 0;
+}
+
+.detail--sticky-head.is-head-stuck .detail-head__intro,
+.detail--sticky-head.is-head-stuck .detail-head__price {
+  opacity: 0;
+  transform: translateY(calc(-1 * var(--space-2)));
+  visibility: hidden;
+  transition:
+    opacity calc(var(--detail-head-duration) * 0.7) ease,
+    transform var(--detail-head-duration) var(--detail-head-ease),
+    visibility 0s linear var(--detail-head-duration);
+}
+
+/* Mesure de la hauteur condensée par app.js, sans rendu intermédiaire. */
+.detail--sticky-head.is-head-measuring .detail-lead__head,
+.detail--sticky-head.is-head-measuring .detail-lead__head *,
+.detail--sticky-head.is-head-measuring .detail-lead__head::before,
+.detail--sticky-head.is-head-measuring .detail-lead__head::after {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail--sticky-head .detail-lead__head,
+  .detail--sticky-head .detail-lead__head::before,
+  .detail--sticky-head .detail-lead__head::after,
+  .detail--sticky-head .detail-head,
+  .detail--sticky-head .detail-head__intro,
+  .detail--sticky-head .detail-head__price,
+  .detail--sticky-head.is-head-stuck .detail-head__intro,
+  .detail--sticky-head.is-head-stuck .detail-head__price {
+    transition: none;
+  }
+}
+
 #listing-enrichment-live {
   display: flex;
   flex-direction: column;
