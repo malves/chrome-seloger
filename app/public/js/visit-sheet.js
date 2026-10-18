@@ -1667,7 +1667,7 @@
 
     function scheduleSave() {
       pending = true;
-      setSaveState("pending", "Modifications en cours…");
+      setSaveState("pending", "Réponses modifiées, enregistrement dans un instant…");
       clearTimeout(saveTimer);
       saveTimer = setTimeout(save, 700);
     }
@@ -1680,7 +1680,7 @@
       }
       saving = true;
       pending = false;
-      setSaveState("saving", "Enregistrement…");
+      setSaveState("saving", "Enregistrement de vos réponses…");
       fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, Accept: "application/json" },
@@ -1702,7 +1702,10 @@
             throw new Error("auth");
           }
           if (!res.ok) throw new Error("http");
-          if (!pending) setSaveState("saved", "Enregistré");
+          if (!pending) {
+            var time = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+            setSaveState("saved", "Vos réponses ont été enregistrées à " + time);
+          }
         })
         .catch(function (err) {
           if (err && err.message === "auth") {
@@ -1710,7 +1713,7 @@
             return;
           }
           pending = true;
-          setSaveState("error", "Non enregistré, nouvel essai…");
+          setSaveState("error", "Vos réponses n'ont pas pu être enregistrées, nouvel essai…");
           saveTimer = setTimeout(save, 5000);
         })
         .finally(function () {
