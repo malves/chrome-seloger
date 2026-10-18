@@ -30,9 +30,9 @@ export const ROOM_ISSUES = [
   {
     key: "floor_worn",
     category: "floor",
-    label: "Sol usé",
+    label: "Sol à rafraîchir",
     tone: "average",
-    hint: "Revêtement usé mais sain : un ponçage, une vitrification ou un bon nettoyage suffisent.",
+    hint: "Revêtement conservé : ponçage et vitrification d'un parquet, nettoyage et joints refaits d'un carrelage, ou résine de sol.",
   },
   {
     key: "floor_redo",
@@ -44,7 +44,7 @@ export const ROOM_ISSUES = [
   {
     key: "paint",
     category: "walls",
-    label: "Peinture à refaire",
+    label: "Murs à repeindre",
     tone: "average",
     hint: "Murs sains, seule la finition est à reprendre : peinture ancienne ou papier peint.",
   },
@@ -106,7 +106,7 @@ export const ROOM_ISSUES = [
     category: "fixtures",
     label: "Salle d'eau à rafraîchir",
     tone: "average",
-    hint: "Équipements conservés : joints, robinetterie, peinture ou faïence partielle.",
+    hint: "Équipements conservés : joints, robinetterie, peinture ou faïence partielle. Peinture des murs et du plafond comprise.",
     roomTypes: WET_ROOMS,
     heavyRoomTypes: WET_CORE,
   },
@@ -115,7 +115,7 @@ export const ROOM_ISSUES = [
     category: "fixtures",
     label: "Salle d'eau à refaire",
     tone: "poor",
-    hint: "Salle d'eau à refaire entièrement : sanitaires, faïence et plomberie apparente.",
+    hint: "Salle d'eau à refaire entièrement : sanitaires, faïence et plomberie apparente. Sol, murs et plafond compris.",
     roomTypes: WET_ROOMS,
     heavyRoomTypes: WET_CORE,
   },
@@ -146,6 +146,20 @@ export const EXCLUSIVE_ISSUES = [
   ["kitchen_refresh", "kitchen_redo"],
   ["bathroom_refresh", "bathroom_redo"],
 ];
+
+/** Points compris dans un forfait : affichés « Inclus » et non chiffrés à part. */
+export const ISSUE_INCLUDES = {
+  bathroom_redo: ["floor_redo", "walls_damaged", "ceiling_damaged"],
+  bathroom_refresh: ["paint", "ceiling_paint"],
+};
+
+/** Points neutralisés par un forfait coché : les inclus et leurs versions plus légères. */
+export const ISSUE_COVERS = Object.fromEntries(
+  Object.entries(ISSUE_INCLUDES).map(([key, included]) => {
+    const weaker = EXCLUSIVE_ISSUES.filter(([, strong]) => included.includes(strong)).map(([weak]) => weak);
+    return [key, [...new Set([...included, ...weaker])]];
+  })
+);
 
 /** Classement des travaux dans le récapitulatif et sur la fiche. */
 export const ISSUE_PRIORITY = {

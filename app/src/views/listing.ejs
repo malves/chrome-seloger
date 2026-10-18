@@ -1,15 +1,13 @@
-<%
-  const specs =
-    (typeof listingSpecs !== "undefined" && listingSpecs) || [];
-  const hasEnergyData = listing.dpe || listing.ges;
-%>
-
 <div class="detail<%= listing.status === 'rejected' ? ' detail--rejected' : '' %>">
   <!-- 1. En-tête + barre de suivi (swapés ensemble quand le statut change) -->
   <%- include("partials/listing-lead", { listing: listing, projects: projects }) %>
 
   <!-- 2. Localisation précise (panneau + modale de saisie) -->
-  <%- include("partials/listing-location-block", { listing: listing, userAddressMapsHref: userAddressMapsHref }) %>
+  <%- include("partials/listing-location-block", {
+    listing: listing,
+    userAddressMapsHref: userAddressMapsHref,
+    locationUpdatedAt: typeof locationUpdatedAt !== "undefined" ? locationUpdatedAt : null,
+  }) %>
 
   <!-- 3. Galerie (carrousel : flèches, compteur, miniatures, clavier) -->
   <% if (photos.length) { %>
@@ -82,81 +80,16 @@
   <% } %>
 
   <!-- 4. Caractéristiques -->
-  <%- include("partials/works-icons") %>
-  <section class="panel" id="listing-specs" data-toc-label="Caractéristiques">
-    <div class="panel__head">
-      <div>
-        <p class="panel__eyebrow">Le bien</p>
-        <h2 class="panel__title">Caractéristiques</h2>
-      </div>
-    </div>
+  <%- include("partials/listing-specs", {
+    listing: listing,
+    listingSpecs: typeof listingSpecs !== "undefined" ? listingSpecs : [],
+    specsUpdatedAt: typeof specsUpdatedAt !== "undefined" ? specsUpdatedAt : null,
+    csrfToken: csrfToken,
+  }) %>
 
-    <% if (specs.length) { %>
-      <div class="kv kv--grid">
-        <% specs.forEach(function (row) { %>
-          <%- include("partials/listing-spec-row", {
-            listing: listing,
-            specKey: row.key,
-            label: row.label,
-            display: row.display,
-            fieldKey: row.fieldKey,
-            rawValue: row.rawValue,
-            source: row.source,
-            fieldInputKind: row.fieldInputKind,
-            csrfToken: csrfToken,
-          }) %>
-        <% }); %>
-      </div>
-    <% } else { %>
-      <p class="field__hint">
-        Aucune caractéristique n'a été extraite pour cette annonce.
-      </p>
-    <% } %>
-
-    <% if (listing.description) { %>
-      <% const descriptionPreviewLength = 160; %>
-      <% const descriptionLong = listing.description.length > descriptionPreviewLength; %>
-      <div class="listing-description" data-listing-description>
-        <h2 class="panel__title listing-description__title" id="listing-description-title">
-          Description
-        </h2>
-        <div class="listing-description__card">
-          <div
-            id="listing-description-body"
-            class="listing-description__body"
-            role="region"
-            aria-labelledby="listing-description-title"
-          >
-            <div
-              class="listing-description__excerpt<%= descriptionLong ? ' listing-description__excerpt--truncated' : '' %>"
-              data-listing-description-excerpt
-              <%= descriptionLong ? 'data-listing-description-clamp="2"' : '' %>
-            >
-              <div class="description listing-description__text"><%= listing.description %></div>
-              <% if (descriptionLong) { %>
-                <button
-                  type="button"
-                  class="listing-description__toggle"
-                  data-listing-description-toggle
-                  aria-expanded="false"
-                  aria-controls="listing-description-body"
-                >
-                  <span class="listing-description__toggle-label">Voir plus</span>
-                </button>
-              <% } %>
-            </div>
-          </div>
-        </div>
-      </div>
-    <% } %>
-
-    <% if (hasEnergyData) { %>
-      <div class="listing-description">
-        <h2 class="panel__title listing-description__title">Performance énergétique</h2>
-        <%- include("partials/energy-performance", { listing: listing }) %>
-      </div>
-    <% } %>
-  </section>
+  <%- include("partials/listing-structured-data-modal", {
+    listingStructuredData: typeof listingStructuredData !== "undefined" ? listingStructuredData : null,
+  }) %>
 
   <!-- 4a. Travaux : pièces et état (modale), analyse des photos -->
   <% var worksHasPhotos = photos.length; %>
@@ -211,6 +144,14 @@
     }) %>
   <% } %>
 
+  <!-- Analyse de marché + territoire (enrichissement auto + polling si cache vide) -->
+  <%- include("partials/listing-enrichment-live", {
+    listing: listing,
+    communeProviders: communeProviders,
+    otherProviders: otherProviders,
+    enrichmentPoll: enrichmentPoll
+  }) %>
+
   <%- include("partials/listing-extension-panel", {
     listing: listing,
     displayData: typeof displayData !== "undefined" ? displayData : null,
@@ -224,17 +165,9 @@
       typeof travelProjectAddresses !== "undefined" ? travelProjectAddresses : [],
   }) %>
 
-  <!-- Analyse de marché + territoire (enrichissement auto + polling si cache vide) -->
-  <%- include("partials/listing-enrichment-live", {
-    listing: listing,
-    communeProviders: communeProviders,
-    otherProviders: otherProviders,
-    enrichmentPoll: enrichmentPoll
-  }) %>
-
   <!-- 7. Financement -->
   <% if (listing.transaction_type !== 'rent') { %>
-    <section class="panel" id="financement" data-toc-label="Financement">
+    <section class="panel listing-financing" id="financement" data-toc-label="Financement">
       <%- include("partials/financing", { listing: listing, financing: financing }) %>
     </section>
   <% } %>
@@ -271,30 +204,10 @@
   <% } %>
 
   <!-- 9. Notes personnelles -->
-  <section class="panel" id="listing-notes" data-toc-label="Notes">
-    <div class="panel__head">
-      <div>
-        <p class="panel__eyebrow">Vous</p>
-        <h2 class="panel__title">Notes personnelles</h2>
-      </div>
-      <span class="notes-status" id="notes-status">Enregistrement automatique</span>
-    </div>
-
-    <form
-      hx-post="/listings/<%= listing.id %>"
-      hx-trigger="keyup changed delay:800ms from:find textarea"
-      hx-target="#notes-status"
-      hx-swap="outerHTML"
-    >
-      <input type="hidden" name="view" value="notes" />
-      <textarea
-        class="textarea"
-        name="notes"
-        placeholder="Points forts, réserves, questions à poser à l'agence…"
-        maxlength="20000"
-      ><%= listing.notes || '' %></textarea>
-    </form>
-  </section>
+  <%- include("partials/listing-notes", {
+    listing: listing,
+    notesUpdatedAt: typeof notesUpdatedAt !== "undefined" ? notesUpdatedAt : null,
+  }) %>
 
   <!-- Suppression -->
   <section class="panel danger-zone">

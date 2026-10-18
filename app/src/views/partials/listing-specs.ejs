@@ -1,0 +1,88 @@
+<%
+  const specs =
+    (typeof listingSpecs !== "undefined" && listingSpecs) || [];
+  const hasEnergyData = listing.dpe || listing.ges;
+%>
+<%- include("works-icons") %>
+<section class="panel listing-specs" id="listing-specs" data-toc-label="Caractéristiques">
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Le bien</p>
+      <h2 class="panel__title">Caractéristiques</h2>
+    </div>
+    <%- include("listing-specs-head-aside", {
+      listing: listing,
+      specsUpdatedAt: typeof specsUpdatedAt !== "undefined" ? specsUpdatedAt : null,
+    }) %>
+  </div>
+
+  <div class="listing-specs__body">
+    <% if (specs.length) { %>
+      <div class="kv kv--grid">
+        <% specs.forEach(function (row) { %>
+          <%- include("listing-spec-row", {
+            listing: listing,
+            specKey: row.key,
+            label: row.label,
+            display: row.display,
+            fieldKey: row.fieldKey,
+            editModal: row.editModal,
+            valueHoverHint: row.valueHoverHint,
+            rawValue: row.rawValue,
+            source: row.source,
+            fieldInputKind: row.fieldInputKind,
+            csrfToken: csrfToken,
+          }) %>
+        <% }); %>
+      </div>
+    <% } else { %>
+      <p class="field__hint">
+        Aucune caractéristique n'a été extraite pour cette annonce.
+      </p>
+    <% } %>
+
+    <% if (listing.description) { %>
+      <% const descriptionPreviewLength = 160; %>
+      <% const descriptionLong = listing.description.length > descriptionPreviewLength; %>
+      <div class="listing-description" data-listing-description>
+        <h2 class="panel__title listing-description__title" id="listing-description-title">
+          Description
+        </h2>
+        <div class="listing-description__card">
+          <div
+            id="listing-description-body"
+            class="listing-description__body"
+            role="region"
+            aria-labelledby="listing-description-title"
+          >
+            <div
+              class="listing-description__excerpt<%= descriptionLong ? ' listing-description__excerpt--truncated' : '' %>"
+              data-listing-description-excerpt
+              <%= descriptionLong ? 'data-listing-description-clamp="2"' : '' %>
+            >
+              <div class="description listing-description__text"><%= listing.description %></div>
+              <% if (descriptionLong) { %>
+                <button
+                  type="button"
+                  class="listing-description__toggle"
+                  data-listing-description-toggle
+                  aria-expanded="false"
+                  aria-controls="listing-description-body"
+                >
+                  <span class="listing-description__toggle-label">Voir plus</span>
+                </button>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (hasEnergyData) { %>
+      <div class="listing-description">
+        <h2 class="panel__title listing-description__title">Performance énergétique</h2>
+        <%- include("energy-performance", { listing: listing }) %>
+      </div>
+    <% } %>
+  </div>
+</section>

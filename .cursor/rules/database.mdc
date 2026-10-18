@@ -23,6 +23,15 @@ Une demande fonctionnelle (« ajoute un filtre », « c'est lent ») **n'est pas
 4. Demander la décision via `AskQuestion` et attendre la réponse.
 5. Après accord : migration numérotée, idempotente, petite, avec test ; rappeler de sauvegarder la base avant de redémarrer.
 
+## Lecture de la base réelle : demander à chaque fois
+
+Lire `app/data/*.db` est permis pour diagnostiquer (ex. vérifier le plan de travaux d'une annonce), mais **chaque lecture** demande l'accord de l'utilisateur via `AskQuestion`, même si une lecture a déjà été acceptée plus tôt dans la conversation.
+
+- La question précise : ce qu'on cherche, la table et la requête `SELECT` exacte.
+- Toujours en lecture seule : `sqlite3 -readonly` ou `new Database(path, { readonly: true })`.
+- Requêtes ciblées (`WHERE id = ?`, `LIMIT`) ; jamais de balayage complet de `dpe_records`.
+- Ne pas recopier de données personnelles (e-mails, mots de passe, jetons) dans la réponse.
+
 ## Autorisé sans demande
 
 - Lire le code des repositories et migrations.
@@ -36,4 +45,8 @@ Une demande fonctionnelle (« ajoute un filtre », « c'est lent ») **n'est pas
 ❌ « La recherche est lente » → ajout direct d'une migration FTS5 + backfill.
 ✅ « La recherche est lente » → explication de la cause, options (sans schéma / avec index),
    coût de chaque option, puis question : « Tu m'autorises à ajouter une migration ? »
+
+❌ « Pourquoi ces deux chambres n'ont pas le même prix ? » → lecture directe de app.db.
+✅ Même question → AskQuestion : « Je lis en lecture seule le plan de l'annonce 53
+   (SELECT data FROM listing_works_plans WHERE listing_id = 53) ? »
 ```

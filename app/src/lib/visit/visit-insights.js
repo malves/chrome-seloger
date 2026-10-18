@@ -53,6 +53,18 @@ export function questionVisible(item, answers) {
   return values.includes(String(picked));
 }
 
+/**
+ * La question fait-elle partie du mode affiché ? En mode « essential », une
+ * question Expert n'apparaît que si l'analyse photo la met en avant
+ * (`promoted`) ou si elle a déjà une réponse (on ne cache jamais une saisie).
+ */
+export function questionInMode(item, answers, mode) {
+  if (mode !== "essential") return true;
+  if (!item) return false;
+  if (item.essential || item.promoted) return true;
+  return Boolean(answers && answers[item.id]);
+}
+
 /** Une réponse compte-t-elle comme « répondue » (hors « je demanderai ») ? */
 export function isAnswered(item, answer) {
   if (!answer) return false;
@@ -184,8 +196,9 @@ function leverLevel(score) {
  * @param {Record<string,object>} args.answers réponses par id de question
  * @param {object} [args.market] { daysOnMarket, priceDrops, priceDelta, firstPrice, lastPrice }
  * @param {object} [args.listing] { price, surface }
+ * @param {string} [args.mode] « essential » : seules les questions du mode comptent
  */
-export function computeInsights({ items = [], answers = {}, market = {}, listing = {} }) {
+export function computeInsights({ items = [], answers = {}, market = {}, listing = {}, mode = "expert" }) {
   const alerts = [];
   const corrections = [];
   const todo = [];
@@ -201,8 +214,9 @@ export function computeInsights({ items = [], answers = {}, market = {}, listing
   let positives = 0;
 
   const effective = {};
+  const scoped = items.filter((item) => questionInMode(item, answers, mode));
 
-  for (const item of items) {
+  for (const item of scoped) {
     if (!questionVisible(item, answers)) continue;
     const answer = answers[item.id] || null;
     if (item.known) confirm += 1;
@@ -342,7 +356,7 @@ export function computeInsights({ items = [], answers = {}, market = {}, listing
     };
   }
 
-  const total = items.length;
+  const total = scoped.length;
   const level = leverLevel(leverScore);
 
   return {

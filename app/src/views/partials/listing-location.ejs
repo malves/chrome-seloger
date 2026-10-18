@@ -4,6 +4,13 @@
   var declaredLine = [declaredCity, declaredPostal ? '(' + declaredPostal + ')' : null]
     .filter(Boolean)
     .join(' ');
+  var postalOverride = listing.postal_override || null;
+  var announced = listing.announced_location || {};
+  var announcedLine = postalOverride
+    ? [announced.city, announced.postal_code ? '(' + announced.postal_code + ')' : null]
+        .filter(Boolean)
+        .join(' ')
+    : '';
   var parts = fmt.parseUserAddress(listing.user_address);
   var hasAddress = Boolean(listing.user_address);
   var located = listing.user_lat != null && listing.user_lng != null;
@@ -29,48 +36,68 @@
       <p class="panel__eyebrow">Localisation</p>
       <h2 class="panel__title">Aide à la localisation</h2>
     </div>
-    <% if (listing && listing.id && typeof isAdmin !== "undefined" && isAdmin) { %>
-      <div class="panel__head-aside listing-location__head-aside">
-        <button
-          type="button"
-          class="btn btn--ghost btn--sm"
-          data-location-probable-debug-open
-          data-location-probable-debug-url="/listings/<%= listing.id %>/location/debug"
-          title="Voir les indices utilisés pour la zone sur la carte (avant adresse réelle)"
-        >
-          Debug
-        </button>
-        <button
-          type="button"
-          class="btn btn--ghost btn--sm listing-location__refresh"
-          data-location-probable-refresh
-          data-location-estimate-url="/listings/<%= listing.id %>/location/estimate"
-          title="Recalculer la zone probable (LLM et géocodage)"
-        >
-          Actualiser
-        </button>
-      </div>
-    <% } %>
+    <%- include("listing-location-head-aside", {
+      listing: listing,
+      locationUpdatedAt: typeof locationUpdatedAt !== "undefined" ? locationUpdatedAt : null,
+    }) %>
   </div>
 
+  <div class="listing-location__body">
   <div class="listing-location__grid">
     <!-- Colonne gauche : annonce puis adresse réelle -->
     <div class="listing-location__col listing-location__col--stack">
       <section class="listing-location__section" aria-labelledby="listing-location-declared-title">
         <h3 class="listing-location__col-title" id="listing-location-declared-title">
-          Localisation annoncée
+          <%= postalOverride ? 'Commune corrigée' : 'Localisation annoncée' %>
         </h3>
         <p class="field__hint listing-location__col-hint">
-          Repère issu de l'annonce (souvent imprécis).
+          <% if (!postalOverride) { %>
+            Beaucoup de fonctionnalités du site ne sont précises qu'avec l'adresse réelle (l'IA peut vous aider à la trouver&nbsp;; saisissez-la dès que vous la connaissez).
+          <% } else if (hasAddress) { %>
+            L'adresse réelle ci-dessous reste la référence de la valorisation.
+          <% } else { %>
+            La valorisation (prix au&nbsp;m², loyer) se base sur cette commune.
+          <% } %>
         </p>
         <div class="listing-location__card listing-location__card--muted">
-          <% if (declaredLine) { %>
-            <p class="listing-location__place"><%= declaredCity || declaredLine %></p>
-            <% if (declaredPostal) { %>
-              <p class="listing-location__postal"><%= declaredPostal %></p>
-            <% } %>
-          <% } else { %>
-            <p class="listing-location__empty">Non précisée</p>
+          <div class="listing-location__declared">
+            <div class="listing-location__declared-text">
+              <% if (declaredLine) { %>
+                <p class="listing-location__place"><%= declaredCity || declaredLine %></p>
+                <% if (declaredPostal) { %>
+                  <p class="listing-location__postal"><%= declaredPostal %></p>
+                <% } %>
+              <% } else { %>
+                <p class="listing-location__empty">Non précisée</p>
+              <% } %>
+            </div>
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm listing-location__declared-btn"
+              data-modal-open="listing-postal-modal"
+              aria-haspopup="dialog"
+            >
+              <%= postalOverride ? 'Modifier le code postal' : 'Corriger le code postal' %>
+            </button>
+          </div>
+          <% if (postalOverride) { %>
+            <div class="listing-location__declared-meta">
+              <span class="badge badge--accent">Corrigé par vous</span>
+              <% if (announcedLine) { %>
+                <span class="listing-location__announced">Annonce&nbsp;: <%= announcedLine %></span>
+              <% } %>
+              <form
+                class="listing-location__declared-reset"
+                method="post"
+                action="/listings/<%= listing.id %>/postal-code/reset"
+                data-confirm="Revenir au code postal et à la commune indiqués par l'annonce ? La valorisation sera recalculée."
+                data-confirm-title="Rétablir l'annonce"
+                data-confirm-label="Rétablir"
+              >
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                <button type="submit" class="btn btn--ghost btn--sm">Rétablir l'annonce</button>
+              </form>
+            </div>
           <% } %>
         </div>
       </section>
@@ -192,7 +219,7 @@
         <% if (located) { %>
           Position issue de l'adresse réelle du bien.
         <% } else { %>
-          Zone indicative, déduite des lieux cités dans l'annonce.
+          Zone indicative issue des données extraites de l'annonce (souvent la zone est imprécise, car certaines informations sont volontairement inexactes ou manquantes).
         <% } %>
       </p>
       <div
@@ -243,5 +270,6 @@
         <% } %>
       </div>
     </div>
+  </div>
   </div>
 </div>

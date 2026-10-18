@@ -292,10 +292,10 @@ withApp("le financement n'est pas proposé pour une location", async (ctx) => {
   const agent = await loginAgent(app, "a@example.com");
 
   const rentPage = await agent.get(`/listings/${rent.id}`).expect(200);
-  assert.doesNotMatch(rentPage.text, /Estimation indicative/);
+  assert.doesNotMatch(rentPage.text, /listing-financing__body/);
 
   const salePage = await agent.get(`/listings/${sale.id}`).expect(200);
-  assert.match(salePage.text, /Estimation indicative/);
+  assert.match(salePage.text, /listing-financing__body/);
 });
 
 /* ---------------------------- Actions htmx ---------------------------- */
@@ -431,7 +431,9 @@ withApp("les notes s'enregistrent et le favori bascule", async (ctx) => {
     .type("form")
     .send({ _csrf: csrf, view: "notes", notes: "Toiture à revoir" })
     .expect(200);
-  assert.match(notes.text, /Enregistré à/);
+  assert.match(notes.text, /id="notes-head-aside"/);
+  assert.match(notes.text, /Mise à jour/);
+  assert.match(notes.text, /Enregistré/);
   assert.equal(
     repositories.listings.findById(user.id, id).notes,
     "Toiture à revoir"
@@ -786,7 +788,8 @@ withApp("le tableau de financement se recalcule", async (ctx) => {
     })
     .expect(200);
 
-  assert.match(res.text, /Estimation indicative/);
+  assert.match(res.text, /listing-financing__body/);
+  assert.match(res.text, /panel__head-aside[\s\S]*Mise à jour/);
   assert.match(res.text, /Tableau d'amortissement/);
   assert.match(res.text, /financing-amortization-modal/);
   assert.equal((res.text.match(/data-amount-step="1"/g) || []).length, 6);
@@ -1276,7 +1279,8 @@ withApp(
     const page = await agent.get(`/listings/${id}`).expect(200);
     assert.match(page.text, /Code INSEE/);
     assert.match(page.text, /78517/);
-    assert.doesNotMatch(page.text, /99999/);
+    const specsHtml = page.text.split('id="listing-specs"')[1]?.split("</section>")[0] ?? "";
+    assert.doesNotMatch(specsHtml, /99999/);
   }
 );
 

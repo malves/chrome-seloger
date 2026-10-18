@@ -1,0 +1,25 @@
+<% if (result.status === 'invalid') { %>
+  <p class="field__hint">Saisissez les 5 chiffres du code postal pour choisir la commune.</p>
+<% } else if (result.status === 'error') { %>
+  <p class="field-error">Recherche des communes impossible pour le moment. Réessayez dans quelques instants.</p>
+<% } else if (result.status === 'none') { %>
+  <p class="field-error">Aucune commune ne correspond au code postal <%= result.postalCode %>.</p>
+<% } else { %>
+  <div class="field">
+    <label class="field__label" for="listing-postal-insee">Commune</label>
+    <select class="select" id="listing-postal-insee" name="insee_code" form="listing-postal-form" required>
+      <% if (result.communes.length > 1) { %>
+        <option value="" <%= selectedInsee ? '' : 'selected' %> disabled>Choisissez la commune…</option>
+      <% } %>
+      <% result.communes.forEach(function (commune) { %>
+        <option
+          value="<%= commune.insee_code %>"
+          <%= commune.insee_code === selectedInsee || result.communes.length === 1 ? 'selected' : '' %>
+        ><%= commune.name %></option>
+      <% }) %>
+    </select>
+    <% if (result.communes.length > 1) { %>
+      <p class="field__hint"><%= result.communes.length %> communes partagent ce code postal.</p>
+    <% } %>
+  </div>
+<% } %>

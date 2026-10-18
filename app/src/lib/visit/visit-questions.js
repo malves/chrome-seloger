@@ -23,7 +23,7 @@
  * Types d'input (public/js/visit-sheet.js) :
  *   confirm_number · confirm_yesno · number · confirm_letter · yesno · yesno_number · choice · scale · text
  *   confirm_yesno : oui/non (valeur annonce affichée si connue) ; si non, saisie de correction.
- *   yesno : unknownOption + unknownLabel pour un 3e segment « Je ne sais pas » (réponse unknown).
+ *   yesno · confirm_number : unknownOption + unknownLabel pour un segment « À confirmer » / « Je ne sais pas » (réponse unknown).
  *   count_pair : deux compteurs (value { clé: number }) — ex. salles de bain à refaire / rafraîchir.
  *   yesno_number : oui/non puis montant si oui (detailLabel, unit…).
  *   choice : options { value, label, other?: true } ; « Autre » ouvre un champ texte.
@@ -92,6 +92,9 @@ const YESNO = { type: "yesno" };
 
 /** Oui / Non / Je ne sais pas (réponse `unknown`, même sémantique que « Je demanderai sur place »). */
 const YESNO_UNKNOWN = { type: "yesno", unknownOption: true, unknownLabel: "Je ne sais pas" };
+
+/** Oui / Non / À confirmer (réponse `unknown`) — point juridique à lever avant ou pendant la visite. */
+const YESNO_A_CONFIRMER = { type: "yesno", unknownOption: true, unknownLabel: "À confirmer" };
 
 /** Contrôle physique sur place (questions déclenchées par l'analyse photo). */
 export const INPUT_SITE_CHECK = {
@@ -264,7 +267,7 @@ export const VISIT_QUESTIONS = [
     question: "Existe-t-il des servitudes, mitoyennetés ou litiges en cours ?",
     proTip:
       "Droit de passage, mur mitoyen, litige de bornage ou de voisinage : demandez le titre de propriété. Ces points limitent vos droits sur le bien.",
-    input: YESNO,
+    input: YESNO_A_CONFIRMER,
     signals: [{ when: "yes", tone: "warn", text: "Une servitude ou un litige se négocie : faites-le préciser par écrit avant l'offre.", lever: 1 }],
   },
   {
@@ -275,7 +278,7 @@ export const VISIT_QUESTIONS = [
     question: "Existe-t-il des litiges en cours ?",
     proTip:
       "Conflit de copropriété, procédure engagée contre un voisin ou le syndic : demandez s'il figure aux PV d'AG ou au compromis.",
-    input: YESNO,
+    input: YESNO_A_CONFIRMER,
     signals: [{ when: "yes", tone: "warn", text: "Un litige en cours se négocie : faites-le préciser par écrit avant l'offre.", lever: 1 }],
   },
   {
@@ -409,7 +412,7 @@ export const VISIT_QUESTIONS = [
     theme: "surface",
     field: "surface",
     essential: true,
-    question: "La surface habitable annoncée est-elle exacte ?",
+    question: "La surface habitable annoncée est-elle confirmée lors de la visite ?",
     proTip:
       "Exigez la surface loi Carrez du titre de propriété. En copropriété, un écart de plus de 5 % permet de renégocier le prix, même après l'achat.",
     input: { type: "confirm_number", unit: "m²", decimals: 1, min: 1, max: 10000 },
@@ -1044,7 +1047,15 @@ export const VISIT_QUESTIONS = [
     question: "Quel est le montant réel des charges de copropriété ?",
     proTip:
       "Demandez les 3 derniers appels de charges. Distinguez les charges courantes (entretien, syndic) du fonds travaux obligatoire. Comptez-les dans votre mensualité.",
-    input: { type: "confirm_number", unit: "€/an", decimals: 0, min: 0, max: 100000 },
+    input: {
+      type: "confirm_number",
+      unit: "€/an",
+      decimals: 0,
+      min: 0,
+      max: 100000,
+      unknownOption: true,
+      unknownLabel: "À confirmer",
+    },
     signals: [{ when: "corrected", tone: "info", text: "Charges corrigées : votre budget mensuel du bilan est recalculé." }],
   },
   {
@@ -1183,10 +1194,16 @@ export const VISIT_QUESTIONS = [
     essential: true,
     question: "L'étiquette DPE affichée est-elle à jour ?",
     proTip:
-      "Un DPE est valable 10 ans. F et G sont des « passoires » : location interdite progressivement, et gros travaux d'isolation à prévoir. Les DPE d'avant juillet 2021 ne sont plus fiables.",
+      "Un DPE est valable 10 ans. F et G sont des « passoires » : location interdite progressivement, gros travaux d'isolation à prévoir, et taux de crédit immobilier désormais plus élevés — servez-vous-en en négociation. Les DPE d'avant juillet 2021 ne sont plus fiables.",
     input: { type: "confirm_letter", options: ["A", "B", "C", "D", "E", "F", "G"] },
     signals: [
-      { when: "value:F,G", tone: "danger", text: "Passoire énergétique : audit obligatoire à la vente, travaux lourds à prévoir, décote justifiée.", cost: [15000, 40000], lever: 2 },
+      {
+        when: "value:F,G",
+        tone: "danger",
+        text: "Passoire énergétique : audit obligatoire à la vente, travaux lourds à prévoir, crédit souvent plus cher — décote et négociation justifiées.",
+        cost: [15000, 40000],
+        lever: 2,
+      },
       { when: "value:E", tone: "warn", text: "Étiquette E : interdiction de louer prévue en 2034, pensez aux travaux à moyen terme.", lever: 1 },
     ],
   },

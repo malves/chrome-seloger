@@ -1,0 +1,40 @@
+<%
+  const updatedAt =
+    typeof locationUpdatedAt !== "undefined" ? locationUpdatedAt : null;
+  const adminCanRefresh =
+    listing && listing.id && typeof isAdmin !== "undefined" && isAdmin;
+  const showAside = updatedAt || adminCanRefresh;
+%>
+<% if (showAside) { %>
+  <div
+    class="panel__head-aside listing-location__head-aside"
+    id="listing-location-head-aside"
+    <% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %>hx-swap-oob="true"<% } %>
+  >
+    <% if (updatedAt) { %>
+      <span class="card__foot-note">
+        Mise à jour <%= fmt.relative(updatedAt) %>
+      </span>
+    <% } %>
+    <% if (adminCanRefresh) { %>
+      <button
+        type="button"
+        class="btn btn--ghost btn--sm"
+        data-location-probable-debug-open
+        data-location-probable-debug-url="/listings/<%= listing.id %>/location/debug"
+        title="Voir les indices utilisés pour la zone sur la carte (avant adresse réelle)"
+      >
+        Debug
+      </button>
+      <button
+        type="button"
+        class="btn btn--ghost btn--sm listing-location__refresh"
+        data-location-probable-refresh
+        data-location-estimate-url="/listings/<%= listing.id %>/location/estimate"
+        title="Recalculer la zone probable (LLM et géocodage)"
+      >
+        Actualiser
+      </button>
+    <% } %>
+  </div>
+<% } %>

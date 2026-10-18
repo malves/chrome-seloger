@@ -1,49 +1,70 @@
 <%
-  const inlineCommuneHead = communeProviders.length === 1;
   const territoryHasData = communeProviders.some(function (p) {
     return p.status === "ok" && p.data;
   });
+  const territoryFetchedAt = communeProviders.reduce(function (latest, provider) {
+    if (!provider.fetchedAt) return latest;
+    if (!latest || provider.fetchedAt > latest) return provider.fetchedAt;
+    return latest;
+  }, null);
+  const adminCanRefresh =
+    listing && listing.id && typeof isAdmin !== "undefined" && isAdmin;
+  const showTerritoryHeadAside = territoryFetchedAt || adminCanRefresh;
+  const territoryCommuneProvider = communeProviders.find(function (p) {
+    return p.key === "commune" && p.status === "ok" && p.data;
+  });
+  const territoryTitle =
+    (territoryCommuneProvider && territoryCommuneProvider.data.name) ||
+    listing.city ||
+    "Commune";
 %>
 <section class="panel listing-territory" id="listing-territory" data-toc-label="Commune">
   <div class="address-book__overlay listing-territory__overlay" aria-hidden="true">
     <span class="spinner" role="status" aria-label="Chargement…"></span>
   </div>
 
-  <% if (!inlineCommuneHead) { %>
-    <div class="panel__head">
-      <div>
-        <p class="panel__eyebrow">Territoire</p>
-        <h2 class="panel__title">Commune</h2>
-      </div>
-      <% if (listing && listing.id && typeof isAdmin !== 'undefined' && isAdmin) { %>
-        <form
-          class="listing-territory__refresh"
-          hx-post="/listings/<%= listing.id %>/enrich/territoire"
-          hx-target="#listing-territory"
-          hx-swap="outerHTML"
-          hx-indicator="#listing-territory .listing-territory__overlay"
-          hx-disabled-elt="find button"
-        >
-          <button class="btn btn--ghost btn--sm" type="submit">
-            <%= territoryHasData ? "Actualiser" : "Réessayer" %>
-          </button>
-        </form>
-      <% } %>
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Territoire</p>
+      <h2 class="panel__title"><%= territoryTitle %></h2>
     </div>
-  <% } %>
-
-  <% communeProviders.forEach(function (provider, index) { %>
-    <% if (index > 0 && communeProviders[index - 1].key === "commune" && provider.key !== "commune") { %>
-      <hr class="listing-territory__split" aria-hidden="true">
+    <% if (showTerritoryHeadAside) { %>
+      <div class="panel__head-aside">
+        <% if (territoryFetchedAt) { %>
+          <span class="card__foot-note">
+            Mise à jour <%= fmt.relative(territoryFetchedAt) %>
+          </span>
+        <% } %>
+        <% if (adminCanRefresh) { %>
+          <form
+            class="listing-territory__refresh"
+            hx-post="/listings/<%= listing.id %>/enrich/territoire"
+            hx-target="#listing-territory"
+            hx-swap="outerHTML"
+            hx-indicator="#listing-territory .listing-territory__overlay"
+            hx-disabled-elt="find button"
+          >
+            <button class="btn btn--ghost btn--sm" type="submit">
+              <%= territoryHasData ? "Actualiser" : "Réessayer" %>
+            </button>
+          </form>
+        <% } %>
+      </div>
     <% } %>
-    <%- include("enrichment-block", {
-      provider: provider,
-      listing: listing,
-      eyebrow: inlineCommuneHead ? "Territoire" : null,
-      sectionTitle: inlineCommuneHead ? "Commune" : null,
-      hideProviderRefresh: true,
-      territoryRefresh: inlineCommuneHead && listing && listing.id,
-      territoryHasData: territoryHasData
-    }) %>
-  <% }); %>
+  </div>
+
+  <div class="listing-territory__body">
+    <% communeProviders.forEach(function (provider, index) { %>
+      <% if (index > 0 && communeProviders[index - 1].key === "commune" && provider.key !== "commune") { %>
+        <hr class="listing-territory__split" aria-hidden="true">
+      <% } %>
+      <%- include("enrichment-block", {
+        provider: provider,
+        listing: listing,
+        hideProviderRefresh: true,
+        hideProviderHead: true,
+        hideProviderAside: true
+      }) %>
+    <% }); %>
+  </div>
 </section>

@@ -41,6 +41,13 @@ import {
   readAdminFinancingForm,
   saveFinancingRates,
 } from "../services/financing-config.service.js";
+import createVisitQuestionsConfigService from "../services/visit-questions-config.service.js";
+import {
+  buildQuestionsAdminView,
+  readQuestionLevelsForm,
+} from "../lib/visit/visit-question-levels.js";
+import { visitQuestionsAdminSchema } from "../schemas/visit.js";
+import HttpError from "../lib/http-error.js";
 
 /** Nombre de lignes DPE affichées par page du tableau. */
 const PER_PAGE = 25;
@@ -216,6 +223,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     config,
     logger,
   });
+  const visitQuestionsConfig = createVisitQuestionsConfigService({ repositories });
   router.use("/admin", requireAdmin);
   router.use("/admin", (req, res, next) => {
     res.locals.adminEmails = config.adminEmails;
@@ -568,6 +576,36 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       designPatterns: DESIGN_PATTERNS,
       patternAnchor,
     });
+  });
+
+  /* ------------------------- Questions de visite ---------------------- */
+
+  router.get("/admin/visite", (req, res) => {
+    res.render("admin/visit-questions", {
+      title: "Administration — Questions de visite",
+      adminSection: "visit-questions",
+      ...adminSidebarLocals(),
+      styles: ["/public/css/admin-visit-questions.css"],
+      view: buildQuestionsAdminView(visitQuestionsConfig.get()),
+    });
+  });
+
+  router.post("/admin/visite", (req, res, next) => {
+    const parsed = visitQuestionsAdminSchema.safeParse(readQuestionLevelsForm(req.body));
+    if (!parsed.success) {
+      return next(HttpError.badRequest("Classement des questions invalide."));
+    }
+    visitQuestionsConfig.save(parsed.data);
+    logActivity(logger, req, "questions de visite reclassées");
+    req.session.flash = { type: "success", message: "Classement des questions enregistré." };
+    return redirectAdmin(res, "visite");
+  });
+
+  router.post("/admin/visite/reset", (req, res) => {
+    visitQuestionsConfig.reset();
+    logActivity(logger, req, "questions de visite réinitialisées");
+    req.session.flash = { type: "success", message: "Classement du catalogue rétabli." };
+    return redirectAdmin(res, "visite");
   });
 
   /* ------------------------ Paramétrage financement ------------------- */

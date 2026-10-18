@@ -11,7 +11,10 @@ import {
   ENERGY_COSTS,
   costsOptions,
   estimateWorksCosts,
+  fixtureSurfaceFactor,
+  roomFloorArea,
   validateEstimateBarème,
+  wallArea,
 } from "../src/lib/works/works-costs.js";
 import { computeHomeHealth } from "../src/lib/works/works-estimate.js";
 import { estimateQuantities, globalVariant, globalWork } from "../src/lib/works/works-global.js";
@@ -60,14 +63,31 @@ test("cases cochées : montant nul si aucun point", () => {
   assert.equal(est.max, 0);
 });
 
-test("80 m² vs 30 m² : même case, ordre de grandeur proportionnel à la surface", () => {
-  const plan = [room("e1", "entrance", ["floor_worn"]), room("k1", "kitchen", [])];
+test("surface de pièce : part du logement ramenée à une fourchette plausible pour son type", () => {
+  const plan = [room("b1", "bedroom", ["paint"]), room("l1", "living_room", [])];
   const big = estimateWorksCosts({ surface: 80, propertyType: "apartment", rooms: plan, dpeZones: {}, costs });
   const small = estimateWorksCosts({ surface: 30, propertyType: "apartment", rooms: plan, dpeZones: {}, costs });
-  assert.ok(big.min > small.min);
-  assert.ok(big.max > small.max);
-  const ratio = big.min / small.min;
-  assert.ok(ratio > 2 && ratio < 3.5, `ratio surface ${ratio}`);
+  assert.ok(big.max > small.max, "plus grand logement : chambre plus grande");
+  assert.equal(roomFloorArea("bedroom", 80, 1 / 2.4), 16, "plafond du type");
+  assert.equal(roomFloorArea("bedroom", 30, 1 / 2.4), 12.5);
+  assert.equal(roomFloorArea("bedroom", 10, 0.1), 9, "plancher du type");
+  assert.equal(roomFloorArea("bedroom", 5, 1), 5, "jamais plus que le logement");
+});
+
+test("chambre de 12 m², murs à repeindre : environ 600 à 1 000 €", () => {
+  const est = estimateWorksCosts({
+    surface: 12,
+    propertyType: "apartment",
+    rooms: [room("b1", "bedroom", ["paint"])],
+    dpeZones: {},
+    costs,
+  });
+  const paint = est.items.find((i) => i.id === "issue:paint");
+  const walls = wallArea(12);
+  assert.ok(walls > 28 && walls < 31, `murs ${walls} m²`);
+  assert.equal(paint.min, 20 * walls);
+  assert.equal(paint.max, 35 * walls);
+  assert.ok(est.min >= 500 && est.max <= 1100, `${est.min}–${est.max}`);
 });
 
 test("cuisine rénovation lourde > entrée sol usé seul", () => {
@@ -89,10 +109,10 @@ test("cuisine rénovation lourde > entrée sol usé seul", () => {
     costs,
   });
   assert.ok(kitchenHeavy.min > entranceOnly.min);
-  assert.ok(kitchenHeavy.min >= 15000, `cuisine lourde 80 m² : ${kitchenHeavy.min}`);
+  assert.ok(kitchenHeavy.min >= 10000, `cuisine lourde 80 m² : ${kitchenHeavy.min}`);
 });
 
-test("cuisine à refaire : tout le budget cuisine du logement, sans dilution par le séjour", () => {
+test("cuisine à refaire : forfait modulé par la surface, sans dilution par le séjour", () => {
   const surface = 80;
   const est = estimateWorksCosts({
     surface,
@@ -103,9 +123,95 @@ test("cuisine à refaire : tout le budget cuisine du logement, sans dilution par
   });
   const kitchen = est.items.find((i) => i.id === "issue:kitchen_redo");
   const intensity = costs.issueIntensity.kitchen_redo;
-  assert.equal(Math.round(kitchen.min), Math.round(surface * costs.renovationRates.min * costs.interiorPostShares.kitchen * intensity.min));
+  const factor = fixtureSurfaceFactor(surface);
+  assert.equal(kitchen.min, costs.fixtureRates.kitchen.min * factor * intensity.min);
+  assert.equal(kitchen.max, costs.fixtureRates.kitchen.max * factor * intensity.max);
   assert.deepEqual(kitchen.roomIds, ["k1"]);
-  assert.ok(est.byRoom.k1.min > 0);
+  assert.equal(est.byRoom.k1.min, kitchen.min);
+});
+
+function kitchenRedo(surface) {
+  const est = estimateWorksCosts({
+    surface,
+    propertyType: surface > 100 ? "house" : "apartment",
+    rooms: [room("k1", "kitchen", ["kitchen_redo"])],
+    dpeZones: {},
+    costs,
+  });
+  return est.items.find((i) => i.id === "issue:kitchen_redo");
+}
+
+test("forfait cuisine : un studio coûte moins, une grande maison plus, de façon sous-linéaire", () => {
+  const studio = kitchenRedo(20);
+  const ref = kitchenRedo(70);
+  const house = kitchenRedo(400);
+  assert.ok(studio.max < ref.max && ref.max < house.max);
+  assert.ok(house.max / studio.max < 5, `rapport ${house.max / studio.max}`);
+  assert.equal(fixtureSurfaceFactor(70), 1);
+  assert.equal(fixtureSurfaceFactor(5), 0.6);
+  assert.equal(fixtureSurfaceFactor(2000), 2.5);
+});
+
+test("salles d'eau : un forfait par pièce, WC moins cher qu'une salle de bain", () => {
+  const est = (rooms) => estimateWorksCosts({ surface: 120, propertyType: "house", rooms, dpeZones: {}, costs });
+  const one = est([room("b1", "bathroom", ["bathroom_redo"])]);
+  const two = est([room("b1", "bathroom", ["bathroom_redo"]), room("b2", "bathroom", ["bathroom_redo"])]);
+  const line = (e) => e.items.find((i) => i.id === "issue:bathroom_redo");
+  assert.equal(line(two).max, 2 * line(one).max);
+  const wc = est([room("b1", "bathroom", ["bathroom_redo"]), room("w1", "toilet", ["bathroom_redo"])]);
+  assert.ok(wc.byRoom.w1.max < wc.byRoom.b1.max);
+});
+
+test("sol, murs, plafond, humidité : prix unitaire × surface estimée de la pièce", () => {
+  const surface = 80;
+  const est = estimateWorksCosts({
+    surface,
+    propertyType: "apartment",
+    rooms: [room("l1", "living_room", ["floor_redo", "walls_damaged", "ceiling_paint", "humidity"])],
+    dpeZones: {},
+    costs,
+  });
+  const floor = roomFloorArea("living_room", surface, 1);
+  const line = (k) => est.items.find((i) => i.id === "issue:" + k);
+  const { floor_redo: f, walls_damaged: w, ceiling_paint: c, humidity: h } = costs.issueIntensity;
+  assert.equal(floor, 40);
+  assert.equal(line("floor_redo").max, f.max * floor);
+  assert.equal(line("walls_damaged").min, w.min * wallArea(floor));
+  assert.equal(line("ceiling_paint").max, c.max * floor);
+  assert.equal(line("humidity").min, h.min, "forfait par pièce");
+});
+
+test("forfait cuisine : refaire et rafraîchir cochés ne dépassent pas le forfait", () => {
+  const all = [...ROOM_ISSUE_KEYS];
+  const est = estimateWorksCosts({
+    surface: 30,
+    propertyType: "apartment",
+    rooms: [room("k1", "kitchen", all, "heavy_renovation_likely")],
+    dpeZones: {},
+    costs,
+  });
+  const kitchen = est.items.filter((i) => i.post === "kitchen").reduce((s, i) => s + i.max, 0);
+  assert.ok(Math.abs(kitchen - costs.fixtureRates.kitchen.max * fixtureSurfaceFactor(30)) < 0.01);
+});
+
+test("salle d'eau à refaire : sol, murs et plafond inclus, pas facturés en plus", () => {
+  const est = (issues) =>
+    estimateWorksCosts({ surface: 70, propertyType: "apartment", rooms: [room("b1", "bathroom", issues)], dpeZones: {}, costs });
+  const alone = est(["bathroom_redo"]);
+  const withSurfaces = est(["bathroom_redo", "floor_redo", "walls_damaged", "ceiling_paint", "humidity"]);
+  const humidity = withSurfaces.items.find((i) => i.id === "issue:humidity");
+  assert.ok(humidity, "l'humidité reste chiffrée à part");
+  assert.equal(withSurfaces.byRoom.b1.max - humidity.max, alone.byRoom.b1.max);
+  assert.ok(!withSurfaces.items.some((i) => ["issue:floor_redo", "issue:walls_damaged", "issue:ceiling_paint"].includes(i.id)));
+});
+
+test("salle d'eau à rafraîchir : peinture incluse, murs à refaire toujours chiffrés", () => {
+  const est = (issues) =>
+    estimateWorksCosts({ surface: 70, propertyType: "apartment", rooms: [room("b1", "bathroom", issues)], dpeZones: {}, costs });
+  assert.equal(est(["bathroom_refresh", "paint", "ceiling_paint"]).byRoom.b1.max, est(["bathroom_refresh"]).byRoom.b1.max);
+  const damaged = est(["bathroom_refresh", "walls_damaged"]);
+  assert.ok(damaged.items.some((i) => i.id === "issue:walls_damaged"));
+  assert.ok(damaged.byRoom.b1.max > est(["bathroom_refresh"]).byRoom.b1.max);
 });
 
 test("salle d'eau : une case cochée compte dans le budget (cas de la salle de bain « Moyen »)", () => {
@@ -126,7 +232,7 @@ test("même poste dans une pièce : plafonné à 100 % du poste", () => {
   assert.ok(Math.abs(one.byRoom.r.max - all.byRoom.r.max) < 1);
 });
 
-test("plafond intérieur : total max des pièces ≤ surface × enveloppe pièces (+ énergie éventuelle)", () => {
+test("pièces : la somme par pièce égale celle des postes intérieurs", () => {
   const allIssues = [...ROOM_ISSUE_KEYS];
   const rooms = [
     room("r1", "living_dining_room", allIssues, "heavy_renovation_likely"),
@@ -140,8 +246,8 @@ test("plafond intérieur : total max des pièces ≤ surface × enveloppe pièce
     dpeZones: { windows: { state: "poor" } },
     costs,
   });
-  const interiorMax = est.posts.filter((p) => p.key !== "energy").reduce((s, p) => s + p.max, 0);
-  assert.ok(interiorMax <= 80 * costs.renovationRates.max + 1, `intérieur max ${interiorMax}`);
+  const roomPosts = est.posts.filter((p) => p.key !== "energy");
+  const interiorMax = roomPosts.reduce((s, p) => s + p.max, 0);
   const roomsMax = Object.values(est.byRoom).reduce((s, r) => s + r.max, 0);
   assert.ok(Math.abs(roomsMax - interiorMax) < 1);
 });
@@ -259,6 +365,27 @@ test("eau chaude : trois variantes cliquables, thermodynamique nettement plus ch
   assert.equal(electric.variant, "electric");
   assert.ok(thermo.min > electric.max);
   assert.ok(gas.min >= electric.min && gas.max <= thermo.min);
+});
+
+test("eau chaude cochée : forfait modulé par la surface, borné pour une grande maison", () => {
+  const variant = globalVariant(globalWork("hot_water"), "electric");
+  const line = (surface) =>
+    estimateGlobal([globalItem("hot_water", { variant: "electric" })], { surface }).items.find((i) => i.key === "hot_water");
+  assert.equal(line(70).max, variant.max);
+  assert.equal(line(20).max, variant.max * 0.6);
+  assert.equal(line(400).max, variant.max * 1.6);
+  assert.equal(line(400).detail, "forfait pour 400 m²");
+});
+
+test("DPE en repli : équipements modulés et bornés, isolation proportionnelle à la surface", () => {
+  const dpeZones = { hotWater: { state: "poor" }, walls: { state: "poor" } };
+  const line = (surface, id) =>
+    estimateWorksCosts({ surface, propertyType: "house", rooms: [room("e1", "entrance", [])], dpeZones, costs }).items.find(
+      (i) => i.id === "energy:" + id
+    );
+  assert.equal(line(400, "hotWater").max, ENERGY_COSTS.hotWater.max * 1.6);
+  assert.equal(line(20, "hotWater").min, ENERGY_COSTS.hotWater.min * 0.6);
+  assert.ok(Math.abs(line(140, "walls").max - ENERGY_COSTS.walls.max * 2) < 0.01);
 });
 
 test("maison : chantiers propres à la maison proposés, absents en appartement", () => {

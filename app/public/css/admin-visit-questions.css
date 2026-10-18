@@ -1,0 +1,231 @@
+/* Admin « Questions de visite » : classement Essentiel / Expert et ordre. */
+
+.vq-lead {
+  margin-bottom: var(--space-5);
+}
+
+.vq-form {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.vq-section__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.vq-step {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--green-900);
+  color: var(--lime);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.vq-section__title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.vq-section__count {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vq-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: clip;
+}
+
+.vq-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.vq-row.is-dragging {
+  opacity: 0.5;
+  transform: scale(0.99);
+}
+
+.vq-row__handle {
+  display: grid;
+  place-items: center;
+  color: var(--ink-muted);
+  cursor: grab;
+}
+
+.vq-row__handle .wi {
+  width: 18px;
+  height: 18px;
+}
+
+.vq-row__moves {
+  display: grid;
+  gap: 2px;
+}
+
+.vq-row__move {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.vq-row__move:hover:not(:disabled) {
+  background: var(--green-100);
+  color: var(--green-900);
+}
+
+.vq-row__move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.vq-row__move:focus-visible {
+  outline: 2px solid var(--green-600);
+  outline-offset: 1px;
+}
+
+.vq-row__move .wi {
+  width: 14px;
+  height: 14px;
+}
+
+.vq-row__question {
+  margin: 0 0 var(--space-1);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.vq-row__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.vq-tag {
+  white-space: normal;
+}
+
+.vq-tag .wi {
+  width: 12px;
+  height: 12px;
+}
+
+/* Contrôle segmenté Essentiel / Expert */
+.vq-level {
+  display: inline-flex;
+  margin: 0;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+}
+
+.vq-level__option {
+  position: relative;
+  cursor: pointer;
+}
+
+.vq-level__option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vq-level__option span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.vq-level__option span .wi {
+  width: 13px;
+  height: 13px;
+}
+
+.vq-level__option input:checked + span {
+  background: var(--green-900);
+  color: var(--ink-inverse);
+}
+
+.vq-level__option input[value="essential"]:checked + span .wi {
+  color: var(--gold);
+}
+
+.vq-level__option input[value="expert"]:checked + span .wi {
+  color: var(--lime);
+}
+
+.vq-level__option input:focus-visible + span {
+  outline: 2px solid var(--green-600);
+  outline-offset: 1px;
+}
+
+.vq-actions {
+  position: sticky;
+  bottom: 0;
+  padding: var(--space-3) 0;
+  background: var(--surface);
+}
+
+.vq-reset {
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 720px) {
+  .vq-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .vq-row__handle {
+    display: none;
+  }
+
+  .vq-level {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vq-row,
+  .vq-row__move,
+  .vq-level__option span {
+    transition: none;
+  }
+}

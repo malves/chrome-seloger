@@ -6,25 +6,31 @@
 
 import {
   ENERGY_SURFACE_REF_M2,
-  INTERIOR_POST_SHARES,
+  FIXTURE_FLAT_RATES,
   ISSUE_INTENSITY,
-  ROOM_RENOVATION_EUR_M2,
+  ROOM_AREA_BOUNDS,
   estimateWorksCosts,
+  fixtureSurfaceFactor,
+  roomFloorArea,
   roundCost,
   roomSurfaceShares,
   validateEstimateBarème,
+  wallArea,
 } from "./works-estimate.js";
-import { ISSUE_PRIORITY, ROOM_ISSUES } from "./works-issues.js";
+import { ISSUE_COVERS, ISSUE_PRIORITY } from "./works-issues.js";
 
 export {
-  ROOM_RENOVATION_EUR_M2,
-  INTERIOR_POST_SHARES,
   ISSUE_INTENSITY,
+  FIXTURE_FLAT_RATES,
+  ROOM_AREA_BOUNDS,
   ENERGY_SURFACE_REF_M2,
   estimateWorksCosts,
+  fixtureSurfaceFactor,
+  roomFloorArea,
   roundCost,
   roomSurfaceShares,
   validateEstimateBarème,
+  wallArea,
 };
 
 /** Postes affichés dans la barre empilée du récapitulatif. */
@@ -43,17 +49,6 @@ export const COST_POSTS = [
   { key: "energy", label: "Énergie (DPE)" },
   { key: "site", label: "Frais de chantier" },
 ];
-
-/** Postes concentrés dans certaines pièces (cuisine, salles d'eau). */
-function concentratedPosts() {
-  return [
-    ...new Set(
-      ROOM_ISSUES.filter((i) => i.roomTypes)
-        .map((i) => ISSUE_INTENSITY[i.key]?.post)
-        .filter(Boolean)
-    ),
-  ];
-}
 
 /** Coefficient de répartition de la surface entre les pièces du plan. */
 export const ROOM_TYPE_FACTORS = {
@@ -85,16 +80,18 @@ export const ROOM_TYPE_FACTORS = {
 /**
  * Travaux énergétiques pour une zone DPE jugée faible. `building: true` :
  * en appartement, relève de la copropriété (affiché hors total).
- * Montants de référence pour ~70 m², mis à l'échelle dans works-estimate.
+ * Montants de référence pour ~70 m², mis à l'échelle dans works-estimate :
+ * proportionnellement à la surface, ou de façon sous-linéaire et bornée pour
+ * un équipement (`equipment: true`).
  */
 export const ENERGY_COSTS = {
   roof: { label: "Isolation de la toiture et des combles", min: 3000, max: 12000, building: true },
   walls: { label: "Isolation des murs", min: 8000, max: 25000, building: true },
   windows: { label: "Remplacement des fenêtres", min: 4000, max: 12000 },
   floor: { label: "Isolation du plancher bas", min: 2000, max: 6000, building: true },
-  heating: { label: "Modernisation du chauffage", min: 4000, max: 15000 },
-  hotWater: { label: "Remplacement de la production d'eau chaude", min: 1500, max: 4000 },
-  ventilation: { label: "Ventilation (VMC)", min: 800, max: 3500 },
+  heating: { label: "Modernisation du chauffage", min: 4000, max: 15000, equipment: true },
+  hotWater: { label: "Remplacement de la production d'eau chaude", min: 1500, max: 4000, equipment: true },
+  ventilation: { label: "Ventilation (VMC)", min: 800, max: 3500, equipment: true },
 };
 
 /** Barème transmis à la modale « Pièces et état ». */
@@ -102,11 +99,10 @@ export function costsOptions() {
   return {
     posts: COST_POSTS,
     issueIntensity: ISSUE_INTENSITY,
-    interiorPostShares: INTERIOR_POST_SHARES,
-    renovationRates: ROOM_RENOVATION_EUR_M2,
     roomTypeFactors: ROOM_TYPE_FACTORS,
-    concentratedPosts: concentratedPosts(),
+    fixtureRates: FIXTURE_FLAT_RATES,
     issuePriority: ISSUE_PRIORITY,
+    issueCovers: ISSUE_COVERS,
     energy: ENERGY_COSTS,
     energySurfaceRefM2: ENERGY_SURFACE_REF_M2,
   };

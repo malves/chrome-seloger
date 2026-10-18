@@ -1,6 +1,9 @@
 /**
  * Chiffrage des travaux à partir de la surface du bien, du plan pièces
  * (cases cochées), des chantiers « Logement entier » et du DPE lié.
+ * Sols, murs et plafonds sont chiffrés au prix unitaire × surface estimée de
+ * la pièce ; humidité au forfait par pièce ; cuisine et salle d'eau au
+ * forfait par pièce, modulé par la surface du logement.
  * Montants TTC indicatifs.
  *
  * N'importe que des modules eux-mêmes servis au navigateur.
@@ -8,35 +11,100 @@
 
 import {
   ENERGY_ZONE_TO_GLOBAL,
+  EQUIPMENT_SURFACE_BOUNDS,
   globalHealthPenalty,
   globalWorkLines,
+  surfaceScale,
 } from "./works-global.js";
 
 /**
- * Enveloppe des finitions et équipements de pièce « tout refait » : 70 % d'une
- * rénovation complète à 1 500–2 000 €/m², le reste (électricité, chauffage,
- * menuiseries) étant chiffré dans les chantiers du logement entier.
+ * Surface au sol plausible par type de pièce (m²). La part de surface du
+ * logement imputée à une pièce y est ramenée : une chambre ne vaut jamais
+ * 28 m² parce que le plan ne liste que trois pièces.
  */
-export const ROOM_RENOVATION_EUR_M2 = { min: 1050, max: 1400 };
+export const ROOM_AREA_BOUNDS = {
+  living_room: { min: 18, max: 40 },
+  living_dining_room: { min: 20, max: 50 },
+  dining_room: { min: 10, max: 20 },
+  kitchen: { min: 6, max: 15 },
+  open_kitchen: { min: 6, max: 15 },
+  bedroom: { min: 9, max: 16 },
+  master_bedroom: { min: 11, max: 20 },
+  child_bedroom: { min: 8, max: 13 },
+  office: { min: 7, max: 14 },
+  bathroom: { min: 4, max: 9 },
+  shower_room: { min: 3, max: 7 },
+  toilet: { min: 1, max: 3 },
+  entrance: { min: 3, max: 10 },
+  hallway: { min: 3, max: 10 },
+  dressing: { min: 3, max: 8 },
+  laundry: { min: 3, max: 7 },
+  cellar: { min: 4, max: 15 },
+  garage: { min: 12, max: 30 },
+  balcony: { min: 3, max: 10 },
+  terrace: { min: 8, max: 30 },
+  garden: { min: 20, max: 200 },
+  building_exterior: { min: 20, max: 200 },
+  unknown: { min: 6, max: 20 },
+};
 
-const POST_WEIGHTS = { floor: 14, walls: 19, ceiling: 7, humidity: 6, kitchen: 12, bathroom: 12 };
-const POST_WEIGHT_SUM = Object.values(POST_WEIGHTS).reduce((a, b) => a + b, 0);
+const DEFAULT_ROOM_AREA_BOUNDS = { min: 6, max: 20 };
 
-/** Parts de l'enveloppe des pièces (somme = 1). */
-export const INTERIOR_POST_SHARES = Object.fromEntries(
-  Object.entries(POST_WEIGHTS).map(([post, w]) => [post, w / POST_WEIGHT_SUM])
-);
+/** Hauteur sous plafond et part des murs hors ouvertures (portes, fenêtres). */
+export const WALL_HEIGHT_M = 2.5;
+export const WALL_OPENINGS_FACTOR = 0.85;
 
-/** Intensité sur le budget poste × part de surface de la pièce. */
+/** Surface au sol estimée d'une pièce (m²). */
+export function roomFloorArea(type, surface, share) {
+  const bounds = ROOM_AREA_BOUNDS[type] || DEFAULT_ROOM_AREA_BOUNDS;
+  const area = Math.min(bounds.max, Math.max(bounds.min, surface * share));
+  return Math.min(area, surface);
+}
+
+/** Surface de murs d'une pièce supposée carrée, ouvertures déduites (m²). */
+export function wallArea(floorArea) {
+  return 4 * Math.sqrt(floorArea) * WALL_HEIGHT_M * WALL_OPENINGS_FACTOR;
+}
+
+/** Forfait d'une pièce entièrement refaite dans un logement de référence. */
+export const FIXTURE_FLAT_RATES = {
+  kitchen: { min: 9000, max: 16000 },
+  bathroom: { min: 8000, max: 14000 },
+};
+
+/** Bornes de la modulation : un studio comme une très grande maison restent plausibles. */
+export const FIXTURE_SURFACE_BOUNDS = { min: 0.6, max: 2.5 };
+
+/** Coefficient du forfait selon le type de pièce (1 par défaut). */
+export const FIXTURE_ROOM_FACTORS = {
+  kitchen: {},
+  bathroom: { shower_room: 0.85, toilet: 0.35, unknown: 0.85 },
+};
+
+/** Modulation du forfait cuisine et salle d'eau par la surface du logement. */
+export function fixtureSurfaceFactor(surface) {
+  return surfaceScale(surface, FIXTURE_SURFACE_BOUNDS);
+}
+
+function fixtureRoomFactor(post, type) {
+  const f = FIXTURE_ROOM_FACTORS[post]?.[type];
+  return typeof f === "number" ? f : 1;
+}
+
+/**
+ * Barème par point, TTC posé. `basis` : "floor" ou "ceiling" (€/m² de sol),
+ * "walls" (€/m² de mur), "room" (€ par pièce). Sans `basis` : part du forfait
+ * cuisine ou salle d'eau (`FIXTURE_FLAT_RATES`).
+ */
 export const ISSUE_INTENSITY = {
-  floor_worn: { post: "floor", min: 0.32, max: 0.42 },
-  floor_redo: { post: "floor", min: 0.88, max: 1 },
-  paint: { post: "walls", min: 0.48, max: 0.62 },
-  walls_damaged: { post: "walls", min: 0.92, max: 1 },
-  ceiling_paint: { post: "ceiling", min: 0.45, max: 0.6 },
-  ceiling_damaged: { post: "ceiling", min: 0.9, max: 1 },
-  humidity: { post: "humidity", min: 0.55, max: 0.75 },
-  mold: { post: "humidity", min: 0.4, max: 0.6 },
+  floor_worn: { post: "floor", basis: "floor", min: 25, max: 45 },
+  floor_redo: { post: "floor", basis: "floor", min: 50, max: 110 },
+  paint: { post: "walls", basis: "walls", min: 20, max: 35 },
+  walls_damaged: { post: "walls", basis: "walls", min: 40, max: 70 },
+  ceiling_paint: { post: "ceiling", basis: "ceiling", min: 25, max: 40 },
+  ceiling_damaged: { post: "ceiling", basis: "ceiling", min: 50, max: 90 },
+  humidity: { post: "humidity", basis: "room", min: 600, max: 2000 },
+  mold: { post: "humidity", basis: "room", min: 300, max: 900 },
   kitchen_refresh: { post: "kitchen", min: 0.35, max: 0.5 },
   kitchen_redo: { post: "kitchen", min: 0.85, max: 1 },
   bathroom_refresh: { post: "bathroom", min: 0.35, max: 0.5 },
@@ -73,11 +141,12 @@ export function roomSurfaceShares(rooms, roomTypeFactors, eligible = null) {
   return new Map(entries.map(({ room, w }) => [room.id, w / sum]));
 }
 
-function scaleEnergyCost(min, max, surface, refM2) {
+/** Isolation : proportionnelle à la surface ; équipement : modulation sous-linéaire. */
+function scaleEnergyCost(cost, surface, refM2) {
   const ref = refM2 > 0 ? refM2 : ENERGY_SURFACE_REF_M2;
   const s = surface > 0 ? surface : ref;
-  const ratio = s / ref;
-  return { min: min * ratio, max: max * ratio };
+  const ratio = cost.equipment ? surfaceScale(s, EQUIPMENT_SURFACE_BOUNDS) : s / ref;
+  return { min: cost.min * ratio, max: cost.max * ratio };
 }
 
 /**
@@ -120,15 +189,9 @@ export function estimateWorksCosts(params) {
 
   const factors = costs.roomTypeFactors || {};
   const priorities = costs.issuePriority || {};
+  const covers = costs.issueCovers || {};
   const shares = roomSurfaceShares(rooms, factors);
-  // Cuisine et salle d'eau : le budget du logement se partage entre les seules
-  // pièces où un point de ce poste est coché.
-  const postShares = {};
-  for (const post of costs.concentratedPosts || []) {
-    postShares[post] = roomSurfaceShares(rooms, factors, (room) =>
-      (room.issues || []).some((k) => ISSUE_INTENSITY[k]?.post === post)
-    );
-  }
+  const fixtureFactor = fixtureSurfaceFactor(surf);
   const energy = costs.energy || {};
   const energyRef = costs.energySurfaceRefM2 ?? ENERGY_SURFACE_REF_M2;
 
@@ -146,6 +209,7 @@ export function estimateWorksCosts(params) {
         priority: data.priority || "cosmetic",
         icon: data.icon || "hammer",
         copro: Boolean(data.copro),
+        fixture: Boolean(data.fixture),
         rooms: [],
         roomIds: [],
         detail: "",
@@ -167,24 +231,42 @@ export function estimateWorksCosts(params) {
     }
   }
 
+  /** Montant brut d'un point dans une pièce, avant partage au sein du poste. */
+  function issueAmount(intensity, room, floor) {
+    const flat = FIXTURE_FLAT_RATES[intensity.post];
+    if (flat) {
+      const base = fixtureFactor * fixtureRoomFactor(intensity.post, room.type);
+      return { min: flat.min * base * intensity.min, max: flat.max * base * intensity.max };
+    }
+    const qty = intensity.basis === "walls" ? wallArea(floor) : intensity.basis === "room" ? 1 : floor;
+    return { min: intensity.min * qty, max: intensity.max * qty };
+  }
+
   for (const room of rooms) {
-    if (shares.get(room.id) == null) continue;
-    const keys = (room.issues || []).filter((k) => ISSUE_INTENSITY[k]);
-    // Une pièce ne peut pas consommer plus que la totalité d'un poste.
-    const sumByPost = {};
+    const share = shares.get(room.id);
+    if (share == null) continue;
+    const floor = roomFloorArea(room.type, surf, share);
+    const issues = room.issues || [];
+    // Points compris dans un forfait coché (sol, murs, plafond d'une salle d'eau refaite).
+    const covered = new Set(issues.flatMap((k) => covers[k] || []));
+    const keys = issues.filter((k) => ISSUE_INTENSITY[k] && !covered.has(k));
+    const amounts = new Map(keys.map((k) => [k, issueAmount(ISSUE_INTENSITY[k], room, floor)]));
+    // Deux points du même poste ne se cumulent pas : le poste coûte le plus
+    // cher des deux, réparti entre eux au prorata.
+    const byPost = {};
     for (const k of keys) {
-      const { post, min, max } = ISSUE_INTENSITY[k];
-      const s = sumByPost[post] || (sumByPost[post] = { min: 0, max: 0 });
-      s.min += min;
-      s.max += max;
+      const { post } = ISSUE_INTENSITY[k];
+      const a = amounts.get(k);
+      const p = byPost[post] || (byPost[post] = { min: 0, max: 0, sumMin: 0, sumMax: 0 });
+      p.min = Math.max(p.min, a.min);
+      p.max = Math.max(p.max, a.max);
+      p.sumMin += a.min;
+      p.sumMax += a.max;
     }
     for (const k of keys) {
       const intensity = ISSUE_INTENSITY[k];
-      const roomShare = postShares[intensity.post]
-        ? postShares[intensity.post].get(room.id) ?? shares.get(room.id)
-        : shares.get(room.id);
-      const budget = INTERIOR_POST_SHARES[intensity.post] ?? 0;
-      const sum = sumByPost[intensity.post];
+      const a = amounts.get(k);
+      const p = byPost[intensity.post];
       add(
         "issue:" + k,
         {
@@ -192,11 +274,12 @@ export function estimateWorksCosts(params) {
           post: intensity.post,
           priority: priorities[k] || "cosmetic",
           icon: issueIcon(k),
+          fixture: Boolean(FIXTURE_FLAT_RATES[intensity.post]),
         },
         room.id,
         roomName(room),
-        surf * ROOM_RENOVATION_EUR_M2.min * budget * roomShare * intensity.min / Math.max(1, sum.min),
-        surf * ROOM_RENOVATION_EUR_M2.max * budget * roomShare * intensity.max / Math.max(1, sum.max)
+        p.sumMin ? (p.min * a.min) / p.sumMin : 0,
+        p.sumMax ? (p.max * a.max) / p.sumMax : 0
       );
     }
   }
@@ -215,7 +298,7 @@ export function estimateWorksCosts(params) {
     const e = energy[id];
     if (!zone || zone.state !== "poor" || evaluated.has(ENERGY_ZONE_TO_GLOBAL[id])) continue;
     const copro = propertyType === "apartment" && e.building;
-    const scaled = scaleEnergyCost(e.min, e.max, surf, energyRef);
+    const scaled = scaleEnergyCost(e, surf, energyRef);
     add(
       "energy:" + id,
       { label: e.label, post: "energy", priority: "comfort", icon: "zap", copro },
@@ -227,38 +310,13 @@ export function estimateWorksCosts(params) {
   }
 
   const list = order.map((id) => items[id]);
-  const isRoomLine = (i) => i.post !== "energy" && !i.global;
-
-  let interiorMin = 0;
-  let interiorMax = 0;
-  let otherMin = 0;
-  let otherMax = 0;
+  let baseMin = 0;
+  let baseMax = 0;
   list.forEach((i) => {
     if (i.copro) return;
-    if (isRoomLine(i)) {
-      interiorMin += i.min;
-      interiorMax += i.max;
-    } else {
-      otherMin += i.min;
-      otherMax += i.max;
-    }
+    baseMin += i.min;
+    baseMax += i.max;
   });
-  // Au-delà de l'enveloppe « tout refait » des pièces, chaque ligne de pièce est réduite au prorata.
-  const capMin = interiorMin > 0 ? Math.min(1, (surf * ROOM_RENOVATION_EUR_M2.min) / interiorMin) : 1;
-  const capMax = interiorMax > 0 ? Math.min(1, (surf * ROOM_RENOVATION_EUR_M2.max) / interiorMax) : 1;
-  if (capMin < 1 || capMax < 1) {
-    list.forEach((i) => {
-      if (!isRoomLine(i)) return;
-      i.min *= capMin;
-      i.max *= capMax;
-    });
-    Object.values(byRoom).forEach((r) => {
-      r.min *= capMin;
-      r.max *= capMax;
-    });
-  }
-  const baseMin = interiorMin * capMin + otherMin;
-  const baseMax = interiorMax * capMax + otherMax;
 
   // Frais de chantier : un pourcentage des autres travaux (copropriété exclue), sans cumul entre eux.
   let percentMin = 0;
@@ -358,14 +416,16 @@ export function computeHomeHealth({ rooms = [], globalItems = [], roomTypeFactor
   return { score, tone, verdict, assessed, fromPlan: Boolean(weights) };
 }
 
-/** Vérifie que chaque point a une intensité sur un poste connu. */
+const ISSUE_BASES = ["floor", "ceiling", "walls", "room"];
+
+/** Vérifie que chaque point a un prix unitaire ou une part de forfait. */
 export function validateEstimateBarème(issueKeys) {
   for (const key of issueKeys) {
     const intensity = ISSUE_INTENSITY[key];
     if (!intensity) return { ok: false, key };
-    if (INTERIOR_POST_SHARES[intensity.post] == null) return { ok: false, key, post: intensity.post };
+    if (!ISSUE_BASES.includes(intensity.basis) && !FIXTURE_FLAT_RATES[intensity.post]) {
+      return { ok: false, key, post: intensity.post };
+    }
   }
-  const shareSum = Object.values(INTERIOR_POST_SHARES).reduce((a, b) => a + b, 0);
-  if (Math.abs(shareSum - 1) > 0.001) return { ok: false, reason: "post_shares" };
   return { ok: true };
 }

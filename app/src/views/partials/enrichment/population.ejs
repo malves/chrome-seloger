@@ -50,7 +50,7 @@
   <details class="delinquance__details pricem2__evolution-details" data-pricem2-evolution>
     <summary class="delinquance__summary">
       <span class="delinquance__summary-text">
-        <span class="delinquance__summary-label">Évolution de la population</span>
+        <span class="delinquance__summary-label">Évolution de la population à <%= cityLabel %></span>
         <span class="delinquance__summary-hint">
           <span class="delinquance__summary-hint--closed">
             <% if (latest) { %><%= fmt.number(latest.population) %> hab. en <%= latest.year %><% } %><% if (variations[10] != null) { %> · <%= pct(variations[10]) %> sur 10 ans<% } %><% if (deptLabel) { %> · comparaison avec le département (<%= deptLabel %>)<% } %>

@@ -11,17 +11,32 @@ import { openDatabase } from "../src/db.js";
 import createApp from "../src/app.js";
 import createRepositories from "../src/repositories/index.js";
 import createEnrichmentService from "../src/services/enrichment/index.js";
+import path from "node:path";
 import createLogger from "../src/lib/logger.js";
+import { rootDir } from "../src/config.js";
 import { hashPassword } from "../src/services/password.service.js";
 import { defaultUserSettings } from "../src/services/settings.service.js";
 
 export const PASSWORD = "motdepasse123";
 
-export function createTestApp() {
+const enrichmentFixtureProvidersDir = path.join(
+  rootDir,
+  "test",
+  "fixtures",
+  "enrichment"
+);
+
+export function createTestApp({ enrichmentFixture = false } = {}) {
   const db = openDatabase(":memory:");
   const repositories = createRepositories(db);
   const logger = createLogger({ level: "silent" });
-  const real = createEnrichmentService({ repositories, logger });
+  const real = createEnrichmentService({
+    repositories,
+    logger,
+    ...(enrichmentFixture
+      ? { extraProvidersDirs: [enrichmentFixtureProvidersDir] }
+      : {}),
+  });
   const enrichment = { ...real, schedule() {} };
   const app = createApp({ db, repositories, logger, enrichment });
 

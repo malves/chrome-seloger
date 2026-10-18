@@ -10,16 +10,26 @@
     typeof fieldErrorMessage !== "undefined" ? fieldErrorMessage : null;
   const isEditing = Boolean(fieldError);
   const rowEditable = Boolean(fieldKey && listing && listing.id);
+  const modalId = !rowEditable && typeof editModal !== "undefined" && editModal ? editModal : null;
   const rowKey = (typeof specKey !== "undefined" && specKey) || fieldKey || null;
   const swapOob = typeof oob !== "undefined" && oob;
+  const hoverHint =
+    typeof valueHoverHint !== "undefined" && valueHoverHint ? valueHoverHint : null;
+  const specSourceLocals = {
+    source: src,
+    listing,
+    restoreFieldKey: src && src.previous && fieldKey ? fieldKey : null,
+    restoreLocation:
+      src && src.previous && !fieldKey && (rowKey === "postal_code" || rowKey === "city"),
+    restorePrimaryKey: rowKey,
+    restoreTarget: rowKey ? `#listing-spec-${rowKey}` : null,
+  };
 %>
 <div class="kv__row"<% if (rowKey) { %> id="listing-spec-<%= rowKey %>"<% } %><% if (swapOob) { %> hx-swap-oob="true"<% } %>>
-  <span class="kv__key<%= rowEditable ? ' kv__key--editable' : '' %>">
-    <% if (rowEditable && !isEditing) { %>
-      <span class="kv__key__hover-hint" aria-hidden="true">
-        Double-clic pour éditer
-      </span>
-    <% } %>
+  <span
+    class="kv__key<%= rowEditable || modalId ? ' kv__key--editable' : '' %>"
+    <% if (modalId) { %>data-modal-dblclick="<%= modalId %>"<% } %>
+  >
     <span class="kv__key__label"><%= label %></span>
   </span>
   <% if (rowEditable) { %>
@@ -72,13 +82,30 @@
         <span class="listing-spec-value__hover-hint" aria-hidden="true">
           Double-clic pour éditer
         </span>
-        <%- include("listing-spec-source", { source: src }) %>
+        <%- include("listing-spec-source", specSourceLocals) %>
       <% } %>
     </div>
+  <% } else if (modalId) { %>
+    <div class="kv__value listing-spec-value" data-modal-dblclick="<%= modalId %>">
+      <button
+        type="button"
+        class="listing-spec-value__text"
+        data-modal-dblclick="<%= modalId %>"
+        aria-haspopup="dialog"
+        aria-label="Modifier <%= label %> : <%= display %>"
+      ><%= display %></button>
+      <span class="listing-spec-value__hover-hint" aria-hidden="true">
+        <%= hoverHint || "Double-clic pour éditer" %>
+      </span>
+      <%- include("listing-spec-source", specSourceLocals) %>
+    </div>
   <% } else { %>
-    <div class="kv__value listing-spec-value">
+    <div class="kv__value listing-spec-value<%= hoverHint ? ' listing-spec-value--static-hint' : '' %>">
       <span class="listing-spec-value__text"><%= display %></span>
-      <%- include("listing-spec-source", { source: src }) %>
+      <% if (hoverHint) { %>
+        <span class="listing-spec-value__hover-hint" aria-hidden="true"><%= hoverHint %></span>
+      <% } %>
+      <%- include("listing-spec-source", specSourceLocals) %>
     </div>
   <% } %>
 </div>

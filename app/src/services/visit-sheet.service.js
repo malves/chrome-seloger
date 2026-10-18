@@ -13,6 +13,7 @@ import { nowIso } from "../lib/time.js";
 import { FIELD_DEFS, resolveField } from "../lib/listing-field-provenance.js";
 import { coerceFieldValue, parseListingFieldValue } from "../lib/listing-field-value.js";
 import { QUESTION_BY_ID, fieldsFromAnswers } from "../lib/visit/visit-questions.js";
+import { DEFAULT_VISIT_MODE, normalizeVisitMode } from "../lib/visit/visit-question-levels.js";
 
 const MAX_ANSWERS = 300;
 const MAX_TEXT = 2000;
@@ -21,7 +22,14 @@ const MAX_DATE = 40;
 function defaultData() {
   return {
     fields: {},
-    visit: { applyToSheet: null, answers: {}, startedAt: null, completedAt: null },
+    visit: {
+      applyToSheet: null,
+      mode: DEFAULT_VISIT_MODE,
+      expertNudgeSeen: false,
+      answers: {},
+      startedAt: null,
+      completedAt: null,
+    },
   };
 }
 
@@ -77,6 +85,16 @@ function mergeStoredFields(prevFields, visitFields) {
   return { ...listingFields, ...visitFields };
 }
 
+/** Retire les réponses de visite qui réinjecteraient ce champ à la prochaine sauvegarde. */
+function clearVisitAnswersForField(answers, fieldKey) {
+  const out = { ...(answers && typeof answers === "object" ? answers : {}) };
+  for (const [qid] of Object.entries(out)) {
+    const q = QUESTION_BY_ID[qid];
+    if (q && q.field === fieldKey) delete out[qid];
+  }
+  return out;
+}
+
 export default function createVisitSheetService({ repositories }) {
   /** Etat normalise de la fiche (valeurs par defaut si rien n'est stocke). */
   function getSheet(listing) {
@@ -90,6 +108,8 @@ export default function createVisitSheetService({ repositories }) {
           data.visit && typeof data.visit.applyToSheet === "boolean"
             ? data.visit.applyToSheet
             : null,
+        mode: normalizeVisitMode(data.visit && data.visit.mode),
+        expertNudgeSeen: Boolean(data.visit && data.visit.expertNudgeSeen),
         answers:
           data.visit && data.visit.answers && typeof data.visit.answers === "object"
             ? data.visit.answers
@@ -113,11 +133,16 @@ export default function createVisitSheetService({ repositories }) {
     const visitFields = fieldsFromAnswers(answers, { origin: "visit" });
 
     const prev = getSheet(listing);
+    const mode = visitIn.mode === undefined ? prev.visit.mode : normalizeVisitMode(visitIn.mode);
+    const expertNudgeSeen =
+      typeof visitIn.expertNudgeSeen === "boolean" ? visitIn.expertNudgeSeen : prev.visit.expertNudgeSeen;
     const fields = mergeStoredFields(prev.fields, visitFields);
     const data = {
       fields,
       visit: {
         applyToSheet,
+        mode,
+        expertNudgeSeen,
         answers,
         startedAt: prev.visit.startedAt || nowIso(),
         completedAt: cleanIsoString(visitIn.completedAt) || prev.visit.completedAt || null,
@@ -185,5 +210,57 @@ export default function createVisitSheetService({ repositories }) {
     return { ok: true, value: parsed.value, resolved, fields: data.fields };
   }
 
-  return { getSheet, saveSheet, appliedOverrides, patchListingField };
+  /**
+   * Rétablit la valeur d'origine d'un champ en supprimant la correction utilisateur.
+   * @param {object} ctx { listing, descriptionFacts }
+   */
+  function restoreListingField(listing, fieldKey, ctx = {}) {
+    if (!FIELD_DEFS[fieldKey]) {
+      return { ok: false, message: "Champ inconnu." };
+    }
+    const prev = getSheet(listing);
+    const fields = { ...(prev.fields || {}) };
+    if (!(fieldKey in fields)) {
+      return { ok: false, message: "Aucune correction à rétablir pour ce champ." };
+    }
+    delete fields[fieldKey];
+    const data = {
+      fields,
+      visit: {
+        ...prev.visit,
+        answers: clearVisitAnswersForField(prev.visit.answers, fieldKey),
+      },
+    };
+    repositories.visitOverrides.upsert(listing.id, data);
+
+    const overrides = appliedOverrides(listing);
+    const resolved = resolveField(fieldKey, {
+      listing,
+      overrides,
+      descriptionFacts: ctx.descriptionFacts ?? null,
+    });
+
+    return { ok: true, resolved, fields: data.fields };
+  }
+
+  /**
+   * Code postal corrigé (hors resolveur : il porte aussi la commune choisie).
+   * `entry` à `null` rétablit la localisation de l'annonce.
+   */
+  function setPostalCodeOverride(listing, entry) {
+    const prev = getSheet(listing);
+    const fields = { ...(prev.fields || {}) };
+    if (entry) fields.postal_code = entry;
+    else delete fields.postal_code;
+    repositories.visitOverrides.upsert(listing.id, { fields, visit: prev.visit });
+  }
+
+  return {
+    getSheet,
+    saveSheet,
+    appliedOverrides,
+    patchListingField,
+    restoreListingField,
+    setPostalCodeOverride,
+  };
 }

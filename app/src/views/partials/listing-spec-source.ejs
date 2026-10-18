@@ -1,12 +1,53 @@
 <% if (source && source.kind) { %>
+  <% if (source.previous) { %>
+    <%
+      const fieldRestoreKey = restoreFieldKey || null;
+      const isLocationRestore = Boolean(restoreLocation);
+      const locationPrimaryKey = restorePrimaryKey || null;
+      const listingId = listing && listing.id;
+      const rowTarget = restoreTarget || null;
+      const restorePath =
+        listingId && isLocationRestore
+          ? `/listings/${listingId}/fields/location`
+          : listingId && fieldRestoreKey
+            ? `/listings/${listingId}/fields/${fieldRestoreKey}`
+            : null;
+      const restoreVals =
+        isLocationRestore && locationPrimaryKey
+          ? JSON.stringify({ restore: "true", primaryKey: locationPrimaryKey })
+          : JSON.stringify({ restore: "true" });
+    %>
+    <% if (restorePath && rowTarget) { %>
+      <button
+        type="button"
+        class="kv__prev listing-spec-value__prev"
+        data-tooltip="<%= source.previous.title %>"
+        aria-label="Reprendre la valeur d'origine : <%= source.previous.display %>"
+        data-listing-spec-restore
+        hx-patch="<%= restorePath %>"
+        hx-vals='<%= restoreVals %>'
+        hx-target="<%= rowTarget %>"
+        hx-swap="outerHTML"
+      >
+        <svg class="wi" aria-hidden="true"><use href="#wi-undo"></use></svg>
+        <%= source.previous.display %>
+      </button>
+    <% } else { %>
+      <span
+        class="kv__prev listing-spec-value__prev"
+        data-tooltip="<%= source.previous.title %>"
+        tabindex="0"
+        aria-label="<%= source.previous.title %>"
+      >
+        <svg class="wi" aria-hidden="true"><use href="#wi-undo"></use></svg>
+        <%= source.previous.display %>
+      </span>
+    <% } %>
+  <% } %>
   <span
     class="visit-source visit-source--<%= source.kind %> listing-spec-value__source"
-    title="<%= source.title %>"
+    data-tooltip="<%= source.title %>"
+    tabindex="0"
+    aria-label="<%= source.title %>"
   ><%= source.short %></span>
-  <% if (source.previous) { %>
-    <span class="kv__prev listing-spec-value__prev" title="<%= source.previous.title %>">
-      <svg class="wi" aria-hidden="true"><use href="#wi-undo"></use></svg>
-      <%= source.previous.display %>
-    </span>
-  <% } %>
 <% } %>

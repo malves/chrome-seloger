@@ -7,6 +7,7 @@
 
 import { nowIso } from "../lib/time.js";
 import { fromJson, toJson } from "../lib/json.js";
+import { applyPostalOverride, parsePostalOverride } from "../lib/listing-postal-override.js";
 
 /** Colonnes descriptives, écrasées à chaque réception d'une annonce. */
 const DESCRIPTIVE_COLUMNS = [
@@ -86,7 +87,9 @@ const SELECT_CARD = `
       ORDER BY ph.observed_at DESC, ph.id DESC LIMIT 1 OFFSET 1) AS previous_price,
     (SELECT COUNT(*) FROM price_history ph WHERE ph.listing_id = l.id) AS price_points,
     CASE WHEN l.price IS NOT NULL AND l.surface > 0
-      THEN l.price / l.surface END AS price_per_m2
+      THEN l.price / l.surface END AS price_per_m2,
+    (SELECT json_extract(o.data, '$.fields.postal_code') FROM listing_overrides o
+      WHERE o.listing_id = l.id) AS postal_override_json
   FROM listings l
 `;
 
@@ -118,6 +121,11 @@ export function hydrateListing(row) {
   } else {
     listing.price_change = null;
   }
+
+  // Code postal corrigé par l'utilisateur : appliqué à chaque lecture pour que
+  // vues, enrichissements et ré-importations voient la même localisation.
+  delete listing.postal_override_json;
+  applyPostalOverride(listing, parsePostalOverride(row.postal_override_json));
 
   return listing;
 }

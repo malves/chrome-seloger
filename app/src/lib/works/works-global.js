@@ -11,15 +11,34 @@ export const GLOBAL_WORK_CATEGORIES = [
   { key: "networks", label: "Réseaux", icon: "zap" },
   { key: "openings", label: "Ouvertures", icon: "window" },
   { key: "comfort", label: "Chauffage et confort", icon: "flame" },
+  { key: "layout", label: "Aménagement", icon: "walls" },
   { key: "site", label: "Chantier", icon: "truck" },
 ];
 
 const WINDOW_PRICE_NOTE =
   "Prix moyen constaté pour une fenêtre standard posée (PVC, double vitrage). Grandes dimensions, porte-fenêtre, baie, bois ou aluminium peuvent le faire nettement varier.";
 
+export const SURFACE_SCALE_REF_M2 = 70;
+
+/** Bornes de la modulation d'un équipement (chauffe-eau, VMC, générateur). */
+export const EQUIPMENT_SURFACE_BOUNDS = { min: 0.6, max: 1.6 };
+
+/**
+ * Modulation sous-linéaire d'un prix fixé pour un logement de 70 m² : un
+ * logement quatre fois plus grand a un équipement plus puissant ou plus haut
+ * de gamme, pas quatre fois plus cher.
+ */
+export function surfaceScale(surface, bounds) {
+  if (!(surface > 0)) return 1;
+  const ratio = Math.sqrt(surface / SURFACE_SCALE_REF_M2);
+  return Math.min(bounds.max, Math.max(bounds.min, ratio));
+}
+
 /**
  * `mode` : "unit" (× quantité), "surface" (× m² du bien), "flat" (forfait),
- * "percent" (part du reste des travaux). `quantity` : estimateur des lignes à l'unité.
+ * "percent" (part du reste des travaux). `scaled` : forfait modulé par
+ * `surfaceScale`. `quantity` : estimateur des lignes à l'unité. `manualQuantity` :
+ * pas d'estimation, nombre saisi (1 par défaut).
  * `propertyTypes` : réservé à ces types de bien. `defaultOff` : jamais pré-coché.
  */
 export const GLOBAL_WORKS = [
@@ -123,12 +142,12 @@ export const GLOBAL_WORKS = [
     icon: "droplet",
     post: "plumbing",
     priority: "comfort",
-    hint: "Choisissez le type de production : l'écart de prix entre ballon électrique et thermodynamique est très important.",
+    hint: "Choisissez le type de production : l'écart de prix entre ballon électrique et thermodynamique est très important. Le prix suit la taille du logement.",
     defaultVariant: "electric",
     variants: [
-      { key: "electric", label: "Ballon électrique", hint: "200 à 300 L, pose comprise — solution la plus courante.", mode: "flat", min: 900, max: 2200 },
-      { key: "thermodynamic", label: "Thermodynamique", hint: "Chauffe-eau thermodynamique sur air ambiant ou extrait.", mode: "flat", min: 3200, max: 6500 },
-      { key: "gas", label: "Chauffe-eau gaz", hint: "À accumulation ou instantané, alimentation gaz existante.", mode: "flat", min: 1400, max: 3200 },
+      { key: "electric", label: "Ballon électrique", hint: "Capacité adaptée au logement, pose comprise — solution la plus courante.", mode: "flat", scaled: true, min: 900, max: 2200 },
+      { key: "thermodynamic", label: "Thermodynamique", hint: "Chauffe-eau thermodynamique sur air ambiant ou extrait.", mode: "flat", scaled: true, min: 3200, max: 6500 },
+      { key: "gas", label: "Chauffe-eau gaz", hint: "À accumulation ou instantané, alimentation gaz existante.", mode: "flat", scaled: true, min: 1400, max: 3200 },
     ],
   },
   {
@@ -153,6 +172,21 @@ export const GLOBAL_WORKS = [
     propertyTypes: ["house"],
     defaultVariant: "standard",
     variants: [{ key: "standard", label: "Mise aux normes", hint: "Fosse toutes eaux ou micro-station.", mode: "flat", min: 6000, max: 12000 }],
+  },
+  {
+    key: "partitions",
+    category: "layout",
+    label: "Création de cloison",
+    icon: "walls",
+    post: "walls",
+    priority: "comfort",
+    hint: "Créer une pièce en cloisonnant un espace existant (chambre, bureau…). Indiquez le nombre de pièces à créer.",
+    defaultOff: true,
+    defaultVariant: "complete",
+    variants: [
+      { key: "simple", label: "Cloison simple", hint: "Cloison en plaques de plâtre isolée et bloc-porte, pose comprise.", mode: "unit", unit: "pièce", units: "pièces", feminine: true, manualQuantity: true, min: 1500, max: 3000 },
+      { key: "complete", label: "Pièce complète", hint: "Cloison, porte, électricité (prises, interrupteur, point lumineux), enduit et peinture.", mode: "unit", unit: "pièce", units: "pièces", feminine: true, manualQuantity: true, min: 2500, max: 5000 },
+    ],
   },
   {
     key: "diagnostics",
@@ -348,7 +382,13 @@ export function globalWorkLines({ items = [], rooms = [], surface = null, proper
       continue;
     }
     let qty = 1;
-    if (variant.mode === "unit") {
+    if (variant.mode === "unit" && variant.manualQuantity) {
+      qty = item.quantity ?? 1;
+      line.quantity = qty;
+      line.estimated = false;
+      line.basis = 0;
+      line.detail = pluralUnit(variant, qty);
+    } else if (variant.mode === "unit") {
       const est = quantities[variant.quantity] || { count: 1, basis: 0 };
       qty = item.quantity == null ? est.count : item.quantity;
       line.quantity = qty;
@@ -359,6 +399,9 @@ export function globalWorkLines({ items = [], rooms = [], surface = null, proper
       if (!(surface > 0)) continue;
       qty = surface;
       line.detail = `${Math.round(surface)} m²`;
+    } else if (variant.scaled) {
+      qty = surfaceScale(surface, EQUIPMENT_SURFACE_BOUNDS);
+      line.detail = surface > 0 ? `forfait pour ${Math.round(surface)} m²` : "forfait";
     } else {
       line.detail = "forfait";
     }

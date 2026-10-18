@@ -6,7 +6,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fmt from "../src/lib/format.js";
 import { resolveAll } from "../src/lib/listing-field-provenance.js";
-import { buildListingSpecs } from "../src/lib/listing-specs.js";
+import {
+  buildListingSpecs,
+  LISTING_SPEC_VALUE_HOVER_HINTS,
+} from "../src/lib/listing-specs.js";
 
 const LISTING = {
   id: 1,
@@ -65,6 +68,30 @@ test("Prix : source affichée mais non éditable", () => {
   const price = byLabel(specs(), "Prix");
   assert.equal(price.source.kind, "structured");
   assert.equal(price.fieldKey, null);
+  assert.equal(price.valueHoverHint, LISTING_SPEC_VALUE_HOVER_HINTS.NON_EDITABLE);
+});
+
+test("indications au survol des lignes non modifiables ou liées au code postal", () => {
+  const rows = specs();
+  for (const label of [
+    "Type de bien",
+    "Transaction",
+    "Identifiant source",
+    "Code INSEE",
+  ]) {
+    assert.equal(
+      byLabel(rows, label).valueHoverHint,
+      LISTING_SPEC_VALUE_HOVER_HINTS.NON_EDITABLE,
+      label
+    );
+  }
+  assert.equal(
+    byLabel(rows, "Commune").valueHoverHint,
+    LISTING_SPEC_VALUE_HOVER_HINTS.COMMUNE_VIA_POSTAL
+  );
+  const postal = byLabel(rows, "Code postal");
+  assert.equal(postal.editModal, "listing-postal-modal");
+  assert.equal(postal.valueHoverHint, LISTING_SPEC_VALUE_HOVER_HINTS.POSTAL_MODAL);
 });
 
 test("Prix au m² : calculé sur la surface corrigée", () => {

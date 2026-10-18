@@ -1,3 +1,19 @@
-<span class="notes-status" id="notes-status">
-  Enregistré à <%= savedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) %>
-</span>
+<%
+  const updatedAt =
+    typeof savedAt !== "undefined" && savedAt
+      ? savedAt
+      : typeof notesUpdatedAt !== "undefined" && notesUpdatedAt
+        ? notesUpdatedAt
+        : null;
+  const justSaved = typeof savedAt !== "undefined" && savedAt;
+%>
+<div class="panel__head-aside" id="notes-head-aside">
+  <% if (updatedAt) { %>
+    <span class="card__foot-note">
+      Mise à jour <%= fmt.relative(updatedAt) %>
+    </span>
+  <% } %>
+  <span class="notes-status" id="notes-status">
+    <%= justSaved ? "Enregistré" : "Enregistrement automatique" %>
+  </span>
+</div>

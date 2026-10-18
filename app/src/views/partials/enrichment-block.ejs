@@ -24,6 +24,10 @@
         : null;
   const hideRefresh =
     typeof hideProviderRefresh !== "undefined" && hideProviderRefresh;
+  const hideHead =
+    typeof hideProviderHead !== "undefined" && hideProviderHead;
+  const hideAside =
+    typeof hideProviderAside !== "undefined" && hideProviderAside;
   const adminCanRefresh = typeof isAdmin !== "undefined" && isAdmin;
   const showTerritoryRefresh =
     adminCanRefresh &&
@@ -33,18 +37,27 @@
     typeof territoryHasData !== "undefined" && territoryHasData
       ? "Actualiser"
       : "Réessayer";
+  const hasHeadAside =
+    !hideAside &&
+    (provider.fetchedAt ||
+      showTerritoryRefresh ||
+      (!hideRefresh && adminCanRefresh));
+  const showHead = !hideHead || hasHeadAside;
 %>
 <div class="provider-block" id="provider-<%= provider.key %>">
+  <% if (showHead) { %>
   <div class="panel__head">
-    <% if (resolvedTitle) { %>
-      <div>
-        <% if (resolvedEyebrow) { %>
-          <p class="panel__eyebrow"><%= resolvedEyebrow %></p>
-        <% } %>
-        <h2 class="panel__title"><%= resolvedTitle %></h2>
-      </div>
-    <% } else { %>
-      <h3 class="panel__title"><%= provider.label %></h3>
+    <% if (!hideHead) { %>
+      <% if (resolvedTitle) { %>
+        <div>
+          <% if (resolvedEyebrow) { %>
+            <p class="panel__eyebrow"><%= resolvedEyebrow %></p>
+          <% } %>
+          <h2 class="panel__title"><%= resolvedTitle %></h2>
+        </div>
+      <% } else { %>
+        <h3 class="panel__title"><%= provider.label %></h3>
+      <% } %>
     <% } %>
     <div class="panel__head-aside">
       <% if (provider.fetchedAt) { %>
@@ -79,6 +92,7 @@
       <% } %>
     </div>
   </div>
+  <% } %>
 
   <% if (provider.status === 'ok' && provider.data) { %>
     <%- include(provider.partial, { data: provider.data, listing: listing, provider: provider }) %>
@@ -90,7 +104,7 @@
           <p class="pa-pending__title"><%= provider.label %> : chargement en cours</p>
           <p class="field__hint">Mise à jour automatique.</p>
         <% } else { %>
-          <p class="pa-pending__title">Analyse de marché en cours</p>
+          <p class="pa-pending__title">Prix de marché en cours</p>
           <p class="field__hint">Prix au m², évolution et comparatifs Immo Data. Mise à jour automatique.</p>
         <% } %>
       </div>

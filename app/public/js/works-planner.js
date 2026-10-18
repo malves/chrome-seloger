@@ -145,6 +145,28 @@
     return n + " " + word + (n > 1 ? "s" : "");
   }
 
+  /** Regroupe les pièces par type (ordre de `roomTypes`), en conservant l'ordre manuel au sein d'un type. */
+  function sortRooms() {
+    if (!S.plan || !Array.isArray(S.plan.rooms)) return;
+    var types = (S.options.roomTypes || []).map(function (o) {
+      return o.value;
+    });
+    function rank(room) {
+      var i = types.indexOf(room.type);
+      return i === -1 ? types.length : i;
+    }
+    S.plan.rooms = S.plan.rooms
+      .map(function (room, i) {
+        return { room: room, rank: rank(room), i: i };
+      })
+      .sort(function (a, b) {
+        return a.rank - b.rank || a.i - b.i;
+      })
+      .map(function (e) {
+        return e.room;
+      });
+  }
+
   function findRoom(id) {
     for (var i = 0; i < S.plan.rooms.length; i++) if (S.plan.rooms[i].id === id) return S.plan.rooms[i];
     return null;
@@ -584,8 +606,40 @@
     el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
+  /** Forfait coché qui neutralise ce point (sol, murs, plafond d'une salle d'eau), ou null. */
+  function coveringIssue(issues, key) {
+    var covers = S.options.issueCovers || {};
+    for (var i = 0; i < issues.length; i++) {
+      var list = covers[issues[i]];
+      if (list && list.indexOf(key) !== -1) return issues[i];
+    }
+    return null;
+  }
+
+  /** Point inclus → forfait qui l'inclut, sauf si une version plus forte est déjà cochée. */
+  function includedIssues(issues) {
+    var includes = S.options.issueIncludes || {};
+    var out = {};
+    issues.forEach(function (fixture) {
+      (includes[fixture] || []).forEach(function (k) {
+        var stronger = exclusiveIssues().some(function (pair) {
+          return pair[0] === k && issues.indexOf(pair[1]) !== -1;
+        });
+        if (!stronger) out[k] = fixture;
+      });
+    });
+    return out;
+  }
+
   function renderIssues(room) {
-    var issues = room.issues || [];
+    var stored = room.issues || [];
+    var included = includedIssues(stored);
+    var issues = stored.filter(function (k) {
+      return !coveringIssue(stored, k);
+    });
+    Object.keys(included).forEach(function (k) {
+      if (issues.indexOf(k) === -1) issues.push(k);
+    });
     var fromAi = room.issues_ai || [];
     var html =
       '<div class="works-issues" data-works-issues>' +
@@ -620,7 +674,8 @@
         '<div class="works-issues__list">';
       items.forEach(function (o) {
         var on = issues.indexOf(o.value) !== -1;
-        var ai = on && fromAi.indexOf(o.value) !== -1;
+        var inc = included[o.value];
+        var ai = on && !inc && fromAi.indexOf(o.value) !== -1;
         var showHelp = issueShowsHelp(room, o);
         html +=
           '<span class="works-issue-wrap">' +
@@ -628,10 +683,13 @@
             ? '<button type="button" class="works-issue-help" data-action="issue-help" data-value="' + esc(o.value) + '"' +
               ' aria-expanded="false" aria-label="' + esc("En savoir plus : " + o.label) + '"><span aria-hidden="true">?</span></button>'
             : "") +
-          '<button type="button" class="works-issue works-issue--' + o.tone + (on ? " is-on" : "") + '"' +
-          ' aria-pressed="' + on + '" data-action="toggle-issue" data-value="' + esc(o.value) + '">' +
+          '<button type="button" class="works-issue works-issue--' + o.tone + (on ? " is-on" : "") + (inc ? " is-included" : "") + '"' +
+          ' aria-pressed="' + on + '" data-action="toggle-issue" data-value="' + esc(o.value) + '"' +
+          (inc ? ' aria-label="' + esc(o.label + ", inclus dans « " + issueLabel(inc) + " »") + '"' : "") +
+          ">" +
           '<span class="works-issue__mark">' + icon(on ? "check" : "plus") + "</span>" +
           esc(o.label) +
+          (inc ? '<span class="works-issue__included">Inclus</span>' : "") +
           (ai ? icon("sparkles", "works-issue__ai") : "") +
           "</button></span>";
       });
@@ -690,26 +748,69 @@
   }
 
   function toggleIssue(room, key) {
-    var issues = (room.issues || []).slice();
-    var at = issues.indexOf(key);
-    if (at !== -1) {
-      issues.splice(at, 1);
-    } else {
-      issues.push(key);
-      exclusiveIssues().forEach(function (pair) {
-        var other = pair[0] === key ? pair[1] : pair[1] === key ? pair[0] : null;
-        if (other && issues.indexOf(other) !== -1) issues.splice(issues.indexOf(other), 1);
+    var previous = (room.issues || []).slice();
+    var issues = previous.slice();
+    var fixture = coveringIssue(issues, key);
+    var includedKeys = [];
+    if (fixture) {
+      // Modifier un point compris dans le forfait : le forfait saute, les autres
+      // points inclus deviennent de vraies cases, chiffrées séparément.
+      var covers = (S.options.issueCovers || {})[fixture] || [];
+      var included = includedIssues(issues);
+      includedKeys = Object.keys(included).filter(function (k) {
+        return included[k] === fixture;
       });
+      issues = issues
+        .filter(function (k) {
+          return k !== fixture && covers.indexOf(k) === -1;
+        })
+        .concat(
+          includedKeys.filter(function (k) {
+            return k !== key;
+          })
+        );
     }
-    room.issues = S.options.issues
-      .map(function (o) {
-        return o.value;
-      })
-      .filter(function (k) {
-        return issues.indexOf(k) !== -1;
-      });
+    if (includedKeys.indexOf(key) === -1) {
+      var at = issues.indexOf(key);
+      if (at !== -1) {
+        issues.splice(at, 1);
+      } else {
+        issues.push(key);
+        exclusiveIssues().forEach(function (pair) {
+          var other = pair[0] === key ? pair[1] : pair[1] === key ? pair[0] : null;
+          if (other && issues.indexOf(other) !== -1) issues.splice(issues.indexOf(other), 1);
+        });
+      }
+    }
+    setRoomIssues(room, issues, key);
+    if (fixture) {
+      var released = orderIssues(issues)
+        .filter(function (k) {
+          return includedKeys.indexOf(k) !== -1;
+        })
+        .map(function (k) {
+          return "« " + issueLabel(k) + " »";
+        });
+      toast(
+        "« " + issueLabel(fixture) + " » retirée" +
+          (released.length ? " : " + released.join(", ") + (released.length > 1 ? " sont chiffrés" : " est chiffré") + " séparément." : "."),
+        "Annuler",
+        function () {
+          setRoomIssues(room, previous, fixture);
+          announce("« " + issueLabel(fixture) + " » rétablie.");
+        }
+      );
+    }
+  }
+
+  function setRoomIssues(room, issues, focusKey) {
+    room.issues = orderIssues(issues);
     changed();
-    replaceBlock("[data-works-issues]", renderIssues(room), '[data-action="toggle-issue"][data-value="' + cssEscape(key) + '"]', true);
+    if (S.view !== room.id) {
+      rerenderSideOnly();
+      return;
+    }
+    replaceBlock("[data-works-issues]", renderIssues(room), '[data-action="toggle-issue"][data-value="' + cssEscape(focusKey) + '"]', true);
     refreshRoomStatus(room);
     var ai = body.querySelector(".works-ai-seen");
     if (ai) {
@@ -1280,11 +1381,40 @@
     if (!dpe) {
       inner +=
         '<div class="works-overview__empty">' + icon("zap") +
-        "<p>Aucun DPE n'est lié à cette annonce. Déterminez l'adresse du bien pour retrouver son diagnostic et voir l'état de chaque partie du logement.</p></div>";
+        "<div class=\"works-overview__empty-body\"><p>Aucun DPE n'est lié à cette annonce. Déterminez l'adresse du bien pour retrouver son diagnostic et voir l'état de chaque partie du logement.</p>" +
+        renderAddressLinks() + "</div></div>";
     } else {
       inner += '<div class="works-overview__dpe" data-overview-dpe></div>';
     }
     return overviewCard("works-overview__energy", 0, inner);
+  }
+
+  function addressTrigger(kind) {
+    var selector = kind === "ai" ? "[data-listing-address-ai-open]" : "[data-listing-address-open]";
+    return document.querySelector("#listing-location " + selector);
+  }
+
+  function renderAddressLinks() {
+    var links = [];
+    if (addressTrigger("manual")) {
+      var hasAddress = !document.querySelector("#listing-location .listing-location__card--empty");
+      links.push(
+        '<button type="button" class="works-link" data-works-address="manual">' +
+          (hasAddress ? "Modifier l'adresse" : "Saisir une adresse") +
+          "</button>"
+      );
+    }
+    if (addressTrigger("ai")) {
+      links.push('<button type="button" class="works-link" data-works-address="ai">Déterminer l\'adresse via IA</button>');
+    }
+    return links.length ? '<div class="works-overview__empty-links">' + links.join("") + "</div>" : "";
+  }
+
+  function openAddressModal(kind) {
+    close(function () {
+      var trigger = addressTrigger(kind);
+      if (trigger) trigger.click();
+    });
   }
 
   function renderEnergyView() {
@@ -1347,7 +1477,27 @@
     return n + " " + (n > 1 ? variant.units || variant.unit : variant.unit);
   }
 
+  function renderGlobalStepper(work, variant, n, label) {
+    return (
+      '<div class="works-global__stepper">' +
+      '<button type="button" class="works-icon-btn" data-action="global-qty-step" data-key="' + esc(work.key) + '" data-delta="-1" aria-label="Retirer une unité"' + (n <= 1 ? " disabled" : "") + ">" + icon("minus") + "</button>" +
+      '<label class="visually-hidden" for="works-global-qty-' + esc(work.key) + '">' + esc(label) + "</label>" +
+      '<input id="works-global-qty-' + esc(work.key) + '" class="works-global__qty-input" type="number" inputmode="numeric" min="1" max="' + globalCatalog().maxQuantity + '" value="' + n + '" data-global-qty="' + esc(work.key) + '" />' +
+      '<button type="button" class="works-icon-btn" data-action="global-qty-step" data-key="' + esc(work.key) + '" data-delta="1" aria-label="Ajouter une unité"' + (n >= globalCatalog().maxQuantity ? " disabled" : "") + ">" + icon("plus") + "</button>" +
+      '<span class="works-global__qty-unit">' + esc(n > 1 ? variant.units || variant.unit : variant.unit) + "</span>" +
+      "</div>"
+    );
+  }
+
   function renderGlobalQuantity(work, item, variant, quantities) {
+    if (variant.manualQuantity) {
+      var count = item.quantity != null ? item.quantity : 1;
+      return (
+        '<div class="works-global__qty">' +
+        renderGlobalStepper(work, variant, count, "Nombre de " + (variant.units || variant.unit) + " à créer") +
+        "</div>"
+      );
+    }
     var est = quantities[variant.quantity] || { count: 1, basis: 0 };
     var custom = item.quantity != null;
     var n = custom ? item.quantity : est.count;
@@ -1361,16 +1511,7 @@
       "Toutes (" + esc(unitsLabel(variant, est.count)) + " estimé" + (variant.feminine ? "e" : "") + (est.count > 1 ? "s" : "") + ")</button>" +
       '<button type="button" role="radio" aria-checked="' + custom + '" class="works-chip' + (custom ? " is-on" : "") + '" data-action="global-qty-custom" data-key="' + esc(work.key) + '">Nombre précis</button>' +
       "</div>";
-    if (custom) {
-      html +=
-        '<div class="works-global__stepper">' +
-        '<button type="button" class="works-icon-btn" data-action="global-qty-step" data-key="' + esc(work.key) + '" data-delta="-1" aria-label="Retirer une unité"' + (n <= 1 ? " disabled" : "") + ">" + icon("minus") + "</button>" +
-        '<label class="visually-hidden" for="works-global-qty-' + esc(work.key) + '">Nombre de ' + esc(variant.units || variant.unit) + "</label>" +
-        '<input id="works-global-qty-' + esc(work.key) + '" class="works-global__qty-input" type="number" inputmode="numeric" min="1" max="' + globalCatalog().maxQuantity + '" value="' + n + '" data-global-qty="' + esc(work.key) + '" />' +
-        '<button type="button" class="works-icon-btn" data-action="global-qty-step" data-key="' + esc(work.key) + '" data-delta="1" aria-label="Ajouter une unité"' + (n >= globalCatalog().maxQuantity ? " disabled" : "") + ">" + icon("plus") + "</button>" +
-        '<span class="works-global__qty-unit">' + esc(n > 1 ? variant.units || variant.unit : variant.unit) + "</span>" +
-        "</div>";
-    }
+    if (custom) html += renderGlobalStepper(work, variant, n, "Nombre de " + (variant.units || variant.unit));
     html += '<p class="works-global__basis">' + esc(basis) + (custom ? " : " + esc(unitsLabel(variant, est.count)) + "." : ".") + "</p>";
     html += "</div>";
     return html;
@@ -1419,7 +1560,15 @@
       if (variant.hint) html += '<p class="works-global__variant-hint">' + esc(variant.hint) + "</p>";
       if (variant.mode === "unit") html += renderGlobalQuantity(work, item, variant, quantities);
       if (line && line.detail && variant.mode !== "unit") {
-        html += '<p class="works-global__basis">' + esc(variant.mode === "surface" ? "Calculé sur " + line.detail + " de surface." : variant.mode === "percent" ? "Soit " + line.detail + "." : "Prix forfaitaire.") + "</p>";
+        var basis =
+          variant.mode === "surface"
+            ? "Calculé sur " + line.detail + " de surface."
+            : variant.mode === "percent"
+              ? "Soit " + line.detail + "."
+              : variant.scaled && line.detail !== "forfait"
+                ? "Prix forfaitaire adapté à la taille du logement (" + line.detail.replace("forfait pour ", "") + ")."
+                : "Prix forfaitaire.";
+        html += '<p class="works-global__basis">' + esc(basis) + "</p>";
       }
       if (variant.mode === "surface" && !line) {
         html += '<p class="works-global__basis">Surface du bien inconnue : non chiffré.</p>';
@@ -1759,6 +1908,7 @@
   function addRoom(type) {
     var room = newRoom(type);
     S.plan.rooms.push(room);
+    sortRooms();
     S.view = room.id;
     S.selection.clear();
     changed();
@@ -1825,6 +1975,7 @@
     var target = beforeId ? findRoom(beforeId) : null;
     var at = target ? rooms.indexOf(target) : rooms.length;
     rooms.splice(at, 0, room);
+    sortRooms();
     changed();
     rerender();
     bump(body.querySelector('.works-side__item[data-select="' + id + '"]'));
@@ -1926,6 +2077,7 @@
         room.type = type;
         if (!room.label || room.label.indexOf(oldDefault) === 0) room.label = nextLabelFor(type);
         var removed = dropInapplicableIssues(room);
+        sortRooms();
         changed();
         rerender();
         if (removed.length) toast("Retiré car sans objet dans cette pièce : " + removed.join(", ") + ".");
@@ -2224,6 +2376,7 @@
         var data = results[0];
         S.plan = data.plan;
         S.options = data.options;
+        sortRooms();
         S.photos = data.photos || [];
         S.stored = data.stored;
         S.aiStatus = data.aiStatus;
@@ -2267,7 +2420,7 @@
     if (main) main.focus({ preventScroll: true });
   }
 
-  function close() {
+  function close(afterClose) {
     if (modal.hidden) return;
     closeLayer();
     hideToast();
@@ -2283,6 +2436,7 @@
         modal.classList.remove("is-closing");
         document.body.classList.remove("is-modal-open");
         if (S.lastFocus && S.lastFocus.isConnected) S.lastFocus.focus({ preventScroll: true });
+        if (typeof afterClose === "function") afterClose();
       },
       reducedMotion ? 0 : 160
     );
@@ -2308,6 +2462,7 @@
           })
           .then(function (data) {
             S.plan = data.plan;
+            sortRooms();
             S.photos = data.photos || S.photos;
             S.stored = false;
             S.aiStatus = data.aiStatus;
@@ -2345,6 +2500,11 @@
     }
     if (t.closest("[data-works-reset]")) {
       reset();
+      return;
+    }
+    var addressLink = t.closest("[data-works-address]");
+    if (addressLink) {
+      openAddressModal(addressLink.getAttribute("data-works-address"));
       return;
     }
     if (t.closest("[data-works-retry]")) {

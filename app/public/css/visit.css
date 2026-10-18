@@ -19,6 +19,8 @@
   --v-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --v-sticky-top: 72px;
   --v-filters-h: 56px;
+  /* Hauteur réservée sous 1024 px au résumé mobile (.visit-dock) et à sa marge. */
+  --v-dock-clearance: calc(var(--space-7) + var(--space-5));
 }
 
 /* ------------------------------- En-tête ------------------------------- */
@@ -108,14 +110,6 @@
   margin-top: var(--space-1);
 }
 
-.visit-hero__price {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--lime);
-  margin-right: var(--space-1);
-}
-
 .visit-hero__badge {
   padding: 3px 10px 4px;
   border-radius: var(--radius-pill);
@@ -197,27 +191,8 @@
 .visit-hero__tools {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
   flex-wrap: wrap;
-}
-
-.visit-hero__reset {
-  padding: 4px 10px 5px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: rgba(246, 248, 243, 0.82);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.visit-hero__reset:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
 }
 
 /* Sauvegarde */
@@ -257,6 +232,78 @@
 
 .visit-save[data-state="error"] .visit-save__dot {
   background: #ff7a66;
+}
+
+/* --------------------------- Essentiel / Expert -------------------------- */
+
+.visit-mode-panel {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.visit-mode-panel__head {
+  margin-bottom: 0;
+  align-items: center;
+}
+
+.visit-mode-panel__head .visit-mode {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  flex-shrink: 0;
+}
+
+/* Switch : piste toujours en vert « Essentiel », la pastille indique le mode. */
+.visit-mode-panel .mode-switch .mode-switch__button,
+.visit-mode-panel .mode-switch.is-on .mode-switch__button {
+  background: var(--green-600);
+}
+
+.visit-mode-panel .visit-mode__lead {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+@media (max-width: 420px) {
+  .visit-mode-panel .visit-mode__lead {
+    font-size: 14px;
+  }
+}
+
+.visit-mode-panel__head .visit-mode__hint {
+  margin: 0;
+  margin-left: auto;
+  max-width: 36rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+  text-wrap: balance;
+}
+
+@media (max-width: 720px) {
+  .visit-mode-panel__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .visit-mode-panel__head .visit-mode__hint {
+    margin-left: 0;
+    text-align: left;
+  }
+}
+
+.visit-section__more {
+  margin: var(--space-3) 0 0;
+  text-align: center;
 }
 
 /* ------------------------------- Filtres ------------------------------- */
@@ -318,6 +365,10 @@
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
+.visit-filter[hidden] {
+  display: none;
+}
+
 .visit-filter .wi {
   width: 14px;
   height: 14px;
@@ -341,7 +392,7 @@
 }
 
 .visit-filter.is-active .wi {
-  color: var(--lime);
+  color: var(--ink-inverse);
 }
 
 .visit-filter--star .wi {
@@ -359,8 +410,8 @@
 }
 
 .visit-filter.is-active .visit-filter__count {
-  background: rgba(255, 255, 255, 0.16);
-  color: var(--lime);
+  background: var(--surface-sunken);
+  color: var(--ink-soft);
 }
 
 .visit-filters__hide {
@@ -474,16 +525,10 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--green-900);
-  color: var(--lime);
+  background: var(--green-600);
+  color: var(--ink-inverse);
   font-weight: 800;
   font-size: 15px;
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-.visit-section.is-complete .visit-step {
-  background: var(--lime);
-  color: var(--green-900);
 }
 
 .visit-section__total {
@@ -517,7 +562,7 @@
   height: 100%;
   width: 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--green-600), var(--lime));
+  background: var(--green-600);
   transition: width 0.45s var(--v-ease);
 }
 
@@ -639,8 +684,8 @@
 }
 
 .visit-tag--theme {
-  background: var(--green-100);
-  color: var(--green-900);
+  background: var(--surface-sunken);
+  color: var(--green-800);
 }
 
 .visit-tag--theme .wi {
@@ -1427,10 +1472,10 @@
 }
 
 .visit-ring__fill {
-  stroke: var(--tone);
+  stroke: var(--green-600);
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
-  transition: stroke-dashoffset 0.6s var(--v-ease), stroke 0.4s ease;
+  transition: stroke-dashoffset 0.6s var(--v-ease);
 }
 
 .visit-ring__value {
@@ -2072,14 +2117,10 @@
     font-weight: 800;
     font-size: 15px;
     font-variant-numeric: tabular-nums;
-    color: var(--tone, var(--ink));
+    color: var(--ink);
     padding: 3px 10px;
     border-radius: var(--radius-pill);
     background: var(--ink-inverse);
-  }
-
-  .visit-dock[data-tone="muted"] .visit-dock__count {
-    color: var(--ink-muted);
   }
 
   .visit-dock__text {
@@ -2097,11 +2138,15 @@
   }
 
   .visit-toast {
-    bottom: 76px;
+    bottom: var(--v-dock-clearance);
+  }
+
+  .visit .scroll-progress {
+    bottom: var(--v-dock-clearance);
   }
 
   .visit {
-    padding-bottom: 72px;
+    padding-bottom: var(--v-dock-clearance);
   }
 }
 

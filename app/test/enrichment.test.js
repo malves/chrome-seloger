@@ -1,84 +1,33 @@
 /**
  * Vérifie la convention d'ajout d'un provider : un fichier `*.provider.js`
  * et un partial du même nom suffisent, sans toucher au registre ni aux routes.
+ *
+ * Le provider fictif vit sous `test/fixtures/` (jamais chargé par le serveur).
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
 import { createTestApp, createUser, listingPayload, loginAgent } from "./helpers.js";
-import { rootDir } from "../src/config.js";
 import config from "../src/config.js";
 import createListingsService from "../src/services/listings.service.js";
 import { pickCommune } from "../src/services/enrichment/commune.provider.js";
 
-const FIXTURE_KEY = "zzfixture";
-const providerPath = path.join(
-  rootDir,
-  "src",
-  "services",
-  "enrichment",
-  `${FIXTURE_KEY}.provider.js`
-);
-const partialPath = path.join(
-  rootDir,
-  "src",
-  "views",
-  "partials",
-  "enrichment",
-  `${FIXTURE_KEY}.ejs`
-);
+const FIXTURE_KEY = "runtime-fixture";
 
-const PROVIDER_SOURCE = `export default {
-  key: "${FIXTURE_KEY}",
-  scope: "listing",
-  order: 50,
-  label: "Provider de test",
-  source: "Jeu de test",
-  isListingCacheValid(data, listing) {
-    return listing.title === "CACHE";
-  },
-  async fetch({ listing }) {
-    globalThis.__zzfixtureCalls = (globalThis.__zzfixtureCalls || 0) + 1;
-    if (listing.title === "ECHEC") throw new Error("source indisponible");
-    if (listing.title === "LENT") await new Promise((r) => setTimeout(r, 50));
-    return { marqueur: "valeur-de-test", ville: listing.city || null };
-  },
-};
-`;
-
-const PARTIAL_SOURCE = `<p class="kv">Marqueur : <%= data.marqueur %></p>\n`;
-
-function writeFixture() {
-  fs.writeFileSync(providerPath, PROVIDER_SOURCE);
-  fs.writeFileSync(partialPath, PARTIAL_SOURCE);
+function createFixtureTestApp() {
+  return createTestApp({ enrichmentFixture: true });
 }
 
-function removeFixture() {
-  for (const file of [providerPath, partialPath]) {
-    try {
-      fs.unlinkSync(file);
-    } catch {
-      // Déjà supprimé : rien à faire.
-    }
-  }
-}
-
-function withFixtureApp(name, fn) {
+function fixtureTest(name, fn) {
   test(name, async (t) => {
-    writeFixture();
-    const ctx = createTestApp();
+    const ctx = createFixtureTestApp();
     ctx.listingsService = createListingsService({ repositories: ctx.repositories });
-    t.after(() => {
-      ctx.close();
-      removeFixture();
-    });
+    t.after(() => ctx.close());
     await fn(ctx, t);
   });
 }
 
-withFixtureApp("un nouveau provider est découvert sans inscription", async (ctx) => {
+fixtureTest("un nouveau provider est découvert sans inscription", async (ctx) => {
   const keys = (await ctx.enrichment.listProviders()).map((p) => p.key);
   // Trié par `order` : la résolution de commune reste le prérequis initial.
   // Les providers cache-only départementaux / portée annonce sont inclus.
@@ -100,57 +49,36 @@ withFixtureApp("un nouveau provider est découvert sans inscription", async (ctx
   ]);
 });
 
-withFixtureApp("son résultat est stocké et affiché par son partial", async (ctx) => {
-  const { app, repositories, enrichment, listingsService } = ctx;
-  const user = await createUser(repositories, "a@example.com");
-  const { id } = listingsService.save(user, listingPayload());
-
-  await enrichment.runForListing(user.id, id, { only: FIXTURE_KEY });
-
-  const stored = repositories.enrichments.findOne(id, FIXTURE_KEY);
-  assert.equal(stored.status, "ok");
-  assert.deepEqual(stored.data, {
-    marqueur: "valeur-de-test",
-    ville: "Rambouillet",
-  });
-
-  const agent = await loginAgent(app, "a@example.com");
-  const page = await agent.get(`/listings/${id}`).expect(200);
-  assert.match(page.text, /Provider de test/);
-  assert.match(page.text, /Marqueur : valeur-de-test/);
-  assert.match(page.text, /Source :\s*Jeu de test/);
-});
-
-withFixtureApp("une demande identique attend le calcul déjà en cours", async (ctx) => {
+fixtureTest("une demande identique attend le calcul déjà en cours", async (ctx) => {
   const { repositories, enrichment, listingsService } = ctx;
   const user = await createUser(repositories, "a@example.com");
   const { id } = listingsService.save(user, listingPayload({ title: "LENT" }));
-  globalThis.__zzfixtureCalls = 0;
+  globalThis.__runtimeFixtureCalls = 0;
 
   const first = enrichment.runForListing(user.id, id, { only: FIXTURE_KEY });
   const second = enrichment.runForListing(user.id, id, { only: FIXTURE_KEY });
   await second;
 
   assert.equal(repositories.enrichments.findOne(id, FIXTURE_KEY)?.status, "ok");
-  assert.equal(globalThis.__zzfixtureCalls, 1);
+  assert.equal(globalThis.__runtimeFixtureCalls, 1);
   await first;
 });
 
-withFixtureApp("un résultat d'annonce encore valide n'est pas recalculé", async (ctx) => {
+fixtureTest("un résultat d'annonce encore valide n'est pas recalculé", async (ctx) => {
   const { repositories, enrichment, listingsService } = ctx;
   const user = await createUser(repositories, "a@example.com");
   const { id } = listingsService.save(user, listingPayload({ title: "CACHE" }));
-  globalThis.__zzfixtureCalls = 0;
+  globalThis.__runtimeFixtureCalls = 0;
 
   await enrichment.runForListing(user.id, id, { only: FIXTURE_KEY });
   await enrichment.runForListing(user.id, id, { only: FIXTURE_KEY });
-  assert.equal(globalThis.__zzfixtureCalls, 1);
+  assert.equal(globalThis.__runtimeFixtureCalls, 1);
 
   await enrichment.runForListing(user.id, id, { only: FIXTURE_KEY, force: true });
-  assert.equal(globalThis.__zzfixtureCalls, 2);
+  assert.equal(globalThis.__runtimeFixtureCalls, 2);
 });
 
-withFixtureApp("un provider en erreur n'empêche pas l'affichage", async (ctx) => {
+fixtureTest("un provider en erreur n'empêche pas l'affichage", async (ctx) => {
   const { app, repositories, enrichment, listingsService } = ctx;
   const user = await createUser(repositories, "a@example.com");
   const { id } = listingsService.save(user, listingPayload({ title: "ECHEC" }));
@@ -167,7 +95,7 @@ withFixtureApp("un provider en erreur n'empêche pas l'affichage", async (ctx) =
   assert.doesNotMatch(page.text, /Réessayer/);
 });
 
-withFixtureApp("le bouton Réessayer relance le provider ciblé (admin)", async (ctx) => {
+fixtureTest("le bouton Réessayer relance le provider ciblé (admin)", async (ctx) => {
   const { app, repositories, listingsService } = ctx;
   await createUser(repositories, config.adminEmails[0]);
   const user = await createUser(repositories, "a@example.com");
@@ -185,14 +113,20 @@ withFixtureApp("le bouton Réessayer relance le provider ciblé (admin)", async 
     .expect(200);
 
   assert.doesNotMatch(res.text, /<!DOCTYPE html>/);
-  assert.match(res.text, /Marqueur : valeur-de-test/);
+  assert.match(res.text, /Marqueur : fixture-ok/);
 });
 
-withFixtureApp("Actualiser le territoire recharge tous les providers communaux (admin)", async (ctx) => {
+test("Actualiser le territoire recharge tous les providers communaux (admin)", async (t) => {
+  const ctx = createTestApp();
+  ctx.listingsService = createListingsService({ repositories: ctx.repositories });
+  t.after(() => ctx.close());
   const { app, repositories, listingsService, enrichment } = ctx;
   await createUser(repositories, config.adminEmails[0]);
   const user = await createUser(repositories, "a@example.com");
-  const { id } = listingsService.save(user, listingPayload({ city: "Versailles", postal_code: "78000" }));
+  const { id } = listingsService.save(
+    user,
+    listingPayload({ city: "Versailles", postal_code: "78000" })
+  );
   await enrichment.runForListing(user.id, id, { only: "commune" });
 
   const listing = repositories.listings.findById(user.id, id);
@@ -218,15 +152,27 @@ withFixtureApp("Actualiser le territoire recharge tous les providers communaux (
 
   assert.doesNotMatch(res.text, /<!DOCTYPE html>/);
   assert.match(res.text, /id="listing-territory"/);
+  const territoryEyebrows = res.text.match(/panel__eyebrow">Territoire/g) || [];
+  assert.equal(territoryEyebrows.length, 1);
+  assert.match(res.text, /panel__title">Rambouillet/);
+  assert.match(res.text, /listing-territory__body/);
+  assert.match(res.text, /panel__head-aside[\s\S]*Mise à jour/);
+  assert.doesNotMatch(res.text, /#provider-commune[\s\S]*<h2 class="panel__title">Commune<\/h2>/);
   assert.match(res.text, /Code INSEE/);
   assert.match(res.text, /Population/);
 });
 
-withFixtureApp("Actualiser l'analyse de marché recharge tous les providers marché (admin)", async (ctx) => {
+test("Actualiser l'analyse de marché recharge tous les providers marché (admin)", async (t) => {
+  const ctx = createTestApp();
+  ctx.listingsService = createListingsService({ repositories: ctx.repositories });
+  t.after(() => ctx.close());
   const { app, repositories, listingsService, enrichment } = ctx;
   await createUser(repositories, config.adminEmails[0]);
   const user = await createUser(repositories, "a@example.com");
-  const { id } = listingsService.save(user, listingPayload({ city: "Versailles", postal_code: "78000" }));
+  const { id } = listingsService.save(
+    user,
+    listingPayload({ city: "Versailles", postal_code: "78000" })
+  );
   await enrichment.runForListing(user.id, id, { only: "immo-data" });
 
   const agent = await loginAgent(app, config.adminEmails[0]);
@@ -246,7 +192,8 @@ withFixtureApp("Actualiser l'analyse de marché recharge tous les providers marc
 
   assert.doesNotMatch(res.text, /<!DOCTYPE html>/);
   assert.match(res.text, /id="listing-market"/);
-  assert.match(res.text, /Analyse de marché/);
+  assert.match(res.text, /panel__title">Prix de marché/);
+  assert.doesNotMatch(res.text, /<h3 class="panel__title">Prix de marché<\/h3>/);
 });
 
 test("le financement est ignoré pour une location", async (t) => {

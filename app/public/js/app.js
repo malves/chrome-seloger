@@ -1106,6 +1106,7 @@
   }
 
   document.addEventListener("dblclick", function (event) {
+    if (event.target.closest && event.target.closest(".listing-spec-value__prev")) return;
     var root = listingFieldEditRootFromTarget(event.target);
     if (!root) return;
     var display = listingFieldDisplay(root);
@@ -1198,18 +1199,14 @@
     }
   });
 
-  // Réorganisation des projets par glisser-déposer, via la poignée (burger).
-  // L'ordre choisi est enregistré côté serveur et réutilisé pour l'affichage.
-  (function initProjectReorder() {
-    var list = document.querySelector("[data-project-reorder]");
-    if (!list) return;
-
+  // Glisser-déposer générique d'une liste, uniquement depuis la poignée
+  // [data-drag-handle] : les liens et champs du reste de l'item restent utilisables.
+  // `onDrop(dragged)` est appelé une fois l'élément reposé.
+  function bindDragReorder(list, itemSelector, onDrop) {
     var dragging = null;
 
     function items() {
-      return Array.prototype.slice.call(
-        list.querySelectorAll(".project-list__item")
-      );
+      return Array.prototype.slice.call(list.querySelectorAll(itemSelector));
     }
 
     function clearDraggable() {
@@ -1218,18 +1215,16 @@
       });
     }
 
-    // On n'active le glisser que depuis la poignée : les liens, le crayon et la
-    // sélection de texte dans le reste de l'item restent utilisables.
     list.addEventListener("pointerdown", function (event) {
       var handle = event.target.closest("[data-drag-handle]");
-      var item = handle && handle.closest(".project-list__item");
-      if (item) item.setAttribute("draggable", "true");
+      var item = handle && handle.closest(itemSelector);
+      if (item && list.contains(item)) item.setAttribute("draggable", "true");
     });
     list.addEventListener("pointerup", clearDraggable);
     list.addEventListener("pointercancel", clearDraggable);
 
     list.addEventListener("dragstart", function (event) {
-      var item = event.target.closest(".project-list__item");
+      var item = event.target.closest(itemSelector);
       if (!item || item.getAttribute("draggable") !== "true") {
         event.preventDefault();
         return;
@@ -1238,10 +1233,7 @@
       item.classList.add("is-dragging");
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData(
-          "text/plain",
-          item.getAttribute("data-project-id") || ""
-        );
+        event.dataTransfer.setData("text/plain", "");
       }
     });
 
@@ -1275,14 +1267,25 @@
 
     list.addEventListener("dragend", function () {
       if (!dragging) return;
+      var dropped = dragging;
       dragging.classList.remove("is-dragging");
       dragging = null;
       clearDraggable();
-      persist();
+      onDrop(dropped);
     });
+  }
+
+  // Réorganisation des projets par glisser-déposer, via la poignée (burger).
+  // L'ordre choisi est enregistré côté serveur et réutilisé pour l'affichage.
+  (function initProjectReorder() {
+    var list = document.querySelector("[data-project-reorder]");
+    if (!list) return;
+
+    bindDragReorder(list, ".project-list__item", persist);
 
     function persist() {
-      var order = items()
+      var order = Array.prototype.slice
+        .call(list.querySelectorAll(".project-list__item"))
         .map(function (item) {
           return item.getAttribute("data-project-id");
         })
@@ -1311,6 +1314,84 @@
         // poser ; il sera resynchronisé au prochain chargement de la page.
       });
     }
+  })();
+
+  // Admin « Questions de visite » : ordre par glisser-déposer ou boutons
+  // monter / descendre, niveau Essentiel / Expert, compteurs à jour.
+  (function initVisitQuestionsAdmin() {
+    var form = document.querySelector("[data-visit-questions-admin]");
+    if (!form) return;
+
+    function syncList(list) {
+      var rows = Array.prototype.slice.call(list.querySelectorAll("[data-question-row]"));
+      var input = form.querySelector('[data-order-input="' + list.getAttribute("data-question-list") + '"]');
+      if (input) {
+        input.value = rows
+          .map(function (row) {
+            return row.getAttribute("data-question-row");
+          })
+          .join(",");
+      }
+      rows.forEach(function (row, index) {
+        var up = row.querySelector('[data-move="-1"]');
+        var down = row.querySelector('[data-move="1"]');
+        if (up) up.disabled = index === 0;
+        if (down) down.disabled = index === rows.length - 1;
+      });
+    }
+
+    function syncCounts() {
+      var total = 0;
+      var essentials = 0;
+      form.querySelectorAll("[data-question-list]").forEach(function (list) {
+        var n = 0;
+        var e = 0;
+        list.querySelectorAll("[data-question-row]").forEach(function (row) {
+          n += 1;
+          var picked = row.querySelector('input[type="radio"]:checked');
+          if (picked && picked.value === "essential") e += 1;
+        });
+        total += n;
+        essentials += e;
+        var out = form.querySelector('[data-section-essentials="' + list.getAttribute("data-question-list") + '"]');
+        if (out) out.textContent = String(e);
+      });
+      var all = document.querySelector("[data-total-essentials]");
+      if (all) all.textContent = String(essentials);
+      var tot = document.querySelector("[data-total-questions]");
+      if (tot) tot.textContent = String(total);
+    }
+
+    form.querySelectorAll("[data-question-list]").forEach(function (list) {
+      bindDragReorder(list, "[data-question-row]", function () {
+        syncList(list);
+      });
+      syncList(list);
+    });
+
+    form.addEventListener("click", function (event) {
+      var btn = event.target.closest("[data-move]");
+      if (!btn) return;
+      var row = btn.closest("[data-question-row]");
+      var list = row && row.parentElement;
+      if (!list) return;
+      if (btn.getAttribute("data-move") === "-1" && row.previousElementSibling) {
+        list.insertBefore(row, row.previousElementSibling);
+      } else if (btn.getAttribute("data-move") === "1" && row.nextElementSibling) {
+        list.insertBefore(row.nextElementSibling, row);
+      }
+      syncList(list);
+      if (!btn.disabled) btn.focus();
+      else {
+        var other = row.querySelector('[data-move="' + (btn.getAttribute("data-move") === "1" ? "-1" : "1") + '"]');
+        if (other) other.focus();
+      }
+    });
+
+    form.addEventListener("change", function (event) {
+      if (event.target.matches('input[type="radio"]')) syncCounts();
+    });
+    syncCounts();
   })();
 
   // Autocomplétion des adresses de référence : libellé ou adresse, menu partagé.
@@ -4979,6 +5060,119 @@
     });
   })();
 
+  // Contrôleur de modale commun : `data-modal-open="<id>"` ouvre `.modal[data-modal]#<id>`,
+  // `data-modal-close` (overlay, croix, Annuler) et Échap la ferment, le focus
+  // revient au déclencheur. Délégation sur document : survit aux swaps htmx.
+  (function initModals() {
+    var openModalEl = null;
+    var lastFocused = null;
+
+    function open(modalEl, trigger) {
+      if (openModalEl) close();
+      openModalEl = modalEl;
+      lastFocused = trigger || document.activeElement;
+      modalEl.hidden = false;
+      document.body.classList.add("is-modal-open");
+      var focusTarget =
+        modalEl.querySelector("[data-modal-autofocus]") ||
+        modalEl.querySelector("input:not([type=hidden]), select, textarea, button");
+      if (focusTarget) focusTarget.focus();
+    }
+
+    function close() {
+      if (!openModalEl) return;
+      openModalEl.hidden = true;
+      openModalEl = null;
+      document.body.classList.remove("is-modal-open");
+      if (lastFocused && lastFocused.isConnected && typeof lastFocused.focus === "function") {
+        lastFocused.focus();
+      }
+      lastFocused = null;
+    }
+
+    document.addEventListener("click", function (event) {
+      var trigger = event.target.closest && event.target.closest("[data-modal-open]");
+      if (trigger) {
+        var modalEl = document.getElementById(trigger.getAttribute("data-modal-open"));
+        if (modalEl && modalEl.hasAttribute("data-modal")) {
+          event.preventDefault();
+          open(modalEl, trigger);
+        }
+        return;
+      }
+      if (openModalEl && event.target.closest("[data-modal-close]")) {
+        event.preventDefault();
+        close();
+      }
+    });
+
+    // Variante « double-clic » (lignes de caractéristiques, comme l'édition inline) :
+    // `data-modal-dblclick="<id>"`, ou Entrée / Espace sur le bouton porteur.
+    function openFromDblclickHost(host) {
+      var modalEl = host && document.getElementById(host.getAttribute("data-modal-dblclick"));
+      if (!modalEl || !modalEl.hasAttribute("data-modal")) return false;
+      open(modalEl, host.matches("button") ? host : host.querySelector("button") || host);
+      return true;
+    }
+
+    document.addEventListener("dblclick", function (event) {
+      var host = event.target.closest && event.target.closest("[data-modal-dblclick]");
+      if (host && openFromDblclickHost(host)) event.preventDefault();
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (!openModalEl) {
+        var host =
+          (event.key === "Enter" || event.key === " ") &&
+          event.target.closest &&
+          event.target.closest("button[data-modal-dblclick]");
+        if (host && openFromDblclickHost(host)) event.preventDefault();
+        return;
+      }
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close();
+    });
+
+    document.body.addEventListener("htmx:beforeSwap", function (event) {
+      var target = event.detail && event.detail.target;
+      if (openModalEl && target && target.contains(openModalEl)) close();
+    });
+  })();
+
+  // Modale « Données structurées » : pastilles Tous / Renseignés / Manquants.
+  (function initListingStructuredDataModal() {
+    function applyFilter(modal, filter) {
+      modal.querySelectorAll("[data-structured-data-filter]").forEach(function (btn) {
+        var active = btn.getAttribute("data-structured-data-filter") === filter;
+        btn.classList.toggle("is-active", active);
+        btn.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      modal.querySelectorAll(".listing-structured-data__section").forEach(function (section) {
+        var visible = 0;
+        section.querySelectorAll("[data-structured-data-row]").forEach(function (row) {
+          var filled = row.getAttribute("data-filled") === "true";
+          var show =
+            filter === "all" ||
+            (filter === "filled" && filled) ||
+            (filter === "empty" && !filled);
+          row.hidden = !show;
+          if (show) visible += 1;
+        });
+        section.hidden = visible === 0;
+      });
+    }
+
+    document.addEventListener("click", function (event) {
+      var btn = event.target.closest && event.target.closest("[data-structured-data-filter]");
+      if (!btn) return;
+      var modal = btn.closest("[data-listing-structured-data-modal]");
+      if (!modal) return;
+      event.preventDefault();
+      applyFilter(modal, btn.getAttribute("data-structured-data-filter"));
+    });
+  })();
+
   // Fiche annonce : maison DPE. Cliquer une pastille affiche l'explication de la
   // partie correspondante dans le panneau de droite (plus de popup flottante).
   // Délégation sur document : le widget est re-rendu à chaque swap du bloc localisation.
@@ -7684,6 +7878,59 @@
       document.addEventListener("DOMContentLoaded", build);
     } else {
       build();
+    }
+  })();
+
+  /* -------- Retour en haut : anneau de progression du défilement -------- */
+  (function () {
+    var SHOW_AFTER = 50;
+
+    function init() {
+      var buttons = Array.prototype.slice.call(document.querySelectorAll("[data-scroll-progress]"));
+      if (!buttons.length) return;
+      var frame = 0;
+
+      function update() {
+        frame = 0;
+        var y = window.scrollY;
+        var max = document.documentElement.scrollHeight - window.innerHeight;
+        var ratio = max > 0 ? Math.min(1, Math.max(0, y / max)) : 0;
+        buttons.forEach(function (btn) {
+          var fill = btn.querySelector("[data-scroll-progress-fill]");
+          if (fill) fill.style.strokeDashoffset = String(100 - ratio * 100);
+          btn.classList.toggle("is-visible", y > SHOW_AFTER);
+        });
+      }
+
+      function schedule() {
+        if (!frame) frame = window.requestAnimationFrame(update);
+      }
+
+      buttons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+          // Le bouton se masque en haut de page : le focus clavier repart du contenu.
+          var main = document.querySelector("main");
+          if (main) {
+            if (!main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
+            main.focus({ preventScroll: true });
+          }
+        });
+      });
+
+      window.addEventListener("scroll", schedule, { passive: true });
+      window.addEventListener("resize", schedule);
+      if (typeof ResizeObserver === "function") {
+        new ResizeObserver(schedule).observe(document.body);
+      }
+      update();
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
     }
   })();
 

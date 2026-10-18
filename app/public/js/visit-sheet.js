@@ -112,9 +112,15 @@
     var state = {
       answers: initial.answers || {},
       applyToSheet: typeof initial.applyToSheet === "boolean" ? initial.applyToSheet : null,
+      mode: initial.mode === "expert" ? "expert" : "essential",
+      expertNudgeSeen: Boolean(initial.expertNudgeSeen),
       filter: "all",
       hideAnswered: false,
     };
+
+    function inMode(item) {
+      return lib.questionInMode(item, state.answers, state.mode);
+    }
 
     var cards = {};
     root.querySelectorAll("[data-q]").forEach(function (li) {
@@ -583,9 +589,9 @@
         var confirmValidationErr = null;
         var showConfirmSeg =
           type === "confirm_yesno" || (type === "confirm_number" && item.known);
+        var unknownOnlySeg = null;
         if (showConfirmSeg) {
-          confirmSeg = segControl(
-            "q-" + item.id,
+          var confirmOpts =
             type === "confirm_yesno"
               ? [
                   { value: "yes", label: "Oui" },
@@ -594,7 +600,16 @@
               : [
                   { value: "yes", label: "C'est exact" },
                   { value: "no", label: "À corriger" },
-                ],
+                ];
+          if (item.input.unknownOption) {
+            confirmOpts.push({
+              value: "unknown",
+              label: item.input.unknownLabel || "Je ne sais pas",
+            });
+          }
+          confirmSeg = segControl(
+            "q-" + item.id,
+            confirmOpts,
             type === "confirm_yesno" ? "visit-seg--yesno" : "visit-seg--confirm"
           );
           host.appendChild(confirmSeg);
@@ -626,6 +641,11 @@
               setAnswer(item.id, null);
               return;
             }
+            if (value === "unknown") {
+              setReveal(reveal, false, card._ready);
+              setAnswer(item.id, { response: "unknown", value: null });
+              return;
+            }
             if (value === "yes") {
               setReveal(reveal, false, card._ready);
               setAnswer(item.id, {
@@ -649,6 +669,23 @@
               pickConfirm(e.target.value);
             });
           }
+        } else if (item.input.unknownOption) {
+          unknownOnlySeg = segControl(
+            "q-" + item.id + "-unknown",
+            [{ value: "unknown", label: item.input.unknownLabel || "À confirmer" }],
+            "visit-seg--yesno"
+          );
+          host.appendChild(unknownOnlySeg);
+          bindSegDeselect(unknownOnlySeg, function (value) {
+            if (value === null) {
+              setAnswer(item.id, null);
+              return;
+            }
+            if (value === "unknown") {
+              setAnswer(item.id, { response: "unknown", value: null });
+            }
+          });
+          host.appendChild(field.wrap);
         } else {
           host.appendChild(field.wrap);
         }
@@ -685,12 +722,15 @@
 
         card._sync = function () {
           var a = state.answers[item.id];
-          var r = a && a.response !== "unknown" ? a.response : null;
+          var r = a ? a.response : null;
           if (confirmSeg) {
             setSeg(confirmSeg, r);
             setReveal(reveal, r === "no", card._ready);
           }
-          var v = a && r !== "yes" ? a.value : null;
+          if (unknownOnlySeg) {
+            setSeg(unknownOnlySeg, r === "unknown" ? "unknown" : null);
+          }
+          var v = a && r !== "yes" && r !== "unknown" ? a.value : null;
           if (document.activeElement !== field.input) {
             field.input.value = numberInputValue(v, item.input.decimals, item.input);
           }
@@ -1092,8 +1132,21 @@
         applyFilters();
         return;
       }
-      if (t.closest("[data-reset]")) {
-        resetAll();
+      if (t.closest("[data-mode-toggle]")) {
+        setMode(state.mode === "expert" ? "essential" : "expert");
+        return;
+      }
+      var modeSet = t.closest("[data-mode-set]");
+      if (modeSet) {
+        setMode(modeSet.getAttribute("data-mode-set"));
+        return;
+      }
+      var showExpert = t.closest("[data-show-expert]");
+      if (showExpert) {
+        var sectionId = showExpert.getAttribute("data-show-expert");
+        setMode("expert");
+        var target = root.querySelector('section[data-section="' + sectionId + '"]');
+        if (target) target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
         return;
       }
       if (t.closest("[data-dock]")) {
@@ -1104,6 +1157,7 @@
     function gotoQuestion(qid) {
       var card = cards[qid];
       if (!card) return;
+      if (!inMode(byId[qid])) setMode("expert");
       if (card.hidden) {
         state.filter = "all";
         state.hideAnswered = false;
@@ -1138,6 +1192,39 @@
       return item.theme === state.filter;
     }
 
+    function renderFilterCounts() {
+      root.querySelectorAll("[data-filter-count]").forEach(function (node) {
+        var key = node.getAttribute("data-filter-count");
+        var n = items.filter(function (it) {
+          if (!inMode(it)) return false;
+          if (key === "all") return true;
+          if (key === "essential") return Boolean(it.essential);
+          return it.theme === key;
+        }).length;
+        node.textContent = String(n);
+        var btn = node.closest("[data-filter]");
+        if (btn && key !== "all" && key !== "essential") btn.hidden = n === 0;
+      });
+    }
+
+    function renderSectionMore(section) {
+      var more = section.querySelector("[data-section-more]");
+      if (!more) return;
+      var hidden = 0;
+      section.querySelectorAll("[data-q]").forEach(function (li) {
+        var it = byId[li.getAttribute("data-q")];
+        if (it && !inMode(it) && lib.questionVisible(it, state.answers)) hidden += 1;
+      });
+      more.hidden = state.mode === "expert" || hidden === 0;
+      var text = more.querySelector("[data-section-more-text]");
+      if (text && hidden) {
+        text.textContent =
+          hidden > 1
+            ? hidden + " questions expert masquées : les afficher"
+            : "1 question expert masquée : l'afficher";
+      }
+    }
+
     function applyFilters() {
       sections.forEach(function (section) {
         var visible = 0;
@@ -1154,6 +1241,7 @@
           var answer = state.answers[qid] || null;
           var treated = lib.isAnswered(item, answer) || lib.isUnknown(answer);
           var show =
+            inMode(item) &&
             matchesFilter(item) &&
             lib.questionVisible(item, state.answers) &&
             !(state.hideAnswered && treated);
@@ -1169,11 +1257,69 @@
         var all = section.querySelectorAll("[data-q]").length;
         var anyMatch = Array.prototype.some.call(section.querySelectorAll("[data-q]"), function (li) {
           var it = byId[li.getAttribute("data-q")];
-          return matchesFilter(it) && lib.questionVisible(it, state.answers);
+          return inMode(it) && matchesFilter(it) && lib.questionVisible(it, state.answers);
         });
         section.hidden = all > 0 && !anyMatch;
         if (empty) empty.hidden = !(anyMatch && visible === 0);
+        renderSectionMore(section);
       });
+    }
+
+    /* ------------------------- Essentiel / Expert ----------------------- */
+
+    var modeRoot = root.querySelector("[data-mode-root]");
+    var modeSwitch = root.querySelector("[data-mode-switch]");
+    var modeToggle = root.querySelector("[data-mode-toggle]");
+    var modeHint = root.querySelector("[data-mode-hint]");
+    var essentialFilter = root.querySelector('[data-filter="essential"]');
+    var essentialCount = items.filter(function (it) {
+      return lib.questionInMode(it, {}, "essential");
+    }).length;
+
+    function renderMode() {
+      var expert = state.mode === "expert";
+      modeRoot.setAttribute("data-mode", state.mode);
+      modeSwitch.classList.toggle("is-on", expert);
+      modeToggle.setAttribute("aria-checked", expert ? "true" : "false");
+      root.querySelectorAll("[data-mode-set]").forEach(function (b) {
+        b.setAttribute("aria-pressed", b.getAttribute("data-mode-set") === state.mode ? "true" : "false");
+      });
+      modeHint.textContent = expert
+        ? "Les " + items.length + " questions, pour ne rien laisser passer."
+        : "Les " + essentialCount + " questions clés. Passez en Expert pour les " + items.length + ".";
+      if (essentialFilter) essentialFilter.hidden = !expert;
+    }
+
+    function setMode(mode) {
+      var next = mode === "expert" ? "expert" : "essential";
+      if (next === state.mode) return;
+      state.mode = next;
+      if (next === "essential" && state.filter === "essential") {
+        state.filter = "all";
+        root.querySelectorAll("[data-filter]").forEach(function (b) {
+          var on = b.getAttribute("data-filter") === "all";
+          b.classList.toggle("is-active", on);
+          b.setAttribute("aria-pressed", on ? "true" : "false");
+        });
+      }
+      renderMode();
+      update({ save: true });
+    }
+
+    /* Tous les essentiels traités : proposer une fois de passer en Expert. */
+    function maybeNudgeExpert(ins) {
+      if (state.mode !== "essential" || state.expertNudgeSeen) return;
+      if (!ins.counts.essentials || ins.counts.essentialsAnswered < ins.counts.essentials) return;
+      if (essentialCount >= items.length) return;
+      state.expertNudgeSeen = true;
+      scheduleSave();
+      showToast(
+        "Les essentiels sont faits. Aller plus loin ?",
+        function () {
+          setMode("expert");
+        },
+        "Passer en Expert"
+      );
     }
 
     /* ------------------------------- Bilan ------------------------------ */
@@ -1425,13 +1571,16 @@
         var done = 0;
         section.querySelectorAll("[data-q]").forEach(function (li) {
           var qid = li.getAttribute("data-q");
+          if (!inMode(byId[qid])) return;
           var a = state.answers[qid] || null;
           total += 1;
           if (lib.isAnswered(byId[qid], a) || lib.isUnknown(a)) done += 1;
         });
         var doneEl = section.querySelector("[data-section-done]");
+        var countEl = section.querySelector("[data-section-count]");
         var bar = section.querySelector("[data-section-bar]");
         if (doneEl) bumpText(doneEl, String(done));
+        if (countEl) countEl.textContent = String(total);
         if (bar) bar.style.width = (total ? Math.round((done / total) * 100) : 0) + "%";
         section.classList.toggle("is-complete", total > 0 && done === total);
       });
@@ -1443,11 +1592,16 @@
         answers: state.answers,
         market: initial.market || {},
         listing: initial.listing || {},
+        mode: state.mode,
       });
       renderBilan(ins);
       renderSections();
+      renderFilterCounts();
       applyFilters();
-      if (options && options.save) scheduleSave();
+      if (options && options.save) {
+        scheduleSave();
+        maybeNudgeExpert(ins);
+      }
     }
 
     /* ------------------------ Mise à jour de la fiche ------------------- */
@@ -1498,25 +1652,6 @@
       setApply(applyToggle.checked, false);
     });
 
-    /* ------------------------------ Reset ------------------------------- */
-
-    function resetAll() {
-      if (!Object.keys(state.answers).length) return;
-      var snapshot = JSON.parse(JSON.stringify(state.answers));
-      state.answers = {};
-      Object.keys(cards).forEach(function (qid) {
-        refreshCard(qid, false);
-      });
-      update({ save: true });
-      showToast("Toutes les réponses ont été effacées", function () {
-        state.answers = snapshot;
-        Object.keys(cards).forEach(function (qid) {
-          refreshCard(qid, false);
-        });
-        update({ save: true });
-      });
-    }
-
     /* ---------------------------- Sauvegarde ---------------------------- */
 
     var saveTimer = null;
@@ -1549,7 +1684,14 @@
       fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, Accept: "application/json" },
-        body: JSON.stringify({ visit: { applyToSheet: state.applyToSheet, answers: state.answers } }),
+        body: JSON.stringify({
+          visit: {
+            applyToSheet: state.applyToSheet,
+            mode: state.mode,
+            expertNudgeSeen: state.expertNudgeSeen,
+            answers: state.answers,
+          },
+        }),
         credentials: "same-origin",
         keepalive: Boolean(keepalive),
       })
@@ -1588,10 +1730,11 @@
     var toastTimer = null;
     toast.inert = true;
 
-    function showToast(text, undo) {
+    function showToast(text, undo, actionLabel) {
       toast.querySelector("[data-toast-text]").textContent = text;
       toastUndo = undo;
       toastUndoBtn.hidden = !undo;
+      toastUndoBtn.textContent = actionLabel || "Annuler";
       toast.inert = false;
       toast.classList.add("is-visible");
       clearTimeout(toastTimer);
@@ -1627,6 +1770,7 @@
       renderControl(item, cards[qid]);
       refreshCard(qid, false);
     });
+    renderMode();
     applyFilters();
     update();
     requestAnimationFrame(function () {

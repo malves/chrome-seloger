@@ -1,13 +1,25 @@
 <%
   const data = (typeof displayData !== 'undefined' && displayData) || listing.extension_data || {};
   const hasData = Object.keys(data).length > 0;
-  const trips = Array.isArray(data.travel_times) ? data.travel_times : [];
   const poll = typeof travelPoll !== 'undefined' && travelPoll;
   const panelUrl = "/listings/" + listing.id + "/extension-panel";
   const projectConfigHref =
     typeof travelConfigProject !== 'undefined' && travelConfigProject
       ? `/projects/${travelConfigProject.id}`
       : null;
+  const panelUpdatedAt =
+    typeof extensionUpdatedAt !== "undefined"
+      ? extensionUpdatedAt
+      : hasData && listing.last_saved_at
+        ? listing.last_saved_at
+        : null;
+  const panelHasData =
+    typeof extensionHasData !== "undefined" ? extensionHasData : hasData;
+  const travelRefreshable =
+    typeof extensionTravelRefreshable !== "undefined" && extensionTravelRefreshable;
+  const adminCanRefresh =
+    listing && listing.id && typeof isAdmin !== "undefined" && isAdmin && travelRefreshable;
+  const showExtensionHeadAside = panelUpdatedAt || adminCanRefresh;
 %>
 <div
   id="listing-extension-panel"
@@ -20,28 +32,58 @@
   <% } %>
 >
 <% if (typeof showExtensionPanel !== 'undefined' && showExtensionPanel) { %>
-<section class="panel" id="listing-extension" data-toc-label="Extension">
+<section class="panel listing-extension" id="listing-extension" data-toc-label="Extension">
+  <div class="address-book__overlay listing-extension__overlay" aria-hidden="true">
+    <span class="spinner" role="status" aria-label="Chargement…"></span>
+  </div>
+
   <div class="panel__head">
     <div>
       <p class="panel__eyebrow">Extension</p>
       <h2 class="panel__title">Données du navigateur</h2>
     </div>
+    <% if (showExtensionHeadAside) { %>
+      <div class="panel__head-aside">
+        <% if (panelUpdatedAt) { %>
+          <span class="card__foot-note">
+            Mise à jour <%= fmt.relative(panelUpdatedAt) %>
+          </span>
+        <% } %>
+        <% if (adminCanRefresh) { %>
+          <form
+            class="listing-extension__refresh"
+            hx-post="/listings/<%= listing.id %>/enrich/trajets"
+            hx-target="#listing-extension-panel"
+            hx-swap="outerHTML"
+            hx-indicator="#listing-extension .listing-extension__overlay"
+            hx-disabled-elt="find button"
+          >
+            <button class="btn btn--ghost btn--sm" type="submit">
+              <%= panelHasData && !poll ? "Actualiser" : "Réessayer" %>
+            </button>
+          </form>
+        <% } %>
+      </div>
+    <% } %>
   </div>
-  <% if (typeof travelError !== 'undefined' && travelError) { %>
-    <p class="field__hint kv__travel-hint"><%= travelError %></p>
-  <% } %>
-  <% if (poll) { %>
-    <p class="field__hint">Calcul des trajets depuis l'adresse du bien…</p>
-  <% } %>
-  <% if (hasData) { %>
-    <%- include("extension-data", {
-      data: data,
-      projectConfigHref,
-      travelHint: poll ? null : (typeof travelHint !== 'undefined' ? travelHint : null),
-      travelProjectAddresses:
-        typeof travelProjectAddresses !== 'undefined' ? travelProjectAddresses : [],
-    }) %>
-  <% } %>
+
+  <div class="listing-extension__body">
+    <% if (typeof travelError !== 'undefined' && travelError) { %>
+      <p class="field__hint kv__travel-hint"><%= travelError %></p>
+    <% } %>
+    <% if (poll) { %>
+      <p class="field__hint">Calcul des trajets depuis l'adresse du bien…</p>
+    <% } %>
+    <% if (hasData) { %>
+      <%- include("extension-data", {
+        data: data,
+        projectConfigHref,
+        travelHint: poll ? null : (typeof travelHint !== 'undefined' ? travelHint : null),
+        travelProjectAddresses:
+          typeof travelProjectAddresses !== "undefined" ? travelProjectAddresses : [],
+      }) %>
+    <% } %>
+  </div>
 </section>
 <% } %>
 </div>

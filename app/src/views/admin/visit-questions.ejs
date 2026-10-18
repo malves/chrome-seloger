@@ -1,0 +1,112 @@
+<%
+  function vi(name) {
+    return '<svg class="wi" aria-hidden="true"><use href="#wi-' + name + '"></use></svg>';
+  }
+%>
+<%- include("../partials/works-icons") %>
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content">
+    <section class="panel">
+      <div class="panel__head">
+        <div>
+          <p class="panel__eyebrow">Fiche de visite</p>
+          <h2 class="panel__title">Questions de visite</h2>
+        </div>
+        <div class="panel__head-aside">
+          <span class="badge badge--accent">
+            <span data-total-essentials><%= view.essentials %></span>&nbsp;essentielles sur <span data-total-questions><%= view.total %></span>
+          </span>
+        </div>
+      </div>
+
+      <p class="field__hint vq-lead">
+        En mode «&nbsp;Essentiel&nbsp;», la fiche de visite n'affiche que les questions marquées
+        Essentiel, plus celles que l'analyse photo met en avant et celles déjà répondues.
+        Le mode «&nbsp;Expert&nbsp;» affiche tout. Glissez une question par sa poignée (ou utilisez
+        les flèches) pour changer son ordre dans l'étape. Selon le bien (maison, copropriété…),
+        certaines questions ne s'affichent pas.
+      </p>
+
+      <form
+        id="vq-form"
+        class="vq-form"
+        method="post"
+        action="/admin/visite"
+        data-visit-questions-admin
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+        <% view.sections.forEach(function (sec) { %>
+          <section class="vq-section" aria-labelledby="vq-<%= sec.id %>-title">
+            <header class="vq-section__head">
+              <span class="vq-step" aria-hidden="true"><%= sec.index %></span>
+              <h3 class="vq-section__title" id="vq-<%= sec.id %>-title"><%= sec.label %></h3>
+              <span class="vq-section__count">
+                <span data-section-essentials="<%= sec.id %>"><%= sec.essentials %></span> / <%= sec.questions.length %> essentielles
+              </span>
+            </header>
+            <input type="hidden" name="order_<%= sec.id %>" data-order-input="<%= sec.id %>" value="<%= sec.questions.map(function (q) { return q.id; }).join(',') %>" />
+
+            <ol class="vq-list" data-question-list="<%= sec.id %>">
+              <% sec.questions.forEach(function (q) { %>
+                <li class="vq-row" data-question-row="<%= q.id %>">
+                  <span class="vq-row__handle" data-drag-handle title="Glisser pour déplacer"><%- vi("grip") %></span>
+                  <span class="vq-row__moves">
+                    <button type="button" class="vq-row__move" data-move="-1" aria-label="Monter « <%= q.question %> »"><%- vi("chevron-up") %></button>
+                    <button type="button" class="vq-row__move" data-move="1" aria-label="Descendre « <%= q.question %> »"><%- vi("chevron-down") %></button>
+                  </span>
+                  <div class="vq-row__body">
+                    <p class="vq-row__question"><%= q.question %></p>
+                    <p class="vq-row__tags">
+                      <span class="badge badge--neutral vq-tag"><%- vi(q.theme.icon) %><%= q.theme.label %></span>
+                      <% if (q.audienceLabel) { %><span class="badge badge--muted"><%= q.audienceLabel %></span><% } %>
+                      <% if (q.photo === "required") { %>
+                        <span class="badge badge--info vq-tag" data-tooltip="N'apparaît que si l'analyse photo repère le problème"><%- vi("camera") %>Déclenchée par les photos</span>
+                      <% } else if (q.photo === "hint") { %>
+                        <span class="badge badge--info vq-tag" data-tooltip="Affichée en mode Essentiel quand l'analyse photo la signale"><%- vi("camera") %>Photos</span>
+                      <% } %>
+                      <% if (q.parentQuestion) { %>
+                        <span class="badge badge--muted" data-tooltip="Dépend de : <%= q.parentQuestion %>">Conditionnelle</span>
+                      <% } %>
+                      <% if (q.level !== q.catalogLevel) { %><span class="badge badge--warn">Modifiée</span><% } %>
+                    </p>
+                  </div>
+                  <fieldset class="vq-level">
+                    <legend class="visually-hidden">Niveau de « <%= q.question %> »</legend>
+                    <label class="vq-level__option">
+                      <input type="radio" name="level_<%= q.id %>" value="essential" <%= q.level === "essential" ? "checked" : "" %> />
+                      <span><%- vi("star") %>Essentiel</span>
+                    </label>
+                    <label class="vq-level__option">
+                      <input type="radio" name="level_<%= q.id %>" value="expert" <%= q.level === "expert" ? "checked" : "" %> />
+                      <span><%- vi("microscope") %>Expert</span>
+                    </label>
+                  </fieldset>
+                </li>
+              <% }) %>
+            </ol>
+          </section>
+        <% }) %>
+
+        <div class="vq-actions">
+          <button type="submit" class="btn btn--green">Enregistrer le classement</button>
+        </div>
+      </form>
+
+      <form
+        class="vq-reset"
+        method="post"
+        action="/admin/visite/reset"
+        data-confirm="Revenir au classement et à l'ordre du catalogue ? Vos modifications seront perdues."
+        data-confirm-title="Rétablir le catalogue"
+        data-confirm-label="Rétablir"
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button type="submit" class="btn btn--ghost" <%= view.customized ? "" : "disabled" %>>
+          <%- vi("reset") %>Revenir aux valeurs du catalogue
+        </button>
+      </form>
+    </section>
+  </div>
+</div>

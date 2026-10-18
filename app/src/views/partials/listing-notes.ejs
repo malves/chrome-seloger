@@ -1,0 +1,28 @@
+<section class="panel listing-notes" id="listing-notes" data-toc-label="Notes">
+  <div class="panel__head">
+    <div>
+      <p class="panel__eyebrow">Vous</p>
+      <h2 class="panel__title">Notes personnelles</h2>
+    </div>
+    <%- include("notes-status", {
+      notesUpdatedAt: typeof notesUpdatedAt !== "undefined" ? notesUpdatedAt : null,
+    }) %>
+  </div>
+
+  <div class="listing-notes__body">
+    <form
+      hx-post="/listings/<%= listing.id %>"
+      hx-trigger="keyup changed delay:800ms from:find textarea"
+      hx-target="#notes-head-aside"
+      hx-swap="outerHTML"
+    >
+      <input type="hidden" name="view" value="notes" />
+      <textarea
+        class="textarea"
+        name="notes"
+        placeholder="Points forts, réserves, questions à poser à l'agence…"
+        maxlength="20000"
+      ><%= listing.notes || '' %></textarea>
+    </form>
+  </div>
+</section>

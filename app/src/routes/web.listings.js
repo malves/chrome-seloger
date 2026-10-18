@@ -53,12 +53,22 @@ import { financingWorksDefault } from "../lib/works/financing-works-default.js";
 import { buildWorksOverview } from "../lib/works/works-overview.js";
 import { buildWorksSummary } from "../lib/works/works-summary.js";
 import createVisitSheetService from "../services/visit-sheet.service.js";
+import createListingPostalCodeService from "../services/listing-postal-code.service.js";
+import {
+  listingPostalCodeBodySchema,
+  listingPostalCodeQuerySchema,
+} from "../schemas/listing-postal-code.js";
+import createVisitQuestionsConfigService from "../services/visit-questions-config.service.js";
+import { visitSheetBodySchema } from "../schemas/visit.js";
 import { resolveAll } from "../lib/listing-field-provenance.js";
 import { extractDescriptionFacts } from "../lib/listing-description-facts.js";
 import { buildListingSpecs } from "../lib/listing-specs.js";
+import { buildListingStructuredDataView } from "../lib/listing-structured-data.js";
 import {
+  LISTING_SPEC_RESTORE_LOCATION_KEY,
   listingFieldKeyParamSchema,
   listingFieldPatchBodySchema,
+  listingFieldRestoreKeyParamSchema,
 } from "../schemas/listing-field.patch.js";
 import { buildVisitSheet } from "../lib/visit/visit-sheet-view.js";
 import { listingPayloadSchema } from "../schemas/listing.payload.js";
@@ -152,6 +162,11 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   const photoAnalysisRun = createPhotoAnalysisRunService({ repositories, logger });
   const worksPlans = createWorksPlanService({ repositories, photoAnalysisRun });
   const visitSheet = createVisitSheetService({ repositories });
+  const postalCodes = createListingPostalCodeService({
+    repositories,
+    fetchJson: (url) => enrichment.fetchJson(url),
+  });
+  const visitQuestionsConfig = createVisitQuestionsConfigService({ repositories });
 
   /**
    * Analyse des photos pour la fiche : résultat stocké + modèle d'affichage.
@@ -200,6 +215,41 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     enrichment.schedule(userId, listing.id, { only: LISTING_TRAVEL_PROVIDER });
   }
 
+  const NOTES_META_PROVIDER = "notes-meta";
+  const SPECS_META_PROVIDER = "specs-meta";
+
+  function notesUpdatedAtFor(listingId) {
+    return repositories.enrichments.findOne(listingId, NOTES_META_PROVIDER)?.fetched_at || null;
+  }
+
+  function specsUpdatedAtFor(listing) {
+    const edited = repositories.enrichments.findOne(listing.id, SPECS_META_PROVIDER)?.fetched_at;
+    const saved = listing.last_saved_at;
+    if (edited && saved) {
+      return edited > saved ? edited : saved;
+    }
+    return edited || saved || null;
+  }
+
+  function bumpSpecsUpdatedAt(listingId) {
+    repositories.enrichments.saveListingResult(listingId, SPECS_META_PROVIDER, {
+      status: "ok",
+      data: {},
+    });
+    return repositories.enrichments.findOne(listingId, SPECS_META_PROVIDER)?.fetched_at || null;
+  }
+
+  function locationUpdatedAtFor(listing) {
+    const candidates = [
+      repositories.enrichments.findOne(listing.id, "probable-location")?.fetched_at,
+      listing.user_address_updated_at,
+      listing.postal_override?.updated_at,
+      listing.last_saved_at,
+    ].filter(Boolean);
+    if (!candidates.length) return null;
+    return candidates.reduce((latest, value) => (value > latest ? value : latest));
+  }
+
   function extensionPanelLocals(listing, userId) {
     const accountProjects = projectsService.list(userId);
     const travelConfigProject =
@@ -216,6 +266,16 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       : extensionData;
     const showExtensionPanel =
       Object.keys(displayData).length > 0 || state.pending || Boolean(state.error);
+    const extensionHasData =
+      Object.keys(displayData).length > 0 || Boolean(state.webTrips);
+    const extensionUpdatedAt =
+      state.webTrips && state.row?.fetched_at
+        ? state.row.fetched_at
+        : Object.keys(extensionData).length > 0
+          ? listing.last_saved_at
+          : null;
+    const extensionTravelRefreshable =
+      resolveTravelOrigin(listing) != null && state.destinations.length > 0;
 
     return {
       listing,
@@ -226,6 +286,9 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       travelPoll: state.pending,
       travelError: state.error,
       showExtensionPanel,
+      extensionHasData,
+      extensionUpdatedAt,
+      extensionTravelRefreshable,
     };
   }
 
@@ -256,6 +319,8 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       label: row.label,
       display: row.display,
       fieldKey: row.fieldKey,
+      editModal: row.editModal,
+      valueHoverHint: row.valueHoverHint,
       rawValue: row.rawValue,
       source: row.source,
       fieldInputKind: row.fieldInputKind,
@@ -281,6 +346,34 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     return {
       layout: false,
       primary: specRowLocals(listing, row, { fieldErrorMessage }),
+      dependents: dependents.map((entry) => specRowLocals(listing, entry, { oob: true })),
+    };
+  }
+
+  async function postalInseeCodeForSpecs(listing) {
+    if (listing.postal_override) return listing.postal_override.insee_code;
+    return repositories.postalInsee.resolveInsee(listing.postal_code, listing.city, {
+      fetchJson: enrichment.fetchJson,
+    });
+  }
+
+  async function listingSpecLocationRestoreLocals(listing, fmt, primaryKey) {
+    const postalInseeCode = await postalInseeCodeForSpecs(listing);
+    const { descriptionFacts, overrides } = provenanceContext(listing);
+    const provenance = resolveAll({ listing, overrides, descriptionFacts });
+    const specs = buildListingSpecs(listing, provenance, fmt, { postalInseeCode });
+    const touchKeys = ["postal_code", "city"];
+    const touched = specs.filter((entry) => touchKeys.includes(entry.key));
+    if (!touched.length) {
+      throw HttpError.notFound("Caractéristique introuvable.");
+    }
+    const primary = touched.find((entry) => entry.key === primaryKey) || touched[0];
+    const dependents = touched.filter((entry) => entry.key !== primary.key);
+    const insee = specs.find((entry) => entry.label === "Code INSEE");
+    if (insee) dependents.push(insee);
+    return {
+      layout: false,
+      primary: specRowLocals(listing, primary),
       dependents: dependents.map((entry) => specRowLocals(listing, entry, { oob: true })),
     };
   }
@@ -316,6 +409,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       sheet: visitSheet.getSheet(listing),
       isCopro: Boolean(descriptionFacts.is_copro),
       fmt,
+      questionConfig: visitQuestionsConfig.get(),
     });
   }
 
@@ -471,6 +565,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       result,
       edited: Array.isArray(stored?.data?.edited) ? stored.data.edited : [],
       amortization: buildAmortizationSchedule(result),
+      updatedAt: stored?.fetched_at || null,
     };
     return attachFinancingRentYield(listing, bundle);
   }
@@ -778,11 +873,11 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         enrichment.schedule(listing.user_id, listing.id);
       }
       maybeScheduleRentEstimate(listing);
-      const postalInseeCode = await repositories.postalInsee.resolveInsee(
-        listing.postal_code,
-        listing.city,
-        { fetchJson: enrichment.fetchJson }
-      );
+      const postalInseeCode = listing.postal_override
+        ? listing.postal_override.insee_code
+        : await repositories.postalInsee.resolveInsee(listing.postal_code, listing.city, {
+            fetchJson: enrichment.fetchJson,
+          });
 
       const userAddressMapsHrefValue = await userAddressMapsHref(listing);
 
@@ -809,11 +904,17 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       const listingSpecs = buildListingSpecs(listing, provenance, res.locals.fmt, {
         postalInseeCode,
       });
+      const listingStructuredData = buildListingStructuredDataView(
+        listing,
+        { photoCount: photos.length, postalInseeCode },
+        res.locals.fmt
+      );
 
       res.render("listing", {
         title: res.locals.fmt.listingTitle(listing.title, listing.price) || "Annonce",
         listing,
         listingSpecs,
+        listingStructuredData,
         userAddressMapsHref: userAddressMapsHrefValue,
         linkedDpeInsights,
         postalInseeCode,
@@ -837,6 +938,9 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         financing,
         offerPricePosition,
         projects: accountProjects,
+        notesUpdatedAt: notesUpdatedAtFor(listing.id),
+        specsUpdatedAt: specsUpdatedAtFor(listing),
+        locationUpdatedAt: locationUpdatedAtFor(listing),
         ...extensionPanel,
       });
     } catch (err) {
@@ -1152,13 +1256,18 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   router.put("/listings/:id/visite", visitJsonBody, (req, res, next) => {
     try {
       const listing = loadListing(req);
-      const saved = visitSheet.saveSheet(listing, req.body);
+      const parsed = visitSheetBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw HttpError.unprocessable("Fiche de visite invalide.");
+      }
+      const saved = visitSheet.saveSheet(listing, parsed.data);
       logActivity(logger, req, "fiche de visite enregistrée", {
         listingId: listing.id,
         answers: Object.keys(saved.visit.answers || {}).length,
         applyToSheet: saved.visit.applyToSheet,
+        mode: saved.visit.mode,
       });
-      return res.json({ ok: true, applyToSheet: saved.visit.applyToSheet });
+      return res.json({ ok: true, applyToSheet: saved.visit.applyToSheet, mode: saved.visit.mode });
     } catch (err) {
       return worksJsonError(res, next, err);
     }
@@ -1166,18 +1275,71 @@ export default function createListingsRouter({ repositories, enrichment, logger 
 
   const fieldPatchJson = express.json({ limit: "8kb" });
 
-  router.patch("/listings/:id/fields/:fieldKey", fieldPatchJson, (req, res, next) => {
+  router.patch("/listings/:id/fields/:fieldKey", fieldPatchJson, async (req, res, next) => {
     try {
-      const listing = loadListing(req);
+      let listing = loadListing(req);
+      const parsedBody = listingFieldPatchBodySchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        throw HttpError.unprocessable("Valeur invalide.");
+      }
+
+      if ("restore" in parsedBody.data) {
+        const parsedKey = listingFieldRestoreKeyParamSchema.safeParse(req.params.fieldKey);
+        if (!parsedKey.success) {
+          throw HttpError.unprocessable("Champ non modifiable depuis la fiche.");
+        }
+        const restoreKey = parsedKey.data;
+
+        if (restoreKey === LISTING_SPEC_RESTORE_LOCATION_KEY) {
+          if (!listing.postal_override) {
+            throw HttpError.unprocessable("Aucune correction de localisation à rétablir.");
+          }
+          postalCodes.clear(listing);
+          await refreshAfterPostalCodeChange(listing);
+          listing = loadListing(req);
+          logActivity(logger, req, "localisation de l'annonce rétablie depuis les caractéristiques", {
+            listingId: listing.id,
+          });
+          if (req.get("HX-Request")) {
+            const primaryKey = parsedBody.data.primaryKey || "postal_code";
+            const specsUpdatedAt = bumpSpecsUpdatedAt(listing.id);
+            return res.render("partials/listing-spec-patch", {
+              ...(await listingSpecLocationRestoreLocals(listing, res.locals.fmt, primaryKey)),
+              listing,
+              specsUpdatedAt,
+            });
+          }
+          return res.json({ ok: true, field: restoreKey });
+        }
+
+        const { descriptionFacts } = provenanceContext(listing);
+        const result = visitSheet.restoreListingField(listing, restoreKey, { descriptionFacts });
+
+        if (!result.ok) {
+          throw HttpError.unprocessable(result.message);
+        }
+
+        logActivity(logger, req, "caractéristique rétablie à la valeur d'origine", {
+          listingId: listing.id,
+          field: restoreKey,
+        });
+
+        if (req.get("HX-Request")) {
+          const specsUpdatedAt = bumpSpecsUpdatedAt(listing.id);
+          return res.render("partials/listing-spec-patch", {
+            ...listingSpecPatchLocals(listing, res.locals.fmt, restoreKey),
+            listing,
+            specsUpdatedAt,
+          });
+        }
+        return res.json({ ok: true, field: restoreKey, resolved: result.resolved });
+      }
+
       const parsedKey = listingFieldKeyParamSchema.safeParse(req.params.fieldKey);
       if (!parsedKey.success) {
         throw HttpError.unprocessable("Champ non modifiable depuis la fiche.");
       }
       const fieldKey = parsedKey.data;
-      const parsedBody = listingFieldPatchBodySchema.safeParse(req.body);
-      if (!parsedBody.success) {
-        throw HttpError.unprocessable("Valeur invalide.");
-      }
 
       const { descriptionFacts } = provenanceContext(listing);
       const result = visitSheet.patchListingField(listing, fieldKey, parsedBody.data.value, {
@@ -1203,10 +1365,12 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       });
 
       if (req.get("HX-Request")) {
-        return res.render(
-          "partials/listing-spec-patch",
-          listingSpecPatchLocals(listing, res.locals.fmt, fieldKey)
-        );
+        const specsUpdatedAt = bumpSpecsUpdatedAt(listing.id);
+        return res.render("partials/listing-spec-patch", {
+          ...listingSpecPatchLocals(listing, res.locals.fmt, fieldKey),
+          listing,
+          specsUpdatedAt,
+        });
       }
       return res.json({ ok: true, field: fieldKey, resolved: result.resolved });
     } catch (err) {
@@ -1254,6 +1418,10 @@ export default function createListingsRouter({ repositories, enrichment, logger 
           listing.id,
           String(req.body.notes).slice(0, 20_000)
         );
+        repositories.enrichments.saveListingResult(listing.id, NOTES_META_PROVIDER, {
+          status: "ok",
+          data: {},
+        });
       }
 
       const updated = repositories.listings.findById(req.user.id, listing.id);
@@ -1265,7 +1433,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       if (view === "notes") {
         return res.render("partials/notes-status", {
           layout: false,
-          savedAt: new Date(),
+          savedAt: notesUpdatedAtFor(listing.id),
         });
       }
       if (view === "header") {
@@ -1433,6 +1601,113 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     }
   });
 
+  /**
+   * Résout la commune puis, sans appel LLM, copie la valeur locative
+   * communale déjà connue : la fiche n'affiche pas d'état « en cours ».
+   */
+  async function resolveCommuneAndRent(userId, listingId) {
+    await enrichment.runForListing(userId, listingId, { only: "commune" });
+    const resolved = repositories.listings.findById(userId, listingId);
+    if (resolved && findCommuneRentEstimate(repositories, resolved)) {
+      await enrichment.runForListing(userId, listingId, {
+        only: RENT_ESTIMATE_PROVIDER,
+      });
+    }
+  }
+
+  /* ------------------------ Code postal corrigé ---------------------- */
+
+  /** Communes du code postal saisi (liste de choix de la modale). */
+  router.get("/listings/:id/postal-code/communes", async (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const parsed = listingPostalCodeQuerySchema.safeParse(req.query);
+      if (!parsed.success) throw HttpError.badRequest("Code postal invalide.");
+      const result = await postalCodes.communesForPostalCode(parsed.data.postal_code);
+      res.set("Cache-Control", "no-store");
+      return res.render("partials/listing-postal-communes", {
+        layout: false,
+        result,
+        selectedInsee: listing.postal_override?.insee_code || null,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  /**
+   * Après un changement de commune, tout ce qui dépend de la localisation est
+   * recalculé (prix au m² communal, loyer, zone probable). La commune et le
+   * loyer communal connu sont résolus avant la redirection pour que la fiche
+   * affiche directement la nouvelle valorisation.
+   */
+  async function refreshAfterPostalCodeChange(listing) {
+    for (const key of ["immo-data", "immo-data-quartier", "dvf-local", RENT_ESTIMATE_PROVIDER]) {
+      repositories.enrichments.removeOne(listing.id, key);
+    }
+    try {
+      await resolveCommuneAndRent(listing.user_id, listing.id);
+    } catch (err) {
+      logger.warn({ err: err.message, listingId: listing.id }, "commune après correction du code postal");
+    }
+    enrichment.schedule(listing.user_id, listing.id);
+  }
+
+  router.post("/listings/:id/postal-code", async (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      const parsed = listingPostalCodeBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw HttpError.unprocessable("Code postal ou commune invalide.");
+      }
+      const result = await postalCodes.save(listing, {
+        postalCode: parsed.data.postal_code,
+        inseeCode: parsed.data.insee_code,
+      });
+      if (!result.ok) {
+        if (result.reason !== "unavailable") throw HttpError.unprocessable(result.message);
+        req.session.flash = { type: "error", message: result.message };
+        return res.redirect(`/listings/${listing.id}#listing-location`);
+      }
+
+      await refreshAfterPostalCodeChange(listing);
+      logActivity(logger, req, "code postal corrigé", {
+        listingId: listing.id,
+        postalCode: parsed.data.postal_code,
+        inseeCode: result.commune.insee_code,
+      });
+      req.session.flash = {
+        type: "success",
+        message: listing.user_address
+          ? `Code postal corrigé : ${parsed.data.postal_code} ${result.commune.name}. L'adresse réelle saisie reste la référence de la valorisation.`
+          : `Code postal corrigé : ${parsed.data.postal_code} ${result.commune.name}. La valorisation est recalculée sur cette commune.`,
+      };
+      return res.redirect(`/listings/${listing.id}#listing-location`);
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  router.post("/listings/:id/postal-code/reset", async (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      if (listing.postal_override) {
+        postalCodes.clear(listing);
+        await refreshAfterPostalCodeChange(listing);
+        logActivity(logger, req, "code postal de l'annonce rétabli", {
+          listingId: listing.id,
+        });
+        req.session.flash = {
+          type: "success",
+          message: "Code postal de l'annonce rétabli.",
+        };
+      }
+      return res.redirect(`/listings/${listing.id}#listing-location`);
+    } catch (err) {
+      return next(err);
+    }
+  });
+
   router.post("/listings/:id/address", async (req, res, next) => {
     try {
       const listing = loadListing(req);
@@ -1479,17 +1754,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       // synchrone AVANT de répondre, pour que le rafraîchissement client du
       // widget (déclenché après le swap) trouve un code INSEE à jour.
       if (req.get("hx-request")) {
-        await enrichment.runForListing(req.user.id, listing.id, {
-          only: "commune",
-        });
-        // Sans appel LLM, la valeur locative communale est copiée tout de
-        // suite : la fiche n'affiche pas d'état « en cours ».
-        const resolved = repositories.listings.findById(req.user.id, listing.id);
-        if (resolved && findCommuneRentEstimate(repositories, resolved)) {
-          await enrichment.runForListing(req.user.id, listing.id, {
-            only: RENT_ESTIMATE_PROVIDER,
-          });
-        }
+        await resolveCommuneAndRent(req.user.id, listing.id);
       }
       enrichment.schedule(req.user.id, listing.id, {
         skipProbableLocation: true,
@@ -1517,6 +1782,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         worksSummary: addressLocals.worksSummary,
         photoLabels,
         extensionPanel: extensionPanelLocals(updated, req.user.id),
+        locationUpdatedAt: locationUpdatedAtFor(updated),
       });
     } catch (err) {
       return next(err);
@@ -1568,6 +1834,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         status: "ok",
         data: { params, result, edited },
       });
+      const financingRow = repositories.enrichments.findOne(listing.id, "financing");
 
       if (!req.get("hx-request")) {
         return res.redirect(`/listings/${listing.id}#financement`);
@@ -1579,6 +1846,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
           params,
           result,
           amortization: buildAmortizationSchedule(result),
+          updatedAt: financingRow?.fetched_at || null,
         }),
         // Le montant « Travaux » pilote aussi le positionnement « prix + travaux ».
         pricePositionOob: pricePositionOobFor(listing, res.locals.fmt, {
@@ -1677,6 +1945,29 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     }
   });
 
+  router.post("/listings/:id/enrich/trajets", requireAdminForEnrichmentRefresh, async (req, res, next) => {
+    try {
+      const listing = loadListing(req);
+      repositories.enrichments.removeOne(listing.id, LISTING_TRAVEL_PROVIDER);
+      await enrichment.runForListing(listing.user_id, listing.id, {
+        only: LISTING_TRAVEL_PROVIDER,
+        force: true,
+      });
+      const refreshed = repositories.listings.findById(listing.user_id, listing.id);
+      const panel = extensionPanelLocals(refreshed, req.user.id);
+
+      if (!req.get("hx-request")) {
+        return res.redirect(`/listings/${listing.id}`);
+      }
+      return res.render("partials/listing-extension-panel", {
+        layout: false,
+        ...panel,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
   router.post("/listings/:id/enrich/territoire", requireAdminForEnrichmentRefresh, async (req, res, next) => {
     try {
       const listing = loadListing(req);
@@ -1739,9 +2030,6 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         key === "immo-data" ? worksOptionsFor(refreshed, res.locals.fmt) : {}
       );
       const block = blocks.find((provider) => provider.key === key);
-      const inlineCommuneHead =
-        block?.group === "territory" &&
-        blocks.filter((provider) => provider.group === "territory").length === 1;
 
       if (!req.get("hx-request")) {
         return res.redirect(`/listings/${listing.id}`);
@@ -1750,8 +2038,9 @@ export default function createListingsRouter({ repositories, enrichment, logger 
         layout: false,
         listing: refreshed,
         provider: block,
-        eyebrow: inlineCommuneHead ? "Territoire" : null,
-        sectionTitle: inlineCommuneHead ? "Commune" : null,
+        hideProviderHead: block?.group === "territory",
+        hideProviderAside: block?.group === "territory",
+        hideProviderRefresh: block?.group === "territory",
       });
     } catch (err) {
       return next(err);

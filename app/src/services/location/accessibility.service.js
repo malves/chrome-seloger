@@ -12,6 +12,7 @@
  */
 
 import config from "../../config.js";
+import { openRouteServiceAuthorizationHeader } from "../../lib/open-route-service.js";
 
 /** `transport` extrait → profil ORS. */
 const PROFILES = {
@@ -59,7 +60,9 @@ export default function createAccessibilityService({
       {
         method: "POST",
         headers: {
-          Authorization: openRouteService.apiKey,
+          Authorization: openRouteServiceAuthorizationHeader(
+            openRouteService.apiKey
+          ),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),

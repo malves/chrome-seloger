@@ -193,6 +193,22 @@ test("PUT visite : consentement donné → surface corrigée et ancienne valeur 
   assert.match(page.text, new RegExp(`kv__prev[\\s\\S]{0,200}?${fmtSurface(120)}`));
 });
 
+test("PATCH restore surface après visite : surface annoncée rétablie", async (t) => {
+  const { agent, listing, csrf } = await setup(t);
+  await applySurface(agent, listing.id, csrf, 95).expect(200);
+
+  await agent
+    .patch(`/listings/${listing.id}/fields/surface`)
+    .set("X-CSRF-Token", csrf)
+    .set("Accept", "application/json")
+    .send({ restore: true })
+    .expect(200);
+
+  const page = await agent.get(`/listings/${listing.id}`).expect(200);
+  assert.ok(page.text.includes(fmtSurface(120)));
+  assert.doesNotMatch(page.text, /listing-spec-value__prev/);
+});
+
 test("PUT visite : surface acceptée → surface effective dans l'aperçu des travaux", async (t) => {
   const { agent, listing, csrf } = await setup(t);
   const before = await agent.get(`/listings/${listing.id}/works/plan`).expect(200);

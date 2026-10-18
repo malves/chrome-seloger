@@ -19,6 +19,8 @@ import { costsOptions } from "./works-costs.js";
 import {
   EXCLUSIVE_ISSUES,
   HEAVY_RENOVATION_WORST_ISSUES,
+  ISSUE_COVERS,
+  ISSUE_INCLUDES,
   ISSUE_PRIORITY,
   PRIORITIES,
   ROOM_ISSUES,
@@ -304,6 +306,8 @@ export function plannerOptions() {
     groups: GROUP_KEYS.map((key) => ({ value: key, label: GROUP_LABELS[key] })),
     heavyRenovationWorstIssues: HEAVY_RENOVATION_WORST_ISSUES,
     exclusiveIssues: EXCLUSIVE_ISSUES,
+    issueIncludes: ISSUE_INCLUDES,
+    issueCovers: ISSUE_COVERS,
     issuePriority: ISSUE_PRIORITY,
     priorities: PRIORITIES,
     costs: costsOptions(),

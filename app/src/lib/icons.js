@@ -55,6 +55,10 @@ export const ICONS = {
   grip: '<circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>',
   "chevron-left": '<path d="m15 18-6-6 6-6"/>',
   "chevron-right": '<path d="m9 18 6-6-6-6"/>',
+  "chevron-up": '<path d="m18 15-6-6-6 6"/>',
+  "chevron-down": '<path d="m6 9 6 6 6-6"/>',
+  "arrow-up": '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  microscope: '<path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/>',
   more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
   help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
@@ -90,11 +94,11 @@ export const ICON_GROUPS = [
   {
     title: "Actions",
     usage: "Boutons et menus : une icône par verbe, toujours la même.",
-    names: ["plus", "minus", "pencil", "copy", "trash", "close", "check", "undo", "reset", "move", "grip", "zoom", "eye-off", "more", "chevron-left", "chevron-right"],
+    names: ["plus", "minus", "pencil", "copy", "trash", "close", "check", "undo", "reset", "move", "grip", "zoom", "eye-off", "more", "chevron-left", "chevron-right", "chevron-up", "chevron-down", "arrow-up"],
   },
   {
     title: "Contenu et signaux",
     usage: "Nature d'un contenu ou état à signaler.",
-    names: ["clipboard", "list-check", "inbox", "message", "image", "camera", "grid", "pin", "star", "alert", "help"],
+    names: ["clipboard", "list-check", "inbox", "message", "image", "camera", "grid", "pin", "star", "microscope", "alert", "help"],
   },
 ];

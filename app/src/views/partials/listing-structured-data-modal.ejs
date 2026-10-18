@@ -1,0 +1,129 @@
+<%
+  const view =
+    (typeof listingStructuredData !== "undefined" && listingStructuredData) || {
+      summary: { filled: 0, total: 0, empty: 0 },
+      sections: [],
+    };
+  const summary = view.summary;
+%>
+<div
+  class="modal modal--listing-structured-data"
+  id="listing-structured-data-modal"
+  data-modal
+  data-listing-structured-data-modal
+  hidden
+>
+  <div class="modal__overlay" data-modal-close tabindex="-1"></div>
+  <div
+    class="modal__dialog modal__dialog--wide modal__dialog--standard listing-structured-data-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="listing-structured-data-modal-title"
+  >
+    <button type="button" class="modal__close" data-modal-close aria-label="Fermer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+
+    <header class="listing-structured-data-dialog__hero">
+      <div>
+        <p class="listing-structured-data-dialog__eyebrow">Le bien</p>
+        <h2 class="modal__title listing-structured-data-dialog__title" id="listing-structured-data-modal-title">
+          Données structurées
+        </h2>
+        <p class="modal__message listing-structured-data-dialog__lead">
+          Champs extraits de l'annonce et de la capture (SeLoger, extension…).
+          <strong><%= fmt.number(summary.filled) %></strong> renseigné<%= summary.filled > 1 ? "s" : "" %>
+          sur <strong><%= fmt.number(summary.total) %></strong>.
+        </p>
+      </div>
+      <div
+        class="listing-structured-data-dialog__filters filters"
+        role="group"
+        aria-label="Filtrer les champs"
+      >
+        <button
+          type="button"
+          class="pill is-active"
+          data-structured-data-filter="all"
+          aria-pressed="true"
+        >
+          Tous<span class="pill__count"><%= fmt.number(summary.total) %></span>
+        </button>
+        <button
+          type="button"
+          class="pill"
+          data-structured-data-filter="filled"
+          aria-pressed="false"
+        >
+          Renseignés<span class="pill__count"><%= fmt.number(summary.filled) %></span>
+        </button>
+        <button
+          type="button"
+          class="pill"
+          data-structured-data-filter="empty"
+          aria-pressed="false"
+        >
+          Manquants<span class="pill__count"><%= fmt.number(summary.empty) %></span>
+        </button>
+      </div>
+    </header>
+
+    <div class="listing-structured-data-dialog__body">
+      <% view.sections.forEach(function (section) { %>
+        <section
+          class="listing-structured-data__section"
+          aria-labelledby="listing-structured-section-<%= section.id %>"
+        >
+          <h3 class="listing-structured-data__section-title" id="listing-structured-section-<%= section.id %>">
+            <%= section.title %>
+          </h3>
+          <% if (section.hint) { %>
+            <p class="listing-structured-data__section-hint"><%= section.hint %></p>
+          <% } %>
+          <dl class="listing-structured-data__grid">
+            <% section.fields.forEach(function (field) { %>
+              <div
+                class="listing-structured-data__row"
+                data-structured-data-row
+                data-filled="<%= field.filled ? "true" : "false" %>"
+              >
+                <dt class="listing-structured-data__term">
+                  <%= field.label %>
+                  <% if (field.help) { %>
+                    <span class="listing-structured-data__term-help"><%= field.help %></span>
+                  <% } %>
+                </dt>
+                <dd
+                  class="listing-structured-data__value<%= field.filled ? "" : " listing-structured-data__value--empty" %>"
+                >
+                  <% if (field.filled && field.kind === "url" && field.display) { %>
+                    <a
+                      class="listing-structured-data__link"
+                      href="<%= field.display %>"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <%= field.display %>
+                      <span class="link-exit-arrow" aria-hidden="true">↗</span>
+                    </a>
+                  <% } else if (field.filled) { %>
+                    <%= field.display %>
+                  <% } else { %>
+                    <span class="badge badge--muted">Non renseigné</span>
+                  <% } %>
+                </dd>
+              </div>
+            <% }); %>
+          </dl>
+        </section>
+      <% }); %>
+    </div>
+
+    <div class="modal__actions listing-structured-data-dialog__actions">
+      <button type="button" class="btn btn--ghost" data-modal-close>Fermer</button>
+    </div>
+  </div>
+</div>

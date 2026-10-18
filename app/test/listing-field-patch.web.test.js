@@ -49,6 +49,42 @@ const patchField = (agent, id, fieldKey, csrf, value) =>
     .set("Accept", "application/json")
     .send({ value });
 
+const restoreField = (agent, id, fieldKey, csrf) =>
+  agent
+    .patch(`/listings/${id}/fields/${fieldKey}`)
+    .set("X-CSRF-Token", csrf)
+    .set("Accept", "application/json")
+    .send({ restore: true });
+
+test("PATCH restore surface (htmx) : rétablit la valeur annoncée", async (t) => {
+  const { agent, id, csrf } = await setup(t);
+  await patchField(agent, id, "surface", csrf, 95).expect(200);
+  const res = await agent
+    .patch(`/listings/${id}/fields/surface`)
+    .set("X-CSRF-Token", csrf)
+    .set("HX-Request", "true")
+    .type("form")
+    .send({ restore: "true" })
+    .expect(200);
+  assert.match(res.text, /id="listing-spec-surface"/);
+  assert.doesNotMatch(res.text, /listing-spec-value__prev/);
+
+  const page = await agent.get(`/listings/${id}`).expect(200);
+  assert.doesNotMatch(page.text, /visit-source--user/);
+  assert.ok(page.text.includes(fmtSurface(120)));
+});
+
+test("PATCH restore surface : rétablit la valeur annoncée", async (t) => {
+  const { agent, id, csrf } = await setup(t);
+  await patchField(agent, id, "surface", csrf, 95).expect(200);
+  await restoreField(agent, id, "surface", csrf).expect(200);
+
+  const page = await agent.get(`/listings/${id}`).expect(200);
+  assert.doesNotMatch(page.text, /visit-source--user/);
+  assert.ok(page.text.includes(fmtSurface(120)));
+  assert.doesNotMatch(page.text, /listing-spec-value__prev/);
+});
+
 test("PATCH surface : valeur valide → provenance utilisateur sur la fiche", async (t) => {
   const { agent, id, csrf } = await setup(t);
   const res = await patchField(agent, id, "surface", csrf, 95).expect(200);

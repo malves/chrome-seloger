@@ -125,6 +125,23 @@ test("rénovation lourde : cuisine et salle d'eau seulement dans leurs pièces",
   assert.ok(living.includes("floor_redo"));
 });
 
+test("salle d'eau : points inclus exposés au planificateur, plus forts que ceux qu'ils couvrent", () => {
+  const { issueIncludes, issueCovers, issues, exclusiveIssues, costs } = plannerOptions();
+  const keys = new Set(issues.map((i) => i.value));
+  assert.deepEqual(Object.keys(issueIncludes).sort(), ["bathroom_redo", "bathroom_refresh"]);
+  for (const [fixture, included] of Object.entries(issueIncludes)) {
+    assert.ok(keys.has(fixture));
+    for (const k of included) {
+      assert.ok(keys.has(k), `point inclus inconnu : ${k}`);
+      assert.ok(!exclusiveIssues.some(([weak, strong]) => weak === k && included.includes(strong)), `${k} écrasé par un autre inclus`);
+    }
+    assert.ok(included.every((k) => issueCovers[fixture].includes(k)));
+  }
+  assert.ok(issueCovers.bathroom_redo.includes("paint"), "la peinture est comprise dans des murs refaits");
+  assert.ok(!issueCovers.bathroom_refresh.includes("walls_damaged"));
+  assert.deepEqual(costs.issueCovers, issueCovers);
+});
+
 test("points de cuisine ou de salle d'eau retirés d'une pièce qui n'en a pas", () => {
   const room = { ...emptyRoom("u_1", "bedroom", "Chambre"), issues: ["paint", "kitchen_redo", "bathroom_refresh"] };
   const base = { rooms: [room], groups: { unassigned: [], exterior: [], excluded: [] }, captions: {} };

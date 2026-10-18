@@ -11,6 +11,7 @@
 
 import config from "../config.js";
 import HttpError from "../lib/http-error.js";
+import { openRouteServiceAuthorizationHeader } from "../lib/open-route-service.js";
 
 const BASE = config.openRouteService.baseUrl;
 const BAN_SEARCH = "https://api-adresse.data.gouv.fr/search/";
@@ -120,7 +121,10 @@ export default function createTravelService({ logger } = {}) {
   async function route(start, end) {
     const data = await orsJson(`${BASE}/v2/directions/driving-car`, {
       method: "POST",
-      headers: { Authorization: apiKey, "Content-Type": "application/json" },
+      headers: {
+        Authorization: openRouteServiceAuthorizationHeader(apiKey),
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         coordinates: [
           [start.lon, start.lat],

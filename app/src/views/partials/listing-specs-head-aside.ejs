@@ -1,0 +1,24 @@
+<%
+  const updatedAt =
+    typeof specsUpdatedAt !== "undefined" ? specsUpdatedAt : null;
+%>
+<div
+  class="panel__head-aside"
+  id="listing-specs-head-aside"
+  <% if (typeof hxSwapOob !== "undefined" && hxSwapOob) { %>hx-swap-oob="true"<% } %>
+>
+  <% if (updatedAt) { %>
+    <span class="card__foot-note">
+      Mise à jour <%= fmt.relative(updatedAt) %>
+    </span>
+  <% } %>
+  <% if (listing && listing.id) { %>
+    <button
+      type="button"
+      class="btn btn--ghost btn--sm"
+      data-modal-open="listing-structured-data-modal"
+    >
+      Voir toutes les données structurées
+    </button>
+  <% } %>
+</div>

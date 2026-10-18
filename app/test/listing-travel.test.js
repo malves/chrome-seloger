@@ -115,6 +115,9 @@ test("sans adresse réelle, la fiche affiche les trajets de l'extension", async 
   const { app, id } = await setup(t);
   const agent = await loginAgent(app, "trajet@example.com");
   const page = await agent.get(`/listings/${id}`).expect(200);
+  assert.match(page.text, /panel__eyebrow">Extension/);
+  assert.match(page.text, /panel__title">Données du navigateur/);
+  assert.match(page.text, /listing-extension__body/);
   assert.match(page.text, /45 min/);
   assert.doesNotMatch(page.text, WEB_HINT);
 });

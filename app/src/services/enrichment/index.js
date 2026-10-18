@@ -54,8 +54,8 @@ import {
   resolveTravelOrigin,
 } from "../../lib/listing-travel.js";
 
-const providersDir = path.dirname(fileURLToPath(import.meta.url));
-const partialsDir = path.join(
+const builtInProvidersDir = path.dirname(fileURLToPath(import.meta.url));
+const builtInPartialsDir = path.join(
   rootDir,
   "src",
   "views",
@@ -93,39 +93,64 @@ export async function fetchJson(url, options = {}) {
   throw lastError;
 }
 
-async function loadProviders() {
-  const files = (await fs.readdir(providersDir))
-    .filter((name) => name.endsWith(".provider.js"))
-    .sort();
-
-  const providers = [];
-  for (const file of files) {
-    const module = await import(path.join(providersDir, file));
-    const provider = module.default;
-    if (!provider?.key || typeof provider.fetch !== "function") continue;
-    const merged = { order: 100, scope: "listing", ttlDays: 30, display: true, ...provider };
-    merged.group =
-      provider.group || (merged.scope === "commune" ? "territory" : "market");
-    providers.push(merged);
+async function loadProviders(dirs) {
+  const byKey = new Map();
+  for (const dir of dirs) {
+    let files;
+    try {
+      files = (await fs.readdir(dir))
+        .filter((name) => name.endsWith(".provider.js"))
+        .sort();
+    } catch {
+      continue;
+    }
+    for (const file of files) {
+      const module = await import(path.join(dir, file));
+      const provider = module.default;
+      if (!provider?.key || typeof provider.fetch !== "function") continue;
+      const merged = {
+        order: 100,
+        scope: "listing",
+        ttlDays: 30,
+        display: true,
+        ...provider,
+      };
+      merged.group =
+        provider.group || (merged.scope === "commune" ? "territory" : "market");
+      byKey.set(merged.key, merged);
+    }
   }
 
-  return providers.sort((a, b) => a.order - b.order || a.key.localeCompare(b.key));
+  return [...byKey.values()].sort(
+    (a, b) => a.order - b.order || a.key.localeCompare(b.key)
+  );
 }
 
-async function loadPartials() {
-  try {
-    const files = await fs.readdir(partialsDir);
-    return new Set(
-      files
-        .filter((name) => name.endsWith(".ejs"))
-        .map((name) => name.replace(/\.ejs$/, ""))
-    );
-  } catch {
-    return new Set();
+async function loadPartials(dirs) {
+  const keys = new Set();
+  for (const dir of dirs) {
+    try {
+      const files = await fs.readdir(dir);
+      for (const name of files) {
+        if (name.endsWith(".ejs")) {
+          keys.add(name.replace(/\.ejs$/, ""));
+        }
+      }
+    } catch {
+      // Dossier absent : ignoré.
+    }
   }
+  return keys;
 }
 
-export default function createEnrichmentService({ repositories, logger }) {
+export default function createEnrichmentService({
+  repositories,
+  logger,
+  extraProvidersDirs = [],
+  extraPartialsDirs = [],
+}) {
+  const providerDirs = [builtInProvidersDir, ...extraProvidersDirs];
+  const partialDirs = [builtInPartialsDir, ...extraPartialsDirs];
   let registry = null;
   /**
    * Orchestrations en cours, par clé : une demande identique attend la même
@@ -137,8 +162,8 @@ export default function createEnrichmentService({ repositories, logger }) {
   async function getRegistry() {
     if (!registry) {
       const [providers, partials] = await Promise.all([
-        loadProviders(),
-        loadPartials(),
+        loadProviders(providerDirs),
+        loadPartials(partialDirs),
       ]);
       registry = { providers, partials };
     }

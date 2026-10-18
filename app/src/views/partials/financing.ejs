@@ -16,6 +16,7 @@
       ? YIELD_GRADE_LETTERS.indexOf(String(yieldAttract.grade).toUpperCase())
       : -1;
   const showYieldGrade = Boolean(marketEstimate);
+  const financingUpdatedAt = financing.updatedAt || null;
 %>
 <div
   id="financing-block"
@@ -29,6 +30,11 @@
       <h2 class="panel__title">Financement</h2>
     </div>
     <div class="panel__head-aside">
+      <% if (financingUpdatedAt) { %>
+        <span class="card__foot-note">
+          Mise à jour <%= fmt.relative(financingUpdatedAt) %>
+        </span>
+      <% } %>
       <button
         type="button"
         class="btn btn--ghost btn--sm"
@@ -41,6 +47,7 @@
       </button>
     </div>
   </div>
+  <div class="listing-financing__body">
 <div class="financing__grid">
   <!-- Colonne gauche : paramètres de la simulation -->
   <section class="financing-card financing-card--params">
@@ -280,7 +287,7 @@
         class="financing__debt-link"
         href="/endettement?mensualite=<%= Math.round(r.totalMonthly) %>&source=<%= encodeURIComponent(listing.title || 'cette annonce') %>"
       >
-        Vérifier avec mes revenus et mes crédits
+        Vérifier si ma situation permet ce projet
         <span aria-hidden="true">→</span>
       </a>
     <% } %>
@@ -290,16 +297,13 @@
         L'apport couvre la totalité du projet : aucun emprunt n'est nécessaire.
       </p>
     <% } %>
-
-    <p class="panel__note">
-      Estimation indicative, ne constitue pas une offre de prêt ni un conseil.
-    </p>
   </section>
 </div>
 
 <% if (!r.isFullyFunded) { %>
   <%- include("financing-amortization-modal", { r: r, amortization: amortization }) %>
 <% } %>
+  </div>
 </div>
 <% if (typeof pricePositionOob !== "undefined" && pricePositionOob) { %>
   <%- include("enrichment/price-position", {

@@ -2,3 +2,10 @@
 <% dependents.forEach(function (row) { %>
   <%- include("listing-spec-row", row) %>
 <% }); %>
+<% if (typeof specsUpdatedAt !== "undefined") { %>
+  <%- include("listing-specs-head-aside", {
+    listing: listing,
+    specsUpdatedAt: specsUpdatedAt,
+    hxSwapOob: true,
+  }) %>
+<% } %>

@@ -11,6 +11,13 @@ import { ORIGIN_LABELS, SOURCE_LABELS, SOURCE_SHORT } from "./listing-field-prov
 import { fieldInputKind as resolveFieldInputKind } from "./listing-field-value.js";
 import { listingSpecEditFieldKey } from "./listing-inline-edit-fields.js";
 
+/** Indications au survol de la cellule valeur (hors édition inline). */
+export const LISTING_SPEC_VALUE_HOVER_HINTS = {
+  NON_EDITABLE: "Non éditable",
+  COMMUNE_VIA_POSTAL: "Modifiez le code postal",
+  POSTAL_MODAL: "Double-clic pour corriger le code postal",
+};
+
 /** Champs pour lesquels 0 signifie « non renseigné » (l'étage 0 reste affiché). */
 const ZERO_IS_EMPTY = new Set([
   "surface",
@@ -53,12 +60,23 @@ function agencyFees(agency) {
  * - `field` : champ résolu (valeur, source et ancienne valeur depuis `resolveAll`) ;
  * - `source` + `value(ctx)` : valeur hors resolveur, de provenance fixe ;
  * - `title` : info-bulle propre à la ligne (sinon libellé générique de la source) ;
- * - `key` + `dependsOn` : ligne calculée à rafraîchir quand un de ces champs change.
+ * - `key` + `dependsOn` : ligne calculée à rafraîchir quand un de ces champs change ;
+ * - `editModal` : id de la modale ouverte au double-clic (correction hors édition inline).
  */
 const SPEC_ROWS = [
-  { label: "Type de bien", source: "structured", value: ({ listing, fmt }) => fmt.propertyTypeLabel(listing.property_type) },
-  { label: "Transaction", source: "structured", value: ({ listing, fmt }) => fmt.transactionLabel(listing.transaction_type) },
-  { label: "Prix", field: "price" },
+  {
+    label: "Type de bien",
+    source: "structured",
+    valueHoverHint: LISTING_SPEC_VALUE_HOVER_HINTS.NON_EDITABLE,
+    value: ({ listing, fmt }) => fmt.propertyTypeLabel(listing.property_type),
+  },
+  {
+    label: "Transaction",
+    source: "structured",
+    valueHoverHint: LISTING_SPEC_VALUE_HOVER_HINTS.NON_EDITABLE,
+    value: ({ listing, fmt }) => fmt.transactionLabel(listing.transaction_type),
+  },
+  { label: "Prix", field: "price", valueHoverHint: LISTING_SPEC_VALUE_HOVER_HINTS.NON_EDITABLE },
   {
     label: "Prix au m²",
     key: "price_per_m2",
@@ -84,18 +102,37 @@ const SPEC_ROWS = [
   { label: "Chauffage", field: "heating_system" },
   { label: "Source d'énergie", field: "energy_source" },
   { label: "Construction", source: "structured", value: ({ listing }) => (listing.is_new_build ? "Neuf" : null) },
-  { label: "Commune", source: "structured", value: ({ listing }) => listing.city },
-  { label: "Code postal", source: "structured", value: ({ listing }) => listing.postal_code },
+  {
+    label: "Commune",
+    source: "structured",
+    announcedKey: "city",
+    valueHoverHint: LISTING_SPEC_VALUE_HOVER_HINTS.COMMUNE_VIA_POSTAL,
+    value: ({ listing }) => listing.city,
+  },
+  {
+    label: "Code postal",
+    source: "structured",
+    announcedKey: "postal_code",
+    editModal: "listing-postal-modal",
+    valueHoverHint: LISTING_SPEC_VALUE_HOVER_HINTS.POSTAL_MODAL,
+    value: ({ listing }) => listing.postal_code,
+  },
   {
     label: "Code INSEE",
     source: "reference",
+    valueHoverHint: LISTING_SPEC_VALUE_HOVER_HINTS.NON_EDITABLE,
     title: "Déduit du code postal et de la commune (base La Poste, geo.api.gouv.fr)",
     value: ({ postalInseeCode }) => postalInseeCode,
   },
   { label: "Agence", source: "structured", value: ({ listing }) => listing.agency?.name || null },
   { label: "Téléphone", source: "structured", value: ({ listing }) => listing.agency?.phone || null },
   { label: "Honoraires d'agence", source: "structured", value: ({ listing }) => agencyFees(listing.agency) },
-  { label: "Identifiant source", source: "structured", value: ({ listing }) => listing.source_id },
+  {
+    label: "Identifiant source",
+    source: "structured",
+    valueHoverHint: LISTING_SPEC_VALUE_HOVER_HINTS.NON_EDITABLE,
+    value: ({ listing }) => listing.source_id,
+  },
 ];
 
 function sourceInfo(kind, { origin = null, title = null, previous = null } = {}) {
@@ -131,6 +168,7 @@ function resolvedRow(def, ctx) {
     display,
     rawValue,
     fieldKey,
+    valueHoverHint: def.valueHoverHint || null,
     dependsOn: [],
     fieldInputKind: fieldKey ? resolveFieldInputKind(fieldKey) : null,
     source: sourceInfo(p && p.source ? p.source : "structured", {
@@ -140,25 +178,42 @@ function resolvedRow(def, ctx) {
   };
 }
 
+/** Commune / code postal corrigés : provenance « Vous » et valeur de l'annonce. */
+function locationCorrection(def, listing, value) {
+  if (!def.announcedKey || !listing.postal_override) return null;
+  const announced = listing.announced_location?.[def.announcedKey];
+  const changed = !isBlank(announced) && String(announced) !== String(value);
+  return sourceInfo("user", {
+    origin: "listing",
+    previous: changed
+      ? { display: String(announced), title: `Ancienne valeur (${SOURCE_LABELS.structured})` }
+      : null,
+  });
+}
+
 function fixedRow(def, ctx) {
   const value = def.value(ctx);
   if (isBlank(value)) return null;
   return {
-    key: def.key || null,
+    key: def.key || def.announcedKey || null,
     label: def.label,
     display: String(value),
     rawValue: value,
     fieldKey: null,
+    editModal: def.editModal || null,
+    valueHoverHint: def.valueHoverHint || null,
     dependsOn: def.dependsOn || [],
     fieldInputKind: null,
-    source: sourceInfo(def.source, { title: def.title }),
+    source:
+      locationCorrection(def, ctx.listing, value) ||
+      sourceInfo(def.source, { title: def.title }),
   };
 }
 
 /**
  * @returns {Array<{ key: string|null, label: string, display: string, rawValue: unknown,
- *   fieldKey: string|null, dependsOn: string[], fieldInputKind: object|null, source: { kind: string, short: string, title: string,
- *   previous: { display: string, title: string }|null } }>}
+ *   fieldKey: string|null, valueHoverHint: string|null, dependsOn: string[], fieldInputKind: object|null,
+ *   source: { kind: string, short: string, title: string, previous: { display: string, title: string }|null } }>}
  */
 export function buildListingSpecs(listing, provenance, fmt, { postalInseeCode = null } = {}) {
   const prov = provenance || {};

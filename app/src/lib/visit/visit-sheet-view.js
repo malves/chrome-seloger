@@ -20,7 +20,8 @@ import {
   questionHasPhotoFact,
 } from "./visit-questions.js";
 import { photoFactsFrom, matchingFacts, fillTemplate } from "./visit-photo-facts.js";
-import { computeInsights } from "./visit-insights.js";
+import { computeInsights, questionInMode } from "./visit-insights.js";
+import { normalizeVisitMode, resolveQuestionLevels } from "./visit-question-levels.js";
 import { SOURCE_LABELS, SOURCE_SHORT, ORIGIN_LABELS } from "../listing-field-provenance.js";
 import { daysSince } from "../time.js";
 
@@ -46,7 +47,7 @@ function pickFmt(fmt, name, fallback) {
   return fmt && typeof fmt[name] === "function" ? fmt[name].bind(fmt) : fallback;
 }
 
-function buildItem(q, { resolved, answers, photoFacts }) {
+function buildItem(q, { resolved, answers, photoFacts, levels }) {
   const info = q.field ? resolved[q.field] || null : null;
   const known = Boolean(info && info.known);
   const answer = (answers && answers[q.id]) || null;
@@ -63,11 +64,14 @@ function buildItem(q, { resolved, answers, photoFacts }) {
           label: formatValueLabel({ ...info, value: info.previous.value, source: info.previous.source }),
         }
       : null;
+  const level = (levels && levels[q.id]) || (q.essential ? "essential" : "expert");
   return {
     id: q.id,
     section: q.section,
     theme: q.theme,
-    essential: Boolean(q.essential),
+    level,
+    essential: level === "essential",
+    promoted: Boolean(photoTriggered || photoHint),
     question: fact ? fillTemplate(q.question, fact) : q.question,
     proTip: q.proTip || null,
     field: q.field || null,
@@ -152,6 +156,7 @@ function marketFacts(listing, priceHistory) {
  * @param {object} args.sheet état stocké { visit: { applyToSheet, answers } }
  * @param {boolean} [args.isCopro] bien signalé en copropriété
  * @param {object} [args.fmt] helpers de formatage (res.locals.fmt)
+ * @param {object} [args.questionConfig] { levels, order } (resolveQuestionLevels)
  */
 export function buildVisitSheet({
   listing,
@@ -162,6 +167,7 @@ export function buildVisitSheet({
   sheet = null,
   isCopro = false,
   fmt = null,
+  questionConfig = null,
 }) {
   const euro = pickFmt(fmt, "euro", (n) => `${num(n)} €`);
   const sourceLabel = pickFmt(fmt, "sourceLabel", (s) => s || "Annonce");
@@ -174,17 +180,25 @@ export function buildVisitSheet({
     sheet && sheet.visit && typeof sheet.visit.applyToSheet === "boolean"
       ? sheet.visit.applyToSheet
       : null;
+  const mode = normalizeVisitMode(sheet && sheet.visit && sheet.visit.mode);
+  const expertNudgeSeen = Boolean(sheet && sheet.visit && sheet.visit.expertNudgeSeen);
+  const config = questionConfig || resolveQuestionLevels(null);
 
   const audience = { propertyType: listing.property_type || null, isCopro: Boolean(isCopro) };
   const photoFacts = photoFactsFrom(photoAnalysis);
   const catalog = VISIT_QUESTIONS.filter(
     (q) => questionApplies(q, audience) && questionTriggered(q, photoFacts)
   );
-  const allItems = catalog.map((q) => buildItem(q, { resolved, answers, photoFacts }));
+  const rank = {};
+  for (const ids of Object.values(config.order || {})) ids.forEach((id, i) => (rank[id] = i));
+  const allItems = catalog
+    .map((q) => buildItem(q, { resolved, answers, photoFacts, levels: config.levels }))
+    .sort((a, b) => (rank[a.id] ?? 1e6) - (rank[b.id] ?? 1e6));
   const photoNotes = photoNotesFrom(photoAnalysis);
 
   const sections = VISIT_SECTIONS.map((sec, index) => {
     const items = allItems.filter((it) => it.section === sec.id);
+    const expertOnly = items.filter((it) => !questionInMode(it, answers, "essential")).length;
     return {
       id: sec.id,
       index: index + 1,
@@ -195,6 +209,7 @@ export function buildVisitSheet({
       total: items.length,
       discover: items.filter((it) => !it.known).length,
       confirm: items.filter((it) => it.known).length,
+      expertOnly,
     };
   }).filter((sec) => sec.total > 0);
 
@@ -209,6 +224,7 @@ export function buildVisitSheet({
     answers,
     market,
     listing: { price: listing.price, surface: resolved.surface && resolved.surface.value },
+    mode,
   });
 
   return {
@@ -229,7 +245,6 @@ export function buildVisitSheet({
       postalCode: listing.postal_code || null,
       origin: sourceLabel(listing.source),
       price: listing.price ?? null,
-      priceLabel: listing.price != null ? euro(listing.price) : null,
       propertyType: listing.property_type || null,
       propertyTypeLabel: propertyTypeLabel(listing.property_type) || null,
       transactionTypeLabel: transactionLabel(listing.transaction_type) || null,
@@ -241,6 +256,8 @@ export function buildVisitSheet({
       dpe: resolved.dpe && resolved.dpe.known ? resolved.dpe.value : null,
     },
     applyToSheet,
+    mode,
+    expertNudgeSeen,
     sections,
     themes,
     photoNotes,
@@ -255,6 +272,9 @@ export function buildVisitSheet({
       answered: insights.counts.answered,
       total: insights.counts.total,
       essentials: insights.counts.essentials,
+      all: allItems.length,
+      inEssential: allItems.filter((it) => questionInMode(it, {}, "essential")).length,
+      hiddenBySection: Object.fromEntries(sections.map((s) => [s.id, s.expertOnly])),
     },
   };
 }

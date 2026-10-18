@@ -337,6 +337,20 @@ test("catalogue : électricité — oui / non / je ne sais pas", () => {
   assert.equal(elec.input.unknownLabel, "Je ne sais pas");
 });
 
+test("catalogue : litiges — oui / non / à confirmer", () => {
+  const litiges = QUESTION_BY_ID.litiges;
+  assert.equal(litiges.input.type, "yesno");
+  assert.equal(litiges.input.unknownOption, true);
+  assert.equal(litiges.input.unknownLabel, "À confirmer");
+});
+
+test("catalogue : servitudes — oui / non / à confirmer", () => {
+  const servitudes = QUESTION_BY_ID.servitudes;
+  assert.equal(servitudes.input.type, "yesno");
+  assert.equal(servitudes.input.unknownOption, true);
+  assert.equal(servitudes.input.unknownLabel, "À confirmer");
+});
+
 test("bilan : confirm_yesno — oui sans saisie si pas d'annonce, non exige un nombre", () => {
   const q = item({ input: { type: "confirm_yesno" }, known: false });
   assert.equal(isAnswered(q, { response: "yes", value: null }), true);

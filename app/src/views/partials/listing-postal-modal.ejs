@@ -1,0 +1,81 @@
+<%
+  var postalOverride = listing.postal_override || null;
+  var currentPostal = postalOverride ? postalOverride.postal_code : '';
+%>
+<div
+  class="modal listing-postal-modal"
+  id="listing-postal-modal"
+  hidden
+  data-modal
+>
+  <div class="modal__overlay" data-modal-close></div>
+  <div
+    class="modal__dialog modal__dialog--standard"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="listing-postal-modal-title"
+  >
+    <button type="button" class="modal__close" data-modal-close aria-label="Fermer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    </button>
+
+    <h2 class="modal__title" id="listing-postal-modal-title">Corriger le code postal</h2>
+    <p class="modal__message">
+      Les annonces de village affichent souvent le code postal de la grande ville voisine.
+      <% if (listing.user_address) { %>
+        L'adresse réelle saisie reste la référence de la valorisation.
+      <% } else { %>
+        Le prix au&nbsp;m² et le loyer seront recalculés sur la commune choisie.
+      <% } %>
+    </p>
+
+    <form
+      id="listing-postal-form"
+      class="form listing-postal-form"
+      method="post"
+      action="/listings/<%= listing.id %>/postal-code"
+    >
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+      <div class="field">
+        <label class="field__label" for="listing-postal-code">Code postal</label>
+        <input
+          class="input input--narrow"
+          id="listing-postal-code"
+          type="text"
+          name="postal_code"
+          value="<%= currentPostal %>"
+          inputmode="numeric"
+          pattern="[0-9]{5}"
+          maxlength="5"
+          placeholder="<%= (listing.announced_location && listing.announced_location.postal_code) || listing.postal_code || '78120' %>"
+          autocomplete="off"
+          required
+          data-modal-autofocus
+          hx-get="/listings/<%= listing.id %>/postal-code/communes"
+          hx-trigger="input changed delay:300ms, focus once"
+          hx-target="#listing-postal-communes"
+          hx-swap="innerHTML"
+          hx-indicator="#listing-postal-communes-loading"
+          hx-disabled-elt="unset"
+          hx-sync="this:replace"
+        />
+      </div>
+
+      <div class="listing-postal-form__communes" aria-live="polite">
+        <span class="spinner spinner--sm listing-postal-form__loading" id="listing-postal-communes-loading" role="status" aria-label="Recherche des communes…"></span>
+        <div id="listing-postal-communes">
+          <p class="field__hint">Saisissez les 5 chiffres du code postal pour choisir la commune.</p>
+        </div>
+      </div>
+    </form>
+
+    <div class="modal__actions">
+      <button type="button" class="btn btn--ghost" data-modal-close>Annuler</button>
+      <button type="submit" class="btn btn--green" form="listing-postal-form">Enregistrer</button>
+    </div>
+  </div>
+</div>

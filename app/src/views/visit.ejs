@@ -10,6 +10,10 @@
   var themeById = {};
   sheet.themes.forEach(function (t) { themeById[t.id] = t; });
   var ins = sheet.insights;
+  var expert = sheet.mode === "expert";
+  function inEssential(it) {
+    return it.essential || it.promoted || Boolean(it.answer);
+  }
 %>
 <%- include("partials/works-icons") %>
 <div
@@ -30,7 +34,6 @@
         <p class="visit-hero__address"><%- vi("pin") %><span><%= L.address %></span></p>
       <% } %>
       <div class="visit-hero__badges">
-        <% if (L.priceLabel) { %><span class="visit-hero__price"><%= L.priceLabel %></span><% } %>
         <% if (L.propertyTypeLabel) { %><span class="visit-hero__badge"><%= L.propertyTypeLabel %></span><% } %>
         <% if (L.transactionTypeLabel) { %><span class="visit-hero__badge"><%= L.transactionTypeLabel %></span><% } %>
         <span class="visit-hero__badge">Origine : <%= L.origin %></span>
@@ -55,7 +58,6 @@
           <span class="visit-save__dot" aria-hidden="true"></span>
           <span data-save-text>Enregistré automatiquement</span>
         </span>
-        <button type="button" class="visit-hero__reset" data-reset>Tout effacer</button>
       </div>
     </div>
   </header>
@@ -64,13 +66,46 @@
     <p class="panel">Cette page a besoin de JavaScript pour enregistrer vos réponses.</p>
   </noscript>
 
+  <!-- -------------------------- Mode d'affichage -------------------------- -->
+  <section class="panel panel--flat visit-mode-panel" aria-label="Mode d'affichage des questions">
+    <div class="panel__head visit-mode-panel__head">
+      <div class="visit-mode" data-mode-root data-mode="<%= sheet.mode %>">
+        <span class="visit-mode__lead" id="visit-mode-label">Choisissez le mode de la visite&nbsp;:</span>
+        <div class="mode-switch mode-switch--md<%= expert ? ' is-on' : '' %>" data-mode-switch role="group" aria-labelledby="visit-mode-label">
+          <button type="button" class="mode-switch__label" data-mode-set="essential" aria-pressed="<%= expert ? 'false' : 'true' %>">Essentiel</button>
+          <button
+            type="button"
+            class="mode-switch__button"
+            role="switch"
+            aria-checked="<%= expert ? 'true' : 'false' %>"
+            aria-label="Mode expert : afficher toutes les questions"
+            data-mode-toggle
+          >
+            <span class="mode-switch__thumb" aria-hidden="true">
+              <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+              <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
+            </span>
+          </button>
+          <button type="button" class="mode-switch__label" data-mode-set="expert" aria-pressed="<%= expert ? 'true' : 'false' %>">Expert</button>
+        </div>
+      </div>
+      <p class="visit-mode__hint" data-mode-hint aria-live="polite">
+        <% if (expert) { %>
+          Les <%= sheet.counts.all %> questions, pour ne rien laisser passer.
+        <% } else { %>
+          Les <%= sheet.counts.inEssential %> questions clés. Passez en Expert pour les <%= sheet.counts.all %>.
+        <% } %>
+      </p>
+    </div>
+  </section>
+
   <!-- ------------------------------ Filtres ------------------------------ -->
   <nav class="visit-filters" aria-label="Filtrer les questions">
     <div class="visit-filters__scroll" role="group" aria-label="Thème">
       <button type="button" class="visit-filter is-active" data-filter="all" aria-pressed="true">
         Tout <span class="visit-filter__count" data-filter-count="all"><%= sheet.counts.total %></span>
       </button>
-      <button type="button" class="visit-filter visit-filter--star" data-filter="essential" aria-pressed="false">
+      <button type="button" class="visit-filter visit-filter--star" data-filter="essential" aria-pressed="false" <%= expert ? "" : "hidden" %>>
         <%- vi("star") %> Essentiels <span class="visit-filter__count" data-filter-count="essential"><%= sheet.counts.essentials %></span>
       </button>
       <% sheet.themes.forEach(function (t) { %>
@@ -120,8 +155,11 @@
                 data-theme="<%= it.theme %>"
                 data-section="<%= sec.id %>"
                 data-known="<%= it.known ? '1' : '0' %>"
+                data-level="<%= it.level %>"
                 <%= it.essential ? "data-essential" : "" %>
+                <%= it.promoted ? "data-promoted" : "" %>
                 data-state="idle"
+                <%= !expert && !inEssential(it) ? "hidden" : "" %>
               >
                 <article class="visit-q__card">
                   <div class="visit-q__head">
@@ -166,6 +204,12 @@
             <% }) %>
           </ol>
           <p class="visit-section__empty" data-section-empty hidden>Tout est traité dans cette étape. Beau travail.</p>
+          <% var hidden = sheet.counts.hiddenBySection[sec.id] || 0; %>
+          <p class="visit-section__more" data-section-more <%= expert || !hidden ? "hidden" : "" %>>
+            <button type="button" class="visit-link" data-show-expert="<%= sec.id %>">
+              <%- vi("microscope") %><span data-section-more-text><%= hidden %> question<%= hidden > 1 ? "s" : "" %> expert masquée<%= hidden > 1 ? "s" : "" %> : les afficher</span>
+            </button>
+          </p>
         </section>
       <% }) %>
 
@@ -316,6 +360,8 @@
     <span class="visit-dock__cta">Voir le bilan</span>
   </button>
 
+  <%- include("partials/scroll-progress") %>
+
   <!-- 1er lancement : choix obligatoire avant de parcourir la fiche (réglable ensuite dans le bilan). -->
   <div
     class="modal visit-consent"
@@ -353,6 +399,8 @@
   <script type="application/json" id="visit-initial"><%- JSON.stringify({
     listing: sheet.listing,
     applyToSheet: sheet.applyToSheet,
+    mode: sheet.mode,
+    expertNudgeSeen: sheet.expertNudgeSeen,
     market: sheet.market,
     items: sheet.sections.flatMap(function (s) { return s.items; }),
     answers: Object.fromEntries(

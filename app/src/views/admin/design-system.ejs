@@ -15,6 +15,7 @@
   const CSRF = "<" + "%= csrfToken %" + ">";
   const ICON_PLUS = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>`;
   const ICON_TRASH = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>`;
+  const ICON_CLOSE = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>`;
   // Sans attribut fill : le remplissage or de l'étoile est piloté par le CSS.
   const ICON_STAR = `<svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.52 2.3a.53.53 0 0 1 .95 0l2.31 4.68a2.12 2.12 0 0 0 1.6 1.16l5.16.76a.53.53 0 0 1 .3.9l-3.74 3.64a2.12 2.12 0 0 0-.61 1.88l.88 5.14a.53.53 0 0 1-.77.56l-4.62-2.43a2.12 2.12 0 0 0-1.97 0L6.4 21.01a.53.53 0 0 1-.77-.56l.88-5.14a2.12 2.12 0 0 0-.61-1.88L2.16 9.8a.53.53 0 0 1 .3-.9l5.16-.76a2.12 2.12 0 0 0 1.6-1.16z" /></svg>`;
 
@@ -51,6 +52,54 @@
   <button type="button" class="btn btn--sm btn--icon-only btn--gold detail-head__fav-btn" aria-label="Retirer des favoris" aria-pressed="true">${ICON_STAR}</button>
 </div>`;
 
+  S.modeSwitch = `
+<div class="btn-row">
+  <div class="mode-switch">
+    <button type="button" class="mode-switch__label" aria-pressed="true">Essentiel</button>
+    <button type="button" class="mode-switch__button" role="switch" aria-checked="false" aria-label="Mode expert">
+      <span class="mode-switch__thumb" aria-hidden="true">
+        <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+        <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
+      </span>
+    </button>
+    <button type="button" class="mode-switch__label" aria-pressed="false">Expert</button>
+  </div>
+  <div class="mode-switch is-on">
+    <button type="button" class="mode-switch__label" aria-pressed="false">Essentiel</button>
+    <button type="button" class="mode-switch__button" role="switch" aria-checked="true" aria-label="Mode expert">
+      <span class="mode-switch__thumb" aria-hidden="true">
+        <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+        <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
+      </span>
+    </button>
+    <button type="button" class="mode-switch__label" aria-pressed="true">Expert</button>
+  </div>
+</div>`;
+
+  S.modeSwitchMd = `
+<div class="mode-switch mode-switch--md is-on">
+  <button type="button" class="mode-switch__label" aria-pressed="false">Essentiel</button>
+  <button type="button" class="mode-switch__button" role="switch" aria-checked="true" aria-label="Mode expert">
+    <span class="mode-switch__thumb" aria-hidden="true">
+      <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+      <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
+    </span>
+  </button>
+  <button type="button" class="mode-switch__label" aria-pressed="true">Expert</button>
+</div>`;
+
+  S.modeSwitchLg = `
+<div class="mode-switch mode-switch--lg is-on">
+  <button type="button" class="mode-switch__label" aria-pressed="false">Essentiel</button>
+  <button type="button" class="mode-switch__button" role="switch" aria-checked="true" aria-label="Mode expert">
+    <span class="mode-switch__thumb" aria-hidden="true">
+      <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+      <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
+    </span>
+  </button>
+  <button type="button" class="mode-switch__label" aria-pressed="true">Expert</button>
+</div>`;
+
   S.pills = `
 <div class="filters">
   <div class="filters__group">
@@ -65,6 +114,15 @@
       <option>Prix croissant</option>
     </select>
   </label>
+</div>`;
+
+  S.issueChips = `
+<div class="works-modal">
+  <div class="btn-row">
+    <button type="button" class="works-issue works-issue--average" aria-pressed="false"><span class="works-issue__mark"><svg class="wi" aria-hidden="true"><use href="#wi-plus"></use></svg></span>Sol à rafraîchir</button>
+    <button type="button" class="works-issue works-issue--poor is-on" aria-pressed="true"><span class="works-issue__mark"><svg class="wi" aria-hidden="true"><use href="#wi-check"></use></svg></span>Salle d'eau à refaire</button>
+    <button type="button" class="works-issue works-issue--poor is-on is-included" aria-pressed="true" aria-label="Murs à refaire, inclus dans « Salle d'eau à refaire »"><span class="works-issue__mark"><svg class="wi" aria-hidden="true"><use href="#wi-check"></use></svg></span>Murs à refaire<span class="works-issue__included">Inclus</span></button>
+  </div>
 </div>`;
 
   S.badges = `
@@ -83,13 +141,13 @@
 
   S.sourceBadges = `
 <div class="btn-row">
-  <span class="visit-source visit-source--structured" title="Donnée de l'annonce">Annonce</span>
-  <span class="visit-source visit-source--description" title="Extrait de la description">Description</span>
-  <span class="visit-source visit-source--ai_photo" title="Analyse IA des photos">IA photos</span>
-  <span class="visit-source visit-source--user" title="Corrigé depuis la fiche">Vous</span>
-  <span class="visit-source visit-source--computed" title="Calculé : prix ÷ surface habitable">Calculé</span>
-  <span class="visit-source visit-source--reference" title="Déduit d'un référentiel public">Référentiel</span>
-  <span class="kv__prev" title="Ancienne valeur (Donnée de l'annonce)">
+  <span class="visit-source visit-source--structured" data-tooltip="Donnée de l'annonce" tabindex="0" aria-label="Donnée de l'annonce">Annonce</span>
+  <span class="visit-source visit-source--description" data-tooltip="Extrait de la description" tabindex="0" aria-label="Extrait de la description">Description</span>
+  <span class="visit-source visit-source--ai_photo" data-tooltip="Analyse IA des photos" tabindex="0" aria-label="Analyse IA des photos">IA photos</span>
+  <span class="visit-source visit-source--user" data-tooltip="Corrigé depuis la fiche" tabindex="0" aria-label="Corrigé depuis la fiche">Vous</span>
+  <span class="visit-source visit-source--computed" data-tooltip="Calculé : prix ÷ surface habitable" tabindex="0" aria-label="Calculé : prix ÷ surface habitable">Calculé</span>
+  <span class="visit-source visit-source--reference" data-tooltip="Déduit d'un référentiel public" tabindex="0" aria-label="Déduit d'un référentiel public">Référentiel</span>
+  <span class="kv__prev" data-tooltip="Ancienne valeur (Donnée de l'annonce)" tabindex="0" aria-label="Ancienne valeur (Donnée de l'annonce)">
     <svg class="wi" aria-hidden="true"><use href="#wi-undo"></use></svg>
     62 m²
   </span>
@@ -213,6 +271,17 @@
     <a class="btn btn--ghost" href="/projects">Annuler</a>
   </div>
 </form>`;
+
+  S.selectNative = `
+<div class="field">
+  <label class="field__label" for="ds-commune">Commune</label>
+  <select class="select" id="ds-commune" name="insee_code">
+    <option value="">Choisissez la commune…</option>
+    <option selected>Rambouillet</option>
+    <option>Saint-Léger-en-Yvelines</option>
+  </select>
+  <p class="field__hint">Flèche décalée de <code>var(--space-3)</code> du bord droit.</p>
+</div>`;
 
   S.panel = `
 <section class="panel">
@@ -353,12 +422,30 @@
 </details>`;
 
   S.modal = `
-<div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="ds-modal-title">
+<div class="modal__dialog modal__dialog--standard" role="dialog" aria-modal="true" aria-labelledby="ds-modal-title">
+  <button type="button" class="modal__close" aria-label="Fermer">${ICON_CLOSE}</button>
   <h2 class="modal__title" id="ds-modal-title">Supprimer l'annonce</h2>
   <p class="modal__message">Supprimer cette annonce ? Cette action est irréversible.</p>
   <div class="modal__actions">
     <button type="button" class="btn btn--ghost">Annuler</button>
     <button type="button" class="btn btn--danger-solid">Supprimer</button>
+  </div>
+</div>`;
+
+  S.modalForm = `
+<div class="modal__dialog modal__dialog--standard" role="dialog" aria-modal="true" aria-labelledby="ds-modal-form-title">
+  <button type="button" class="modal__close" aria-label="Fermer">${ICON_CLOSE}</button>
+  <h2 class="modal__title" id="ds-modal-form-title">Corriger le code postal</h2>
+  <p class="modal__message">Le prix au m² et le loyer seront recalculés sur la commune choisie.</p>
+  <form id="ds-modal-form" class="form">
+    <div class="field">
+      <label class="field__label" for="ds-modal-cp">Code postal</label>
+      <input class="input input--narrow" id="ds-modal-cp" type="text" inputmode="numeric" maxlength="5" />
+    </div>
+  </form>
+  <div class="modal__actions">
+    <button type="button" class="btn btn--ghost">Annuler</button>
+    <button type="submit" class="btn btn--green" form="ds-modal-form">Enregistrer</button>
   </div>
 </div>`;
 
@@ -414,6 +501,8 @@
     <li><a class="pagination__nav" href="#pagination" rel="next" aria-label="Page suivante"><span>Suivant</span></a></li>
   </ul>
 </nav>`;
+
+  S.scrollProgress = include("../partials/scroll-progress", { inline: true });
 
   S.pageHead = `
 <div class="page-head">
@@ -522,6 +611,8 @@
     { icon: "Écarter l'annonce", keyframes: "status-pipe-reject-wiggle", duration: "0.5s", gesture: "Secousse amortie ±10° avec ×1,08.", where: ".status-pipe__reject" },
     { icon: "Chevron de sélecteur", keyframes: "project-select-chevron-nudge", duration: "0.45s", gesture: "Descend de 3 px puis rebondit, menu fermé uniquement.", where: ".project-select__chevron" },
     { icon: "Validation des travaux", keyframes: "works-done-check", duration: "0.45s", gesture: "Se tasse (×0,9) puis grossit (×1,2), se pose à ×1,08.", where: ".works-modal__done .wi" },
+    { icon: "Flèche haut (retour en haut)", keyframes: "scroll-progress-arrow", duration: "0.6s", gesture: "Monte de 5 px puis se pose à −2 px.", where: ".scroll-progress__icon" },
+    { icon: "Étoile ↔ microscope (mode)", keyframes: "transition (pas de keyframes)", duration: "0.3s", gesture: "Au changement d'état, fondu croisé avec rotation ±22° et échelle 0,9 ; la pastille glisse en translateX.", where: ".visit-mode__icon (fiche de visite)" },
   ];
 
   const BREAKPOINTS = [
@@ -535,10 +626,9 @@
   const GAPS = [
     { issue: "Couleurs en dur", detail: "Environ 270 codes hexadécimaux dans app.css hors :root, quelques-uns dans les vues (home.ejs, bear-toggle.ejs).", target: "Remplacer par les tokens existants ou en créer un." },
     { issue: "Palette parallèle", detail: "debt.css définit --debt-warn #d98a00 et --debt-over #c8321f à côté de --warn et --danger.", target: "Fusionner avec les signaux globaux." },
-    { issue: "Token inexistant", detail: ".modal__close utilise var(--green-700, #0b3d2c) ; --green-700 n'est défini nulle part.", target: "Utiliser --green-900." },
     { issue: "Toasts multiples", detail: ".works-toast, .offer-toast, .visit-toast et .debt-toast, chacun avec ses keyframes.", target: "Un composant .toast unique (référence : .works-toast)." },
     { issue: "Repli non générique", detail: "Le repli <details> s'appelle .delinquance__details / __summary et est réutilisé dans le prix au m².", target: "Renommer en composant .collapse." },
-    { issue: "Modales dupliquées", detail: "Chaque modale réimplémente ouverture, fermeture et touche Échap dans son propre script.", target: "Un contrôleur de modale commun dans app.js." },
+    { issue: "Modales dupliquées", detail: "Les modales historiques (adresse, DPE, financement…) dupliquent encore le positionnement de .modal__close alors que .modal__dialog--standard existe, et réimplémentent parfois ouverture / Échap.", target: "Ajouter .modal__dialog--standard et initModals (data-modal-open / data-modal-close) partout où c'est pertinent." },
     { issue: "Pas de tokens de mouvement", detail: "Durées 0.12 / 0.14 / 0.15 / 0.16 / 0.18 / 0.2 / 0.25 / 0.3 s ; la courbe cubic-bezier(0.22, 1, 0.36, 1) est redéclarée (--w-ease, --debt-ease).", target: "--motion-fast, --motion-base, --ease-out." },
     { issue: "Pas d'échelle typographique", detail: "Tailles 11 à 22 px écrites en dur.", target: "--text-xs … --text-xl." },
     { issue: "Points de rupture dispersés", detail: "16 largeurs différentes (360, 420, 460, 480, 520, 560, 600, 640, 720, 760, 820, 860, 900, 1023, 1040, 1480).", target: "S'en tenir à 480 / 640 / 720 / 900." },
@@ -1060,6 +1150,12 @@
         html: S.pills,
       }) %>
       <%- include("../partials/design-system/spec", {
+        patternId: "filter-issue-chips",
+        title: "Points à signaler", cls: ".works-issue · .is-on · .is-included",
+        usage: "Bascule d'un point de travaux dans le planificateur (aria-pressed). « Inclus » (bordure pointillée) : point compris dans un forfait coché, comme le sol, les murs et le plafond d'une salle d'eau à refaire ; il n'est pas chiffré à part et le modifier retire le forfait.",
+        html: S.issueChips,
+      }) %>
+      <%- include("../partials/design-system/spec", {
         patternId: "badge-variants",
         title: "Badges", cls: ".badge--*",
         usage: "Accent : statut en cours. Succès : aboutissement. Warn : attention ou location. Error : refus. Down / up : évolution de prix (baisse = favorable). DPE : classe énergétique en mono.",
@@ -1068,7 +1164,7 @@
       <%- include("../partials/design-system/spec", {
         patternId: "badge-source",
         title: "Badge de provenance", cls: ".visit-source--* · .kv__prev",
-        usage: "Origine d'une valeur, à droite de la cellule : Annonce (colonne de l'annonce), Description (extrait du texte), IA photos, Vous (correction de visite ou depuis la fiche), Calculé (dérivé d'autres valeurs), Référentiel (base publique, ex. code INSEE). L'info-bulle précise la source ; l'ancienne valeur suit en .kv__prev quand une correction l'a remplacée. Partial : partials/listing-spec-source.ejs.",
+        usage: "Origine d'une valeur, à droite de la cellule : Annonce (colonne de l'annonce), Description (extrait du texte), IA photos, Vous (correction de visite ou depuis la fiche), Calculé (dérivé d'autres valeurs), Référentiel (base publique, ex. code INSEE). Détail au survol via tooltip-data (data-tooltip, placement au-dessus du badge dans #listing-specs). L'ancienne valeur précède le badge en .kv__prev (cliquable sur la fiche pour rétablir la valeur d'origine). Partial : partials/listing-spec-source.ejs.",
         html: S.sourceBadges,
       }) %>
     </section>
@@ -1092,7 +1188,22 @@
         html: S.form,
         demoClass: "ds-spec__demo--stack",
       }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "form-select-native",
+        title: "Liste déroulante native", cls: ".select · .select--pill",
+        usage: "Classe .select obligatoire ; chevron en fond, jamais la flèche système collée au bord. Tri en barre de filtres : .select.select--pill.",
+        html: S.selectNative,
+      }) %>
       <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Select (.select)</span>
+          <p>
+            <code>appearance: none</code>, chevron SVG (trait <code>--ink-muted</code>) en
+            <code>background-position: right var(--space-3) center</code>, taille <code>1rem</code>.
+            <code>padding-right: calc(var(--space-3) + 1rem + var(--space-3))</code> pour laisser la place au libellé.
+            Variante pilule : <code>.select--pill</code> avec inset <code>var(--space-2)</code>.
+          </p>
+        </div>
         <div class="ds-rule">
           <span class="ds-rule__label">Interdit</span>
           <p><code>type="date"</code>, <code>type="number"</code> natifs du navigateur, spinners du système, selects ou champs « maison » qui ne reprennent pas les composants du site.</p>
@@ -1143,6 +1254,40 @@
         usage: "Modèle identique à Administration → Financement et à la fiche Financement d'une annonce.",
         html: S.amountStepper,
         demoClass: "ds-spec__demo--stack",
+      }) %>
+
+      <h3 class="ds-subtitle" id="mode-switch">Interrupteur à deux libellés · <code>form-switch-labeled</code></h3>
+      <p class="ds-section__lead">
+        Bascule entre deux modes nommés (ex. Essentiel / Expert sur la fiche de visite). Le bouton central
+        porte <code>role="switch"</code> et <code>aria-checked</code> ; les deux libellés sont des boutons qui
+        choisissent directement leur mode (<code>aria-pressed</code>). L'état « activé » se pose avec
+        <code>.is-on</code> sur <code>.mode-switch</code>.
+      </p>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Mouvement</span>
+          <p>Pastille en <code>translateX</code>, icônes en fondu croisé (<code>opacity</code> + rotation ±22°, échelle 0,9), 0,3 s <code>cubic-bezier(0.22, 1, 0.36, 1)</code>. Aucune animation de tracé (<code>stroke-dashoffset</code>).</p>
+        </div>
+        <div class="ds-rule">
+          <span class="ds-rule__label">Usage</span>
+          <p>Deux modes d'affichage d'une même page. Pour un réglage oui / non avec explication, garder l'interrupteur simple de la fiche de visite (<code>.visit-switch</code>).</p>
+        </div>
+      </div>
+      <%- include("../partials/design-system/spec", {
+        patternId: "form-switch-labeled",
+        title: "Interrupteur à deux libellés", cls: ".mode-switch",
+        usage: "Désactivé (Essentiel) puis activé (Expert). Icônes du sprite : star et microscope.",
+        html: S.modeSwitch,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        title: "Taille intermédiaire", cls: ".mode-switch--md",
+        usage: "Panneau mode Essentiel / Expert sur la fiche de visite : libellés 15 px, piste 66 × 35 px.",
+        html: S.modeSwitchMd,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        title: "Grande taille", cls: ".mode-switch--lg",
+        usage: "Mise en avant forte : libellés 17 px, piste 76 × 40 px.",
+        html: S.modeSwitchLg,
       }) %>
 
       <h3 class="ds-subtitle" id="date-picker">Calendrier (date picker)</h3>
@@ -1308,17 +1453,44 @@
       <div class="ds-section__head">
         <h2 class="ds-section__title">Modales</h2>
         <p class="ds-section__lead">
-          Structure <code>.modal</code> &gt; <code>.modal__overlay</code> + <code>.modal__dialog</code> (420 px,
-          <code>--wide</code> pour les contenus riches). Fermeture par l'overlay, le bouton
-          <code>.modal__close</code> (aria-label « Fermer ») et la touche Échap. À l'ouverture :
-          <code>body.is-modal-open</code> bloque le défilement et le focus va sur l'action.
+          Enveloppe <code>.modal</code> &gt; <code>.modal__overlay</code> + <code>.modal__dialog</code>
+          (420 px, <code>modal__dialog--wide</code> si contenu riche). Pour toute modale avec croix,
+          ajouter <code>modal__dialog--standard</code> : texte à gauche, fermeture en haut à droite.
+          Fermeture par l'overlay, <code>.modal__close</code> (aria-label « Fermer »), bouton
+          <code>.btn--ghost</code> « Annuler » dans <code>.modal__actions</code>, ou touche Échap.
+          À l'ouverture : <code>body.is-modal-open</code> bloque le défilement.
+          Contrôleur commun <code>app.js</code> : <code>data-modal-open</code>, <code>data-modal</code>,
+          <code>data-modal-close</code>, <code>data-modal-autofocus</code> ; sur une caractéristique,
+          <code>data-modal-dblclick</code> (double-clic ou Entrée / Espace).
         </p>
+      </div>
+      <div class="ds-rules">
+        <div class="ds-rule">
+          <span class="ds-rule__label">Composition</span>
+          <p>
+            Ordre dans <code>.modal__dialog.modal__dialog--standard</code> :
+            (1) <code>.modal__close</code> en premier dans le DOM — positionné en haut à droite ;
+            (2) <code>.modal__title</code> ;
+            (3) <code>.modal__message</code> ou corps (<code>.form</code>, contenu) ;
+            (4) <code>.modal__actions</code> en bas, aligné à droite :
+            <code>.btn.btn--ghost</code> « Annuler » puis l'action principale
+            (<code>.btn--green</code> pour enregistrer / valider,
+            <code>.btn--danger-solid</code> pour une suppression confirmée).
+            Une seule action principale par modale.
+          </p>
+        </div>
       </div>
       <%- include("../partials/design-system/spec", {
         patternId: "modal-dialog",
-        title: "Boîte de dialogue", cls: ".modal__dialog",
-        usage: "Titre = action (« Supprimer l'annonce »), message = conséquence, Annuler à gauche, action à droite.",
+        title: "Boîte de dialogue", cls: ".modal__dialog.modal__dialog--standard",
+        usage: "Confirmation ou message : titre = action, message = conséquence. Pied : Annuler (.btn--ghost) puis action (.btn--danger-solid ou .btn--green).",
         html: S.modal,
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "modal-dialog-form",
+        title: "Modale avec formulaire", cls: ".modal__dialog.modal__dialog--standard .form",
+        usage: "Même en-tête et pied ; champs .form/.field entre message et actions. Submit : button type=\"submit\" form=\"id\" .btn--green hors du &lt;form&gt; si le pied est séparé.",
+        html: S.modalForm,
       }) %>
       <%- include("../partials/design-system/spec", {
         patternId: "feedback-confirm-modal",
@@ -1414,6 +1586,12 @@
         usage: "Sous la liste. Page courante avec aria-current, Précédent / Suivant désactivés aux extrémités.",
         html: S.pagination,
         demoClass: "ds-spec__demo--stack",
+      }) %>
+      <%- include("../partials/design-system/spec", {
+        patternId: "nav-scroll-progress",
+        title: "Retour en haut avec progression", cls: ".scroll-progress",
+        usage: "Inclure partials/scroll-progress.ejs (bouton fixe, visible après 50 px de défilement). Ici en variante --inline : faites défiler la page pour voir l'anneau se remplir.",
+        html: S.scrollProgress,
       }) %>
     </section>
 

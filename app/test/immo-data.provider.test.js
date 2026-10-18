@@ -371,7 +371,7 @@ test("la fiche annonce affiche le bloc Analyse de marché Immo Data", async (t) 
 
   const agent = await loginAgent(ctx.app, "immo@example.com");
   const res = await agent.get(`/listings/${id}`).expect(200);
-  assert.match(res.text, /Analyse de marché/);
+  assert.match(res.text, /panel__title">Prix de marché/);
   assert.doesNotMatch(res.text, /Immo Data/);
   assert.match(res.text, /id="immodata-tab-apartment"/);
   assert.match(res.text, /Prix de marché ·/);
