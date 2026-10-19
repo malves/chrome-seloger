@@ -133,7 +133,8 @@ export const DESIGN_PATTERNS = [
     group: "layout",
     classes: "details.delinquance__details",
     referenceFile: "partials/enrichment/delinquance.ejs",
-    usage: "Détail secondaire natif <details>, sans JS.",
+    usage:
+      "Détail secondaire natif <details>, sans JS. Accordéon exclusif : même attribut name sur chaque <details> (étapes de visite.ejs, première ouverte).",
     anchor: "repli",
     hasSpec: true,
   },

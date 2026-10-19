@@ -88,6 +88,10 @@
           </button>
           <button type="button" class="mode-switch__label" data-mode-set="expert" aria-pressed="<%= expert ? 'true' : 'false' %>">Toutes les questions</button>
         </div>
+        <label class="visit-mode__hide">
+          <input type="checkbox" data-hide-answered />
+          <span>Masquer les questions traitées</span>
+        </label>
       </div>
       <p class="visit-mode__hint" data-mode-hint aria-live="polite">
         <% if (expert) { %>
@@ -114,10 +118,6 @@
         </button>
       <% }) %>
     </div>
-    <label class="visit-filters__hide">
-      <input type="checkbox" data-hide-answered />
-      <span>Masquer les questions traitées</span>
-    </label>
   </nav>
 
   <div class="visit__grid">
@@ -129,18 +129,24 @@
           var ordered = discover.concat(confirm);
         %>
         <section class="panel visit-section" id="visit-<%= sec.id %>" data-section="<%= sec.id %>" aria-labelledby="visit-<%= sec.id %>-title">
-          <div class="visit-section__head">
-            <span class="visit-step" aria-hidden="true"><%= sec.index %></span>
-            <div class="visit-section__text">
-              <h2 class="panel__title" id="visit-<%= sec.id %>-title"><%= sec.label %></h2>
-              <p class="visit-section__sub"><%= sec.lead %></p>
+          <%# Accordéon exclusif : ouvrir une étape referme la précédente (attribut name). %>
+          <details class="visit-section__collapse" name="visit-steps" data-section-collapse <%= sec.index === 1 ? "open" : "" %>>
+          <summary class="visit-section__summary">
+            <div class="visit-section__head">
+              <span class="visit-step" aria-hidden="true"><%= sec.index %></span>
+              <div class="visit-section__text">
+                <h2 class="panel__title" id="visit-<%= sec.id %>-title"><%= sec.label %></h2>
+                <p class="visit-section__sub"><%= sec.lead %></p>
+              </div>
+              <output class="visit-section__total" data-section-total="<%= sec.id %>">
+                <span data-section-done>0</span><span class="visit-section__total-sep">/</span><span data-section-count><%= sec.total %></span>
+              </output>
+              <span class="delinquance__summary-chevron visit-section__chevron" aria-hidden="true"></span>
             </div>
-            <output class="visit-section__total" data-section-total="<%= sec.id %>">
-              <span data-section-done>0</span><span class="visit-section__total-sep">/</span><span data-section-count><%= sec.total %></span>
-            </output>
-          </div>
-          <div class="visit-section__bar" aria-hidden="true"><span data-section-bar></span></div>
+            <div class="visit-section__bar" aria-hidden="true"><span data-section-bar></span></div>
+          </summary>
 
+          <div class="visit-section__body">
           <ol class="visit-list">
             <% ordered.forEach(function (it, idx) { %>
               <% if (confirm.length && discover.length && idx === discover.length) { %>
@@ -210,6 +216,8 @@
               <%- vi("microscope") %><span data-section-more-text><%= hidden %> question<%= hidden > 1 ? "s" : "" %> expert masquée<%= hidden > 1 ? "s" : "" %> : les afficher</span>
             </button>
           </p>
+          </div>
+          </details>
         </section>
       <% }) %>
 

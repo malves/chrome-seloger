@@ -1169,6 +1169,8 @@
         });
         applyFilters();
       }
+      var collapse = card.closest("[data-section-collapse]");
+      if (collapse) collapse.open = true;
       card.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
       restart(card, "is-pulsing");
       var focusable = card.querySelector("input, button.visit-letter, button.visit-choice, textarea");
@@ -1263,7 +1265,36 @@
         if (empty) empty.hidden = !(anyMatch && visible === 0);
         renderSectionMore(section);
       });
+      ensureOpenSection();
     }
+
+    /* ----------------------- Étapes en accordéon ------------------------ */
+
+    /* Un filtre peut masquer l'étape ouverte : ouvrir alors la première visible. */
+    function ensureOpenSection() {
+      var hiddenOpen = sections.some(function (section) {
+        return section.hidden && section.querySelector("[data-section-collapse]").open;
+      });
+      if (!hiddenOpen) return;
+      var visible = sections.find(function (section) { return !section.hidden; });
+      if (visible) visible.querySelector("[data-section-collapse]").open = true;
+    }
+
+    /* Refermer l'étape précédente remonte la page : garder l'étape ouverte en vue. */
+    root.addEventListener(
+      "toggle",
+      function (event) {
+        var collapse = event.target;
+        if (!collapse.matches || !collapse.matches("[data-section-collapse]") || !collapse.open) return;
+        var section = collapse.closest("section[data-section]");
+        requestAnimationFrame(function () {
+          if (section.getBoundingClientRect().top < 0) {
+            section.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+          }
+        });
+      },
+      true
+    );
 
     /* ------------------------- Essentiel / Expert ----------------------- */
 
@@ -1667,7 +1698,7 @@
 
     function scheduleSave() {
       pending = true;
-      setSaveState("pending", "Réponses modifiées, enregistrement dans un instant…");
+      setSaveState("pending", "En cours d'enregistrement…");
       clearTimeout(saveTimer);
       saveTimer = setTimeout(save, 700);
     }
@@ -1680,7 +1711,7 @@
       }
       saving = true;
       pending = false;
-      setSaveState("saving", "Enregistrement de vos réponses…");
+      setSaveState("saving", "En cours d'enregistrement…");
       fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, Accept: "application/json" },

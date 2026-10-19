@@ -100,6 +100,16 @@ test("GET /visite : page dédiée avec étapes, cartes, bilan et état initial",
   }
   assert.match(html, /class="visit-step" aria-hidden="true">5</);
 
+  // Étapes en accordéon exclusif : toutes repliables, seule la première ouverte.
+  const collapses = html.match(/<details class="visit-section__collapse"[^>]*>/g) || [];
+  assert.equal(collapses.length, 5);
+  assert.ok(collapses.every((tag) => /name="visit-steps"/.test(tag)), "même groupe d'accordéon");
+  assert.deepEqual(
+    collapses.map((tag) => /\sopen(\s|>)/.test(tag)),
+    [true, false, false, false, false],
+    "seule la première étape est ouverte"
+  );
+
   // Cartes : questions phares, conseils du pro, pastilles.
   assert.match(html, /Pourquoi les vendeurs vendent-ils/);
   assert.match(html, /Le prix est-il négociable/);
