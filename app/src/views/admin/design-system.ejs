@@ -58,7 +58,7 @@
     <button type="button" class="mode-switch__label" aria-pressed="true">Essentiel</button>
     <button type="button" class="mode-switch__button" role="switch" aria-checked="false" aria-label="Mode expert">
       <span class="mode-switch__thumb" aria-hidden="true">
-        <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+        <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-key-round"></use></svg>
         <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
       </span>
     </button>
@@ -68,7 +68,7 @@
     <button type="button" class="mode-switch__label" aria-pressed="false">Essentiel</button>
     <button type="button" class="mode-switch__button" role="switch" aria-checked="true" aria-label="Mode expert">
       <span class="mode-switch__thumb" aria-hidden="true">
-        <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+        <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-key-round"></use></svg>
         <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
       </span>
     </button>
@@ -81,7 +81,7 @@
   <button type="button" class="mode-switch__label" aria-pressed="false">Essentiel</button>
   <button type="button" class="mode-switch__button" role="switch" aria-checked="true" aria-label="Mode expert">
     <span class="mode-switch__thumb" aria-hidden="true">
-      <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+      <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-key-round"></use></svg>
       <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
     </span>
   </button>
@@ -93,7 +93,7 @@
   <button type="button" class="mode-switch__label" aria-pressed="false">Essentiel</button>
   <button type="button" class="mode-switch__button" role="switch" aria-checked="true" aria-label="Mode expert">
     <span class="mode-switch__thumb" aria-hidden="true">
-      <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+      <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-key-round"></use></svg>
       <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
     </span>
   </button>
@@ -266,9 +266,9 @@
     <textarea class="textarea" id="ds-notes" name="notes"></textarea>
   </div>
 
-  <div class="btn-row">
-    <button type="submit" class="btn btn--green">Enregistrer</button>
+  <div class="form__actions">
     <a class="btn btn--ghost" href="/projects">Annuler</a>
+    <button type="submit" class="btn btn--green">Enregistrer</button>
   </div>
 </form>`;
 
@@ -633,6 +633,7 @@
     { issue: "Pas de tokens de mouvement", detail: "Durées 0.12 / 0.14 / 0.15 / 0.16 / 0.18 / 0.2 / 0.25 / 0.3 s ; la courbe cubic-bezier(0.22, 1, 0.36, 1) est redéclarée (--w-ease, --debt-ease).", target: "--motion-fast, --motion-base, --ease-out." },
     { issue: "Pas d'échelle typographique", detail: "Tailles 11 à 22 px écrites en dur.", target: "--text-xs … --text-xl." },
     { issue: "Points de rupture dispersés", detail: "16 largeurs différentes (360, 420, 460, 480, 520, 560, 600, 640, 720, 760, 820, 860, 900, 1023, 1040, 1480).", target: "S'en tenir à 480 / 640 / 720 / 900." },
+    { issue: "Pieds de formulaire à gauche", detail: "Les formulaires de page (réglages, projets, administration…) posent leur bouton de validation seul, aligné à gauche.", target: "Envelopper dans .form__actions (à droite, Annuler puis l'action principale)." },
     { issue: "Styles en ligne", detail: "Quelques style=\"margin-top: var(--space-4)\" dans les vues.", target: "Classes utilitaires ou modificateurs BEM." },
     { issue: "Repli window.confirm", detail: "Le gestionnaire data-confirm de app.js appelle window.confirm si #confirm-modal est absent du DOM.", target: "Supprimer le repli : toute page qui confirme passe par layout.ejs." },
     { issue: "Icônes recopiées", detail: "Une quarantaine de SVG en ligne hors catalogue, dupliqués d'un fichier à l'autre (nav.ejs, admin/sidebar.ejs, settings.ejs, debt.ejs, admin/dpe.ejs, modales…).", target: "Ajouter l'icône à lib/icons.js et passer par le sprite." },
@@ -1184,8 +1185,8 @@
       </div>
       <%- include("../partials/design-system/spec", {
         patternId: "form-stack",
-        title: "Formulaire complet", cls: ".form · .field · .input · .select · .textarea",
-        usage: "Label au-dessus, (facultatif) plutôt qu'astérisque, aide sous le champ, focus vert avec halo. Boutons à gauche en fin de formulaire : Enregistrer puis Annuler.",
+        title: "Formulaire complet", cls: ".form · .field · .input · .select · .textarea · .form__actions",
+        usage: "Label au-dessus, (facultatif) plutôt qu'astérisque, aide sous le champ, focus vert avec halo. Boutons à droite en fin de formulaire dans .form__actions : Annuler (.btn--ghost) puis l'action principale (.btn--green), comme dans .modal__actions.",
         html: S.form,
         demoClass: "ds-spec__demo--stack",
       }) %>
@@ -1277,7 +1278,7 @@
       <%- include("../partials/design-system/spec", {
         patternId: "form-switch-labeled",
         title: "Interrupteur à deux libellés", cls: ".mode-switch",
-        usage: "Désactivé (Essentiel) puis activé (Expert). Icônes du sprite : star et microscope.",
+        usage: "Désactivé (Essentiel) puis activé (Expert). Icônes du sprite : key-round et microscope.",
         html: S.modeSwitch,
       }) %>
       <%- include("../partials/design-system/spec", {
