@@ -1,5 +1,5 @@
 <div class="page-head">
-  <div>
+  <div data-listings-head>
     <h1 class="page-title">
       Votre carnet
       <span class="page-title__muted">
@@ -30,7 +30,7 @@
   </button>
 </div>
 
-<nav class="filters filters--toolbar" aria-label="Filtrer les annonces">
+<nav class="filters filters--toolbar" aria-label="Filtrer les annonces" data-listings-filters>
   <div class="filters__group" aria-label="Filtrer par statut">
     <a
       class="pill <%= !filters.status && !filters.favorite ? 'is-active' : '' %>"
@@ -149,6 +149,8 @@
   </div>
 </nav>
 
+<%# Zone remplacée sans rechargement quand on change de statut ou de tri (listings.js). %>
+<div class="listings-results" data-listings-results>
 <% if (!listings.length) { %>
   <% if (grandTotal === 0) { %>
     <%- include("partials/empty-listings") %>
@@ -193,6 +195,7 @@
     <%- include("partials/pagination", { pagination: pagination, query: query }) %>
   <% } %>
 <% } %>
+</div>
 
 <%
   // Projet(s) présélectionné(s) dans la popup : le projet actif s'il filtre la

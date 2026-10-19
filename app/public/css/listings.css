@@ -6,10 +6,10 @@
 
 /* -------------------- Transitions de la liste d'annonces -------------------- */
 
-/* Les filtres, le tri et la pagination restent des liens servis par le
-   serveur : la transition entre deux pages de liste est animée par le
-   navigateur. Les deux documents doivent porter cette règle, d'où cette
-   feuille chargée uniquement sur /listings. */
+/* Statut et tri : listings.js remplace la grille dans une View Transition de
+   la même page. Pagination et projet restent des navigations complètes,
+   animées par le navigateur : les deux documents doivent porter cette règle,
+   d'où cette feuille chargée uniquement sur /listings. */
 @media (prefers-reduced-motion: no-preference) {
   @view-transition {
     navigation: auto;
@@ -58,5 +58,19 @@
   from {
     opacity: 0;
     transform: translateY(16px) scale(0.96);
+  }
+}
+
+/* Chargement d'un nouveau filtre : la transition ne joue qu'à l'entrée, le
+   retour est immédiat pour ne pas voiler la View Transition qui suit. */
+.listings-results[aria-busy="true"] {
+  opacity: 0.55;
+  cursor: progress;
+  transition: opacity 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listings-results[aria-busy="true"] {
+    transition: none;
   }
 }

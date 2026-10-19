@@ -150,6 +150,21 @@ withApp("la liste n'affiche que 9 annonces par page", async (ctx) => {
   assert.match(page2.text, /10–12 sur 12 annonces/);
 });
 
+withApp("la liste expose la zone de résultats remplacée sans rechargement", async (ctx) => {
+  const { app, repositories, listingsService } = ctx;
+  const user = await createUser(repositories, "vt@example.com");
+  listingsService.save(user, listingPayload());
+  const agent = await loginAgent(app, "vt@example.com");
+
+  const res = await agent.get("/listings?status=new").expect(200);
+  assert.match(res.text, /<script src="\/public\/js\/listings\.js\?v=/);
+  assert.match(res.text, /data-listings-filters/);
+  assert.match(res.text, /data-listings-head/);
+  const results = res.text.slice(res.text.indexOf("data-listings-results"));
+  assert.match(results, /<article class="card"[^>]*view-transition-name: listing-\d+/);
+  assert.match(results, /::view-transition-new\(listing-\d+\)/);
+});
+
 withApp("les annonces écartées restent visibles, en fin de liste", async (ctx) => {
   const { app, repositories, listingsService } = ctx;
   const user = await createUser(repositories, "a@example.com");

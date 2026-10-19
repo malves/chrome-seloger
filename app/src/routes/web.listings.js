@@ -668,6 +668,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
     res.render("listings", {
       title: activeProject ? activeProject.name : "Mes annonces",
       styles: ["/public/css/listings.css"],
+      scripts: ["/public/js/listings.js"],
       listings: repositories.listings.search(req.user.id, {
         ...filters,
         limit: PER_PAGE,
