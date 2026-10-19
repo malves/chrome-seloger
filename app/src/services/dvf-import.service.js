@@ -2,8 +2,10 @@
  * Import des fichiers geo-dvf (Etalab) en arrière-plan : un fichier gzip par
  * année (`{baseUrl}/{année}/full.csv.gz`). Pour chaque année, on lit le flux
  * ligne par ligne, on regroupe les lignes contiguës d'une même mutation
- * (`id_mutation`), on nettoie puis on insère par lots. Une fois toutes les
- * années importées, on recalcule les médianes communales.
+ * (`id_mutation`), on nettoie puis on insère par lots. Une année pas encore
+ * publiée en geo-dvf est reprise du fichier brut DGFiP, géocodé via la BAN
+ * (`dvf-dgfip.js`). Une fois toutes les années importées, on recalcule les
+ * médianes communales.
  */
 
 import { createReadStream } from "node:fs";
@@ -17,6 +19,13 @@ import {
   parseDvfRow,
   buildMutation,
 } from "../lib/dvf-csv.js";
+import { dvfSourceSummary } from "../lib/dvf-dgfip.js";
+import {
+  findDgfipResource,
+  openDgfipStream,
+  createBanBatchGeocoder,
+  importDgfipStream,
+} from "./dvf-dgfip.js";
 
 const REQUEST_TIMEOUT_MS = 600_000;
 const BATCH_SIZE = 1000;
@@ -38,13 +47,13 @@ function lineReaderFromStream(stream) {
   return readline.createInterface({ input: stream, crlfDelay: Infinity });
 }
 
-async function openYearStream({ baseUrl, year, path }) {
+async function openYearStream({ fetchImpl, baseUrl, year, path }) {
   if (path) {
     const raw = createReadStream(path);
     return path.endsWith(".gz") ? raw.pipe(createGunzip()) : raw;
   }
   const url = `${baseUrl}/${year}/full.csv.gz`;
-  const response = await fetch(url, {
+  const response = await fetchImpl(url, {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (response.status === 404) {
@@ -108,7 +117,11 @@ async function importYearStream(stream, repo, { onProgress, cleanOptions } = {})
   return imported;
 }
 
-export default function createDvfImportService({ repositories, logger }) {
+export default function createDvfImportService({
+  repositories,
+  logger,
+  fetch: fetchImpl = globalThis.fetch,
+}) {
   const repo = repositories.dvf;
 
   /**
@@ -145,31 +158,71 @@ export default function createDvfImportService({ repositories, logger }) {
       minPriceM2: config.dvf.minPricePerM2,
       maxPriceM2: config.dvf.maxPricePerM2,
     };
+    const dgfipDatasetUrl = options.dgfipDatasetUrl || config.dvf.dgfipDatasetUrl;
+    const geocode = createBanBatchGeocoder({
+      fetchImpl,
+      url: options.banCsvUrl || config.dvf.banCsvUrl,
+      minScore: config.dvf.banMinScore,
+      minIntervalMs: options.banMinIntervalMs ?? config.dvf.banMinIntervalMs,
+    });
+    const sources = { geoDvfYears: [], dgfip: [], skippedYears: [] };
 
     repo.updateJob(jobId, { status: "running" });
 
     try {
       repo.clearMutations();
       let total = 0;
+      const onProgress = (n) => repo.updateJob(jobId, { rows_imported: total + n });
 
       for (let year = yearFrom; year <= yearTo; year += 1) {
         const localPath = paths?.[year] || null;
         // Mode fichiers locaux (tests) : n'importer que les années fournies.
         if (paths && !localPath) continue;
         repo.updateJob(jobId, { current_year: year });
-        const stream = await openYearStream({ baseUrl, year, path: localPath });
-        if (!stream) {
+        const stream = await openYearStream({
+          fetchImpl,
+          baseUrl,
+          year,
+          path: localPath,
+        });
+        if (stream) {
+          const yearRows = await importYearStream(stream, repo, {
+            cleanOptions,
+            onProgress,
+          });
+          total += yearRows;
+          sources.geoDvfYears.push(year);
+          repo.updateJob(jobId, { rows_imported: total });
+          logger.info({ jobId, year, yearRows, total }, "année DVF importée");
+          continue;
+        }
+
+        const resource = paths
+          ? null
+          : await findDgfipResource({ fetchImpl, datasetUrl: dgfipDatasetUrl, year });
+        if (!resource) {
+          sources.skippedYears.push(year);
           logger.warn({ jobId, year }, "année DVF non disponible, ignorée");
           continue;
         }
-        const yearRows = await importYearStream(stream, repo, {
+
+        logger.info({ jobId, year, resource: resource.title }, "année DVF reprise du fichier DGFiP");
+        const dgfipStream = await openDgfipStream({ fetchImpl, url: resource.url });
+        const { imported, geocoded } = await importDgfipStream(dgfipStream, repo, {
+          geocode,
+          batchSize: options.banBatchSize || config.dvf.banBatchSize,
           cleanOptions,
-          onProgress: (n) =>
-            repo.updateJob(jobId, { rows_imported: total + n }),
+          onProgress,
+          onGeocodeError: (err) =>
+            logger.warn({ err, jobId, year }, "géocodage BAN d'un lot DVF en échec"),
         });
-        total += yearRows;
+        total += imported;
+        sources.dgfip.push({ year, partial: resource.partial, imported, geocoded });
         repo.updateJob(jobId, { rows_imported: total });
-        logger.info({ jobId, year, yearRows, total }, "année DVF importée");
+        logger.info(
+          { jobId, year, imported, geocoded, total },
+          "année DVF importée (DGFiP)"
+        );
       }
 
       // Médianes communales (parcours ordonné, mémoire bornée).
@@ -190,6 +243,7 @@ export default function createDvfImportService({ repositories, logger }) {
         status: "done",
         current_year: null,
         rows_imported: total,
+        source_label: dvfSourceSummary(sources),
         error: null,
       });
       logger.info(
@@ -199,6 +253,7 @@ export default function createDvfImportService({ repositories, logger }) {
     } catch (err) {
       repo.updateJob(jobId, {
         status: "error",
+        source_label: dvfSourceSummary(sources),
         error: String(err.message || err).slice(0, 2000),
       });
       logger.error({ err, jobId }, "import DVF en échec");

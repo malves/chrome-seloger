@@ -218,10 +218,11 @@
     for (var k = 0; k < evo.points.length; k += 1) {
       var p = evo.points[k];
       var h = max > 0 ? Math.round((p.median_price_m2 / max) * 100) : 0;
+      var yearLabel = esc(p.label || p.year);
       bars +=
         '<div class="adrins__bar" style="--h:' + h + '%" ' +
-        'title="' + p.year + " : " + esc(m2(p.median_price_m2)) + '">' +
-        '<span class="adrins__bar-year">' + p.year + "</span>" +
+        'title="' + yearLabel + " : " + esc(m2(p.median_price_m2)) + '">' +
+        '<span class="adrins__bar-year">' + yearLabel + "</span>" +
         "</div>";
     }
     return (
@@ -229,7 +230,7 @@
       '<div class="adrins__evo-head">' +
       '<p class="adrins__evo-type">' + esc(label) + "</p>" +
       '<p class="adrins__evo-trend ' + toneClass + '">' + esc(trend) +
-      ' <span class="adrins__evo-scope">' + evo.trend_from_year + "–" + evo.trend_to_year +
+      ' <span class="adrins__evo-scope">' + evo.trend_from_year + "–" + esc(evo.trend_to_label || evo.trend_to_year) +
       " · " + scopeLabel + "</span></p>" +
       "</div>" +
       '<div class="adrins__bars">' + bars + "</div>" +

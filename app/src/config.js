@@ -109,6 +109,18 @@ const config = {
       process.env.DVF_BASE_URL ||
       "https://files.data.gouv.fr/geo-dvf/latest/csv"
     ).replace(/\/+$/, ""),
+    /**
+     * Repli quand geo-dvf n'a pas encore l'année : fichier brut DGFiP (jeu
+     * data.gouv), géocodé par lot via la Base Adresse Nationale (1 requête/s).
+     */
+    dgfipDatasetUrl:
+      process.env.DVF_DGFIP_DATASET_URL ||
+      "https://www.data.gouv.fr/api/1/datasets/demandes-de-valeurs-foncieres/",
+    banCsvUrl:
+      process.env.DVF_BAN_CSV_URL || "https://data.geopf.fr/geocodage/search/csv",
+    banBatchSize: num(process.env.DVF_BAN_BATCH_SIZE, 2000),
+    banMinScore: num(process.env.DVF_BAN_MIN_SCORE, 0.5),
+    banMinIntervalMs: num(process.env.DVF_BAN_MIN_INTERVAL_MS, 1100),
     yearFrom: num(process.env.DVF_YEAR_FROM, new Date().getFullYear() - 10),
     yearTo: num(process.env.DVF_YEAR_TO, new Date().getFullYear() - 1),
     minPricePerM2: num(process.env.DVF_MIN_PRICE_M2, 200),

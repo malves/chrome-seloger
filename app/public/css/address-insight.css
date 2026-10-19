@@ -4,6 +4,10 @@
 
 .adrins {
   --adrins-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
 }
 
 .adrins__intro .field__hint {
@@ -95,7 +99,7 @@
 
 /* Statut */
 .adrins__status {
-  margin: var(--space-4) 0 0;
+  margin: 0;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
   background: var(--surface-muted);
@@ -110,11 +114,18 @@
 
 /* Résultats */
 .adrins__results {
-  margin-top: var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-4);
   animation: adrins-fade 0.4s var(--adrins-ease);
+}
+
+.adrins__results[hidden] {
+  display: none;
+}
+
+.adrins__results > .panel + .panel {
+  margin-top: 0;
 }
 
 @keyframes adrins-fade {

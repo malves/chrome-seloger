@@ -98,6 +98,9 @@
         (années <%= latest.year_from %> à <%= latest.year_to %>).
         Vous pouvez actualiser les fiches annonces.
       </p>
+      <% if (latest.source_label) { %>
+        <p class="dpe-import-status__notice-text">Sources : <%= latest.source_label %></p>
+      <% } %>
     </div>
   <% } else if (latest && latest.status === 'error') { %>
     <div class="dpe-import-status__notice dpe-import-status__notice--warn" role="alert">

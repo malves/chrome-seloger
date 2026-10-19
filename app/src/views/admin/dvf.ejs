@@ -12,7 +12,10 @@
       <p class="field__hint">
         Télécharge automatiquement les fichiers géolocalisés
         <a href="https://files.data.gouv.fr/geo-dvf/latest/csv/" target="_blank" rel="noopener noreferrer">geo-dvf (Etalab)</a>,
-        un par année (<%= dvfDashboard.yearFrom %> à <%= dvfDashboard.yearTo %>). Import national : plusieurs Go téléchargés,
+        un par année (<%= dvfDashboard.yearFrom %> à <%= dvfDashboard.yearTo %>). Une année pas encore publiée par Etalab
+        (par exemple le premier semestre de l'année en cours) est reprise du
+        <a href="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/" target="_blank" rel="noopener noreferrer">fichier brut DGFiP</a>
+        et géolocalisée via la Base Adresse Nationale (comptez 10 à 20 minutes de plus). Import national : plusieurs Go téléchargés,
         comptez un temps conséquent. Les ventes alimentent le prix médian commune, le rayon de 500 m et l'évolution sur ~10 ans.
         <strong>L'Alsace-Moselle (57, 67, 68) et Mayotte ne sont pas couvertes</strong> (livre foncier).
       </p>

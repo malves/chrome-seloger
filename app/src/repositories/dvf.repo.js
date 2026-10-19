@@ -117,6 +117,7 @@ export default function createDvfRepository(db) {
          status = COALESCE(@status, status),
          current_year = @current_year,
          rows_imported = COALESCE(@rows_imported, rows_imported),
+         source_label = COALESCE(@source_label, source_label),
          error = @error,
          updated_at = @updated_at
        WHERE id = @id`
@@ -288,6 +289,7 @@ export default function createDvfRepository(db) {
         current_year:
           patch.current_year !== undefined ? patch.current_year : null,
         rows_imported: patch.rows_imported ?? null,
+        source_label: patch.source_label ?? null,
         error: patch.error !== undefined ? patch.error : null,
         updated_at: nowIso(),
       });

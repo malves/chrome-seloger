@@ -25,6 +25,7 @@ import {
   normalizeStreetName,
 } from "../lib/street-match.js";
 import { stripLocalityFromBanAddress } from "../lib/dpe-address.js";
+import { dvfPeriodLabel } from "../lib/dvf-publication.js";
 
 const BAN_SEARCH = "https://api-adresse.data.gouv.fr/search/";
 const GEOCODE_PROVIDER = "ban-address-insight";
@@ -160,15 +161,24 @@ export default function createAddressInsightService({
     };
   }
 
+  function withPeriodLabels(scope, evo) {
+    return {
+      scope,
+      ...evo,
+      points: evo.points.map((p) => ({ ...p, label: dvfPeriodLabel(p.year) })),
+      trend_to_label: dvfPeriodLabel(evo.trend_to_year),
+    };
+  }
+
   /** Évolution du prix : commune (repli département) pour un type de bien. */
   function evolutionForType(type, insee, dept) {
     if (insee) {
       const commune = buildEvolution(dvf.communeSeries(insee, type));
-      if (commune) return { scope: "commune", ...commune };
+      if (commune) return withPeriodLabels("commune", commune);
     }
     if (dept) {
       const department = buildEvolution(dvf.departmentSeries(dept, type));
-      if (department) return { scope: "department", ...department };
+      if (department) return withPeriodLabels("department", department);
     }
     return null;
   }
