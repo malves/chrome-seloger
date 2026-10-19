@@ -47,7 +47,7 @@ function pickFmt(fmt, name, fallback) {
   return fmt && typeof fmt[name] === "function" ? fmt[name].bind(fmt) : fallback;
 }
 
-function buildItem(q, { resolved, answers, photoFacts, levels }) {
+function buildItem(q, { resolved, answers, photoFacts, levels, sections }) {
   const info = q.field ? resolved[q.field] || null : null;
   const known = Boolean(info && info.known);
   const answer = (answers && answers[q.id]) || null;
@@ -67,7 +67,7 @@ function buildItem(q, { resolved, answers, photoFacts, levels }) {
   const level = (levels && levels[q.id]) || (q.essential ? "essential" : "expert");
   return {
     id: q.id,
-    section: q.section,
+    section: (sections && sections[q.id]) || q.section,
     theme: q.theme,
     level,
     essential: level === "essential",
@@ -156,7 +156,7 @@ function marketFacts(listing, priceHistory) {
  * @param {object} args.sheet état stocké { visit: { applyToSheet, answers } }
  * @param {boolean} [args.isCopro] bien signalé en copropriété
  * @param {object} [args.fmt] helpers de formatage (res.locals.fmt)
- * @param {object} [args.questionConfig] { levels, order } (resolveQuestionLevels)
+ * @param {object} [args.catalog] catalogue en vigueur (buildCatalog) ; à défaut, catalogue d'origine
  */
 export function buildVisitSheet({
   listing,
@@ -167,7 +167,7 @@ export function buildVisitSheet({
   sheet = null,
   isCopro = false,
   fmt = null,
-  questionConfig = null,
+  catalog = null,
 }) {
   const euro = pickFmt(fmt, "euro", (n) => `${num(n)} €`);
   const sourceLabel = pickFmt(fmt, "sourceLabel", (s) => s || "Annonce");
@@ -182,17 +182,20 @@ export function buildVisitSheet({
       : null;
   const mode = normalizeVisitMode(sheet && sheet.visit && sheet.visit.mode);
   const expertNudgeSeen = Boolean(sheet && sheet.visit && sheet.visit.expertNudgeSeen);
-  const config = questionConfig || resolveQuestionLevels(null);
+  const config = catalog || resolveQuestionLevels(null);
+  const questions = catalog ? catalog.questions : VISIT_QUESTIONS;
 
   const audience = { propertyType: listing.property_type || null, isCopro: Boolean(isCopro) };
   const photoFacts = photoFactsFrom(photoAnalysis);
-  const catalog = VISIT_QUESTIONS.filter(
+  const applicable = questions.filter(
     (q) => questionApplies(q, audience) && questionTriggered(q, photoFacts)
   );
   const rank = {};
   for (const ids of Object.values(config.order || {})) ids.forEach((id, i) => (rank[id] = i));
-  const allItems = catalog
-    .map((q) => buildItem(q, { resolved, answers, photoFacts, levels: config.levels }))
+  const allItems = applicable
+    .map((q) =>
+      buildItem(q, { resolved, answers, photoFacts, levels: config.levels, sections: config.sections })
+    )
     .sort((a, b) => (rank[a.id] ?? 1e6) - (rank[b.id] ?? 1e6));
   const photoNotes = photoNotesFrom(photoAnalysis);
 

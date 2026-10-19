@@ -1356,6 +1356,10 @@
         var out = form.querySelector('[data-section-essentials="' + list.getAttribute("data-question-list") + '"]');
         if (out) out.textContent = String(e);
       });
+      form.querySelectorAll("[data-question-list]").forEach(function (list) {
+        var out = form.querySelector('[data-section-total="' + list.getAttribute("data-question-list") + '"]');
+        if (out) out.textContent = String(list.querySelectorAll("[data-question-row]").length);
+      });
       var all = document.querySelector("[data-total-essentials]");
       if (all) all.textContent = String(essentials);
       var tot = document.querySelector("[data-total-questions]");
@@ -1392,6 +1396,48 @@
       if (event.target.matches('input[type="radio"]')) syncCounts();
     });
     syncCounts();
+
+    // « Déplacer vers… » : en bas de n'importe quelle étape, sans
+    // glisser la ligne sur toute la page.
+    var moveModal = document.getElementById("vq-move-modal");
+    var movingRow = null;
+    if (!moveModal) return;
+
+    form.addEventListener("click", function (event) {
+      var btn = event.target.closest("[data-relocate]");
+      if (!btn) return;
+      movingRow = btn.closest("[data-question-row]");
+      var current = movingRow.parentElement.getAttribute("data-question-list");
+      var question = movingRow.querySelector(".vq-row__question");
+      moveModal.querySelector("[data-move-question]").textContent = question ? "« " + question.textContent.trim() + " »" : "";
+      var isLast = !movingRow.nextElementSibling;
+      moveModal.querySelectorAll("[data-move-to]").forEach(function (dest) {
+        var here = dest.getAttribute("data-move-to") === current;
+        dest.classList.toggle("is-current", here);
+        dest.querySelector("[data-move-here]").hidden = !here;
+        dest.disabled = here && isLast;
+      });
+    });
+
+    moveModal.addEventListener("click", function (event) {
+      var btn = event.target.closest("[data-move-to]");
+      if (!btn || btn.disabled || !movingRow) return;
+      var from = movingRow.parentElement;
+      var to = form.querySelector('[data-question-list="' + btn.getAttribute("data-move-to") + '"]');
+      if (!to) return;
+      to.appendChild(movingRow);
+      syncList(from);
+      if (to !== from) syncList(to);
+      syncCounts();
+      var row = movingRow;
+      movingRow = null;
+      moveModal.querySelector("[data-modal-close]").click();
+      var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      row.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      row.classList.remove("is-relocated");
+      void row.offsetWidth;
+      row.classList.add("is-relocated");
+    });
   })();
 
   // Autocomplétion des adresses de référence : libellé ou adresse, menu partagé.

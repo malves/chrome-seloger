@@ -12,8 +12,9 @@
 import { nowIso } from "../lib/time.js";
 import { FIELD_DEFS, resolveField } from "../lib/listing-field-provenance.js";
 import { coerceFieldValue, parseListingFieldValue } from "../lib/listing-field-value.js";
-import { QUESTION_BY_ID, fieldsFromAnswers } from "../lib/visit/visit-questions.js";
+import { fieldsFromAnswers } from "../lib/visit/visit-questions.js";
 import { DEFAULT_VISIT_MODE, normalizeVisitMode } from "../lib/visit/visit-question-levels.js";
+import createVisitQuestionsConfigService from "./visit-questions-config.service.js";
 
 const MAX_ANSWERS = 300;
 const MAX_TEXT = 2000;
@@ -37,12 +38,15 @@ function cleanIsoString(value) {
   return typeof value === "string" && value ? value.slice(0, MAX_DATE) : null;
 }
 
-/** Nettoie et borne la map de reponses recue du client. */
-function sanitizeAnswers(raw) {
+/**
+ * Nettoie et borne la map de reponses recue du client. `byId` inclut les
+ * questions archivees : leurs reponses deja saisies sont conservees.
+ */
+function sanitizeAnswers(raw, byId) {
   const answers = {};
   if (!raw || typeof raw !== "object") return answers;
   for (const [qid, ans] of Object.entries(raw).slice(0, MAX_ANSWERS)) {
-    const q = QUESTION_BY_ID[qid];
+    const q = byId[qid];
     if (!q || !ans || typeof ans !== "object") continue;
 
     const response = typeof ans.response === "string" ? ans.response.slice(0, 24) : null;
@@ -86,16 +90,19 @@ function mergeStoredFields(prevFields, visitFields) {
 }
 
 /** Retire les réponses de visite qui réinjecteraient ce champ à la prochaine sauvegarde. */
-function clearVisitAnswersForField(answers, fieldKey) {
+function clearVisitAnswersForField(answers, fieldKey, byId) {
   const out = { ...(answers && typeof answers === "object" ? answers : {}) };
   for (const [qid] of Object.entries(out)) {
-    const q = QUESTION_BY_ID[qid];
+    const q = byId[qid];
     if (q && q.field === fieldKey) delete out[qid];
   }
   return out;
 }
 
-export default function createVisitSheetService({ repositories }) {
+export default function createVisitSheetService({ repositories, visitQuestions = null }) {
+  const questions = visitQuestions || createVisitQuestionsConfigService({ repositories });
+  const questionsById = () => questions.getCatalog().allById;
+
   /** Etat normalise de la fiche (valeurs par defaut si rien n'est stocke). */
   function getSheet(listing) {
     const row = repositories.visitOverrides.find(listing.id);
@@ -127,10 +134,11 @@ export default function createVisitSheetService({ repositories }) {
     const body = payload && typeof payload === "object" ? payload : {};
     const visitIn = body.visit && typeof body.visit === "object" ? body.visit : {};
 
-    const answers = sanitizeAnswers(visitIn.answers);
+    const byId = questionsById();
+    const answers = sanitizeAnswers(visitIn.answers, byId);
     const applyToSheet =
       typeof visitIn.applyToSheet === "boolean" ? visitIn.applyToSheet : null;
-    const visitFields = fieldsFromAnswers(answers, { origin: "visit" });
+    const visitFields = fieldsFromAnswers(answers, { origin: "visit", byId });
 
     const prev = getSheet(listing);
     const mode = visitIn.mode === undefined ? prev.visit.mode : normalizeVisitMode(visitIn.mode);
@@ -228,7 +236,7 @@ export default function createVisitSheetService({ repositories }) {
       fields,
       visit: {
         ...prev.visit,
-        answers: clearVisitAnswersForField(prev.visit.answers, fieldKey),
+        answers: clearVisitAnswersForField(prev.visit.answers, fieldKey, questionsById()),
       },
     };
     repositories.visitOverrides.upsert(listing.id, data);

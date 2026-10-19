@@ -161,12 +161,12 @@ export default function createListingsRouter({ repositories, enrichment, logger 
   });
   const photoAnalysisRun = createPhotoAnalysisRunService({ repositories, logger });
   const worksPlans = createWorksPlanService({ repositories, photoAnalysisRun });
-  const visitSheet = createVisitSheetService({ repositories });
+  const visitQuestionsConfig = createVisitQuestionsConfigService({ repositories });
+  const visitSheet = createVisitSheetService({ repositories, visitQuestions: visitQuestionsConfig });
   const postalCodes = createListingPostalCodeService({
     repositories,
     fetchJson: (url) => enrichment.fetchJson(url),
   });
-  const visitQuestionsConfig = createVisitQuestionsConfigService({ repositories });
 
   /**
    * Analyse des photos pour la fiche : résultat stocké + modèle d'affichage.
@@ -409,7 +409,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       sheet: visitSheet.getSheet(listing),
       isCopro: Boolean(descriptionFacts.is_copro),
       fmt,
-      questionConfig: visitQuestionsConfig.get(),
+      catalog: visitQuestionsConfig.getCatalog(),
     });
   }
 

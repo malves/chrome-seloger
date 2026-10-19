@@ -346,6 +346,24 @@ export const VISIT_QUESTIONS = [
     input: YESNO,
   },
   {
+    id: "ev_charging",
+    section: "exterieur",
+    theme: "energie",
+    question: "Y a-t-il une prise ou une borne pour recharger une voiture électrique ?",
+    proTip:
+      "Regardez le parking, le box ou le garage : prise renforcée, wallbox, ou tableau avec place libre. En copropriété, une installation neuve demande souvent l'accord du syndic.",
+    input: YESNO_UNKNOWN,
+    signals: [
+      { when: "yes", tone: "ok", text: "Point de charge sur place : atout si vous roulez à l'électrique." },
+      {
+        when: "no",
+        tone: "info",
+        text: "Pas de recharge dédiée : prévoir 800 à 2 500 € pour une prise renforcée ou une wallbox, et l'accord de la copro si le stationnement est collectif.",
+        cost: [800, 2500],
+      },
+    ],
+  },
+  {
     id: "risks",
     section: "exterieur",
     theme: "environnement",
@@ -395,6 +413,28 @@ export const VISIT_QUESTIONS = [
     question: "La surface du terrain correspond-elle à l'annonce ?",
     proTip: "Demandez le plan cadastral ou le bornage : une clôture n'est pas une limite de propriété.",
     input: { type: "confirm_number", unit: "m²", decimals: 0, min: 1, max: 1000000 },
+  },
+  {
+    id: "land_buildable",
+    section: "exterieur",
+    theme: "juridique",
+    audience: "house",
+    question: "Reste-t-il du terrain constructible (extension, annexe, nouvelle construction) ?",
+    proTip:
+      "Un grand jardin ne suffit pas : vérifiez le PLU en mairie (zone, emprise au sol déjà utilisée, reculs des limites). Demandez aussi s'il existe des constructions déclarées ou non au cadastre.",
+    input: YESNO_UNKNOWN,
+    signals: [
+      {
+        when: "yes",
+        tone: "ok",
+        text: "Marge de constructibilité possible : faites confirmer par le PLU et l'urbanisme avant de chiffrer une extension.",
+      },
+      {
+        when: "no",
+        tone: "info",
+        text: "Parcelle déjà saturée côté PLU : peu de marge pour agrandir au sol, sauf surélévation si le règlement l'autorise.",
+      },
+    ],
   },
   {
     id: "neighbors",
@@ -499,7 +539,7 @@ export const VISIT_QUESTIONS = [
     section: "interieur",
     theme: "surface",
     essential: true,
-    question: "Le logement est-il lumineux, lumières éteintes ?",
+    question: "Le logement est-il lumineux ?",
     proTip: "Demandez à éteindre toutes les lampes : les agents les allument toutes pour une bonne raison. Visitez idéalement en journée.",
     input: YESNO,
     signals: [{ when: "no", tone: "info", text: "Logement sombre : c'est un argument de prix, et un critère de revente." , lever: 1 }],
@@ -508,7 +548,7 @@ export const VISIT_QUESTIONS = [
     id: "orientation",
     section: "interieur",
     theme: "surface",
-    question: "Quelle est l'orientation du séjour ?",
+    question: "Quelle est l'exposition du séjour ?",
     proTip:
       "Sud = lumineux et plus chaud l'hiver ; Ouest = soleil du soir ; Nord = sombre et plus frais ; Est = soleil du matin. Repérez la course du soleil ou ouvrez une appli boussole sur votre smartphone, dos au mur des fenêtres du séjour.",
     input: {
@@ -1276,14 +1316,6 @@ export const VISIT_QUESTIONS = [
       { when: "value:revisit", tone: "info", text: "Revisitez à une autre heure, et apportez cette fiche : il reste des points à vérifier." },
     ],
   },
-  {
-    id: "offer_price",
-    section: "ressenti",
-    theme: "negociation",
-    question: "Prix que je serais prêt·e à proposer",
-    proTip: "Partez des alertes chiffrées du bilan : chaque défaut repéré est un montant à soustraire du prix affiché.",
-    input: { type: "number", unit: "€", decimals: 0, min: 0, max: 100000000 },
-  },
 ];
 
 export const QUESTION_BY_ID = Object.fromEntries(VISIT_QUESTIONS.map((q) => [q.id, q]));
@@ -1306,12 +1338,13 @@ function fieldValueFor(q, value) {
  * Dérive les corrections de champ (couche utilisateur) à partir des réponses.
  * Seules les questions liées à un `field` et portant une valeur produisent une
  * correction. `confirmed` = l'utilisateur a confirmé la valeur déjà connue.
+ * `byId` : catalogue en vigueur (base), y compris les questions archivées.
  */
-export function fieldsFromAnswers(answers, { origin = "visit" } = {}) {
+export function fieldsFromAnswers(answers, { origin = "visit", byId = QUESTION_BY_ID } = {}) {
   const fields = {};
   if (!answers || typeof answers !== "object") return fields;
   for (const [qid, ans] of Object.entries(answers)) {
-    const q = QUESTION_BY_ID[qid];
+    const q = byId[qid];
     if (!q || !q.field || !ans || typeof ans !== "object") continue;
     const value = ans.value;
     if (value === null || value === undefined || value === "") continue;

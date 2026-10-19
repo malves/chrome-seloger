@@ -16,6 +16,7 @@ import {
 import createListingsService from "../src/services/listings.service.js";
 import { catalogOrder } from "../src/lib/visit/visit-question-levels.js";
 import { computeInsights } from "../src/lib/visit/visit-insights.js";
+import { VISIT_QUESTIONS } from "../src/lib/visit/visit-questions.js";
 
 function initialJson(html) {
   const m = html.match(/<script type="application\/json" id="visit-initial">([\s\S]*?)<\/script>/);
@@ -46,6 +47,8 @@ test("GET /admin/visite : liste des questions par étape avec niveau et ordre", 
   assert.match(page.text, /name="level_time_on_market" value="expert" checked/);
   assert.match(page.text, new RegExp(`name="order_avant"[^>]*value="${catalogOrder().avant.join(",")}"`));
   assert.match(page.text, /data-confirm="Revenir au classement/);
+  assert.match(page.text, /data-tooltip="Maisons et appartements"><svg class="wi" aria-hidden="true"><use href="#wi-home">/);
+  assert.match(page.text, /data-tooltip="Appartements, et maisons en copropriété"><svg class="wi" aria-hidden="true"><use href="#wi-building">/);
 });
 
 test("POST /admin/visite : niveau et ordre appliqués à la fiche de visite", async (t) => {
@@ -82,6 +85,31 @@ test("POST /admin/visite : niveau et ordre appliqués à la fiche de visite", as
   const restored = Object.fromEntries(initialJson(back.text).items.map((it) => [it.id, it]));
   assert.equal(restored.time_on_market.level, "expert");
   assert.equal(restored.sale_reason.level, "essential");
+});
+
+test("POST /admin/visite : question déplacée dans une autre étape, reprise sur la fiche", async (t) => {
+  const { agent, csrf, listingId } = await setup(t);
+  const order = catalogOrder();
+  const moved = VISIT_QUESTIONS.find(
+    (q) => q.section !== "avant" && !q.audience && !q.photo && !q.showWhen
+  );
+  await agent
+    .post("/admin/visite")
+    .type("form")
+    .send({
+      _csrf: csrf,
+      order_avant: [moved.id, ...order.avant].join(","),
+      [`order_${moved.section}`]: order[moved.section].filter((id) => id !== moved.id).join(","),
+    })
+    .expect(302);
+
+  const admin = await agent.get("/admin/visite").expect(200);
+  assert.match(admin.text, new RegExp(`name="order_avant"[^>]*value="${moved.id},`));
+  assert.match(admin.text, /id="vq-move-modal"/);
+
+  const visit = await agent.get(`/listings/${listingId}/visite`).expect(200);
+  const item = initialJson(visit.text).items.find((it) => it.id === moved.id);
+  assert.equal(item.section, "avant");
 });
 
 test("POST /admin/visite : niveau inconnu → 400", async (t) => {

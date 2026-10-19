@@ -39,13 +39,42 @@ test("surcharge : niveau modifié, id et niveau inconnus ignorés", () => {
 test("ordre stocké partiel : questions absentes ajoutées en fin d'étape, intrus ignorés", () => {
   const defaults = catalogOrder().avant;
   const { order } = resolveQuestionLevels({
-    order: { avant: ["diagnostics", "quiet", "bogus", "diagnostics", "sale_reason"] },
+    order: { avant: ["diagnostics", "bogus", "diagnostics", "sale_reason"] },
   });
   assert.equal(order.avant[0], "diagnostics");
   assert.equal(order.avant[1], "sale_reason");
-  assert.ok(!order.avant.includes("quiet"), "question d'une autre étape ignorée");
   assert.equal(order.avant.length, defaults.length);
   assert.deepEqual([...order.avant].sort(), [...defaults].sort());
+});
+
+test("question rangée dans une autre étape : elle y reste et quitte son étape du catalogue", () => {
+  const defaults = catalogOrder();
+  const sectionOfQuiet = Object.keys(defaults).find((id) => defaults[id].includes("quiet"));
+  assert.notEqual(sectionOfQuiet, "avant");
+  const { order, sections, customized } = resolveQuestionLevels({
+    order: { avant: ["quiet", ...defaults.avant] },
+  });
+  assert.equal(customized, true);
+  assert.equal(order.avant[0], "quiet");
+  assert.equal(sections.quiet, "avant");
+  assert.ok(!order[sectionOfQuiet].includes("quiet"));
+  const total = Object.values(order).reduce((n, ids) => n + ids.length, 0);
+  assert.equal(total, VISIT_QUESTIONS.length, "aucune question perdue ni dupliquée");
+});
+
+test("formulaire : un déplacement entre étapes conserve les deux étapes", () => {
+  const defaults = catalogOrder();
+  const sectionOfQuiet = Object.keys(defaults).find((id) => defaults[id].includes("quiet"));
+  const out = sanitizeQuestionLevelsForm({
+    order: {
+      avant: ["quiet", ...defaults.avant].join(","),
+      [sectionOfQuiet]: defaults[sectionOfQuiet].filter((id) => id !== "quiet").join(","),
+    },
+  });
+  assert.equal(out.order.avant[0], "quiet");
+  assert.ok(!out.order[sectionOfQuiet].includes("quiet"));
+  const { sections } = resolveQuestionLevels(out);
+  assert.equal(sections.quiet, "avant");
 });
 
 test("formulaire : ne garde que les écarts au catalogue", () => {

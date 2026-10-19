@@ -13,10 +13,11 @@
           <p class="panel__eyebrow">Fiche de visite</p>
           <h2 class="panel__title">Questions de visite</h2>
         </div>
-        <div class="panel__head-aside">
+        <div class="panel__head-aside vq-head-aside">
           <span class="badge badge--accent">
             <span data-total-essentials><%= view.essentials %></span>&nbsp;essentielles sur <span data-total-questions><%= view.total %></span>
           </span>
+          <a class="btn btn--ghost btn--sm" href="/admin/visite/questions/nouvelle"><%- vi("plus") %>Ajouter une question</a>
         </div>
       </div>
 
@@ -24,8 +25,10 @@
         En mode «&nbsp;Essentiel&nbsp;», la fiche de visite n'affiche que les questions marquées
         Essentiel, plus celles que l'analyse photo met en avant et celles déjà répondues.
         Le mode «&nbsp;Expert&nbsp;» affiche tout. Glissez une question par sa poignée (ou utilisez
-        les flèches) pour changer son ordre dans l'étape. Selon le bien (maison, copropriété…),
-        certaines questions ne s'affichent pas.
+        les flèches) pour changer son ordre dans l'étape, ou «&nbsp;Déplacer vers…&nbsp;» pour l'envoyer
+        en bas de n'importe quelle étape. Selon le bien (maison, copropriété…),
+        certaines questions ne s'affichent pas. «&nbsp;Modifier&nbsp;» ouvre le texte, les réponses
+        et les notes au bilan d'une question.
       </p>
 
       <form
@@ -43,7 +46,7 @@
               <span class="vq-step" aria-hidden="true"><%= sec.index %></span>
               <h3 class="vq-section__title" id="vq-<%= sec.id %>-title"><%= sec.label %></h3>
               <span class="vq-section__count">
-                <span data-section-essentials="<%= sec.id %>"><%= sec.essentials %></span> / <%= sec.questions.length %> essentielles
+                <span data-section-essentials="<%= sec.id %>"><%= sec.essentials %></span> / <span data-section-total="<%= sec.id %>"><%= sec.questions.length %></span> essentielles
               </span>
             </header>
             <input type="hidden" name="order_<%= sec.id %>" data-order-input="<%= sec.id %>" value="<%= sec.questions.map(function (q) { return q.id; }).join(',') %>" />
@@ -60,7 +63,17 @@
                     <p class="vq-row__question"><%= q.question %></p>
                     <p class="vq-row__tags">
                       <span class="badge badge--neutral vq-tag"><%- vi(q.theme.icon) %><%= q.theme.label %></span>
-                      <% if (q.audienceLabel) { %><span class="badge badge--muted"><%= q.audienceLabel %></span><% } %>
+                      <% if (q.audience === "house") { %>
+                        <span class="badge badge--muted vq-tag" data-tooltip="Affichée seulement pour les maisons"><%- vi("home") %>Maison</span>
+                      <% } else if (q.audience === "apartment") { %>
+                        <span class="badge badge--muted vq-tag" data-tooltip="Affichée seulement pour les appartements"><%- vi("building") %>Appartement</span>
+                      <% } else if (q.audience === "copro") { %>
+                        <span class="badge badge--muted vq-tag" data-tooltip="Appartements, et maisons en copropriété"><%- vi("building") %>Copropriété</span>
+                      <% } else if (q.audience) { %>
+                        <span class="badge badge--muted vq-tag"><%= q.audienceLabel %></span>
+                      <% } else { %>
+                        <span class="badge badge--muted vq-tag" data-tooltip="Maisons et appartements"><%- vi("home") %><%- vi("building") %>Tous</span>
+                      <% } %>
                       <% if (q.photo === "required") { %>
                         <span class="badge badge--info vq-tag" data-tooltip="N'apparaît que si l'analyse photo repère le problème"><%- vi("camera") %>Déclenchée par les photos</span>
                       <% } else if (q.photo === "hint") { %>
@@ -69,9 +82,20 @@
                       <% if (q.parentQuestion) { %>
                         <span class="badge badge--muted" data-tooltip="Dépend de : <%= q.parentQuestion %>">Conditionnelle</span>
                       <% } %>
-                      <% if (q.level !== q.catalogLevel) { %><span class="badge badge--warn">Modifiée</span><% } %>
                     </p>
                   </div>
+                  <a
+                    class="btn btn--ghost btn--sm vq-row__edit"
+                    href="/admin/visite/questions/<%= q.id %>"
+                    aria-label="Modifier « <%= q.question %> »"
+                  ><%- vi("pencil") %><span>Modifier</span></a>
+                  <button
+                    type="button"
+                    class="btn btn--ghost btn--sm vq-row__relocate"
+                    data-relocate
+                    data-modal-open="vq-move-modal"
+                    aria-label="Déplacer « <%= q.question %> » vers une autre étape"
+                  ><%- vi("move") %><span>Déplacer vers…</span></button>
                   <fieldset class="vq-level">
                     <legend class="visually-hidden">Niveau de « <%= q.question %> »</legend>
                     <label class="vq-level__option">
@@ -108,5 +132,64 @@
         </button>
       </form>
     </section>
+
+    <section class="panel vq-archived">
+      <details>
+        <summary class="vq-archived__summary">
+          <%- vi("archive") %>Questions archivées
+          <span class="badge badge--muted"><%= view.archived.length %></span>
+        </summary>
+        <% if (!view.archived.length) { %>
+          <div class="empty vq-archived__empty">
+            <p>Aucune question archivée. Une question supprimée arrive ici et peut être restaurée.</p>
+          </div>
+        <% } else { %>
+          <ul class="vq-list vq-archived__list">
+            <% view.archived.forEach(function (q) { %>
+              <li class="vq-row vq-row--archived">
+                <div class="vq-row__body">
+                  <p class="vq-row__question"><%= q.question %></p>
+                  <p class="vq-row__tags">
+                    <span class="badge badge--neutral vq-tag"><%- vi(q.theme.icon) %><%= q.theme.label %></span>
+                    <span class="badge badge--muted vq-tag"><%= q.sectionLabel %></span>
+                  </p>
+                </div>
+                <a class="btn btn--ghost btn--sm" href="/admin/visite/questions/<%= q.id %>" aria-label="Voir « <%= q.question %> »"><%- vi("pencil") %>Voir</a>
+                <form method="post" action="/admin/visite/questions/<%= q.id %>/restaurer">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                  <button type="submit" class="btn btn--ghost btn--sm" aria-label="Restaurer « <%= q.question %> »"><%- vi("undo") %>Restaurer</button>
+                </form>
+              </li>
+            <% }) %>
+          </ul>
+        <% } %>
+      </details>
+    </section>
+  </div>
+</div>
+
+<div class="modal" id="vq-move-modal" data-modal hidden>
+  <div class="modal__overlay" data-modal-close tabindex="-1"></div>
+  <div class="modal__dialog modal__dialog--standard" role="dialog" aria-modal="true" aria-labelledby="vq-move-title">
+    <button type="button" class="modal__close" data-modal-close aria-label="Fermer"><%- vi("close") %></button>
+    <h2 class="modal__title" id="vq-move-title">Déplacer la question vers…</h2>
+    <p class="modal__message vq-move__question" data-move-question></p>
+    <p class="field__hint">La question sera placée en bas de l'étape choisie.</p>
+    <ul class="vq-move__list">
+      <% view.sections.forEach(function (sec) { %>
+        <li>
+          <button type="button" class="vq-move__dest" data-move-to="<%= sec.id %>">
+            <span class="vq-step" aria-hidden="true"><%= sec.index %></span>
+            <span class="vq-move__label">
+              <%= sec.label %>
+              <small class="vq-move__here" data-move-here hidden>Étape actuelle</small>
+            </span>
+          </button>
+        </li>
+      <% }) %>
+    </ul>
+    <div class="modal__actions">
+      <button type="button" class="btn btn--ghost" data-modal-close>Annuler</button>
+    </div>
   </div>
 </div>

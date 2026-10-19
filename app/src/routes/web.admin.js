@@ -42,11 +42,15 @@ import {
   saveFinancingRates,
 } from "../services/financing-config.service.js";
 import createVisitQuestionsConfigService from "../services/visit-questions-config.service.js";
+import { readQuestionLevelsForm } from "../lib/visit/visit-question-levels.js";
+import { buildQuestionsAdminView } from "../lib/visit/visit-question-catalog.js";
+import { draftFromQuestion, readQuestionForm } from "../lib/visit/visit-question-validate.js";
+import { buildQuestionEditorView, emptyQuestionDraft } from "../lib/visit/visit-question-editor-view.js";
 import {
-  buildQuestionsAdminView,
-  readQuestionLevelsForm,
-} from "../lib/visit/visit-question-levels.js";
-import { visitQuestionsAdminSchema } from "../schemas/visit.js";
+  visitQuestionFormSchema,
+  visitQuestionIdSchema,
+  visitQuestionsAdminSchema,
+} from "../schemas/visit.js";
 import HttpError from "../lib/http-error.js";
 
 /** Nombre de lignes DPE affichées par page du tableau. */
@@ -450,7 +454,6 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
 
   function adminSidebarLocals() {
     return {
-      recordCount: repositories.dpe.count(),
       userCount: repositories.users.count(),
       enrichmentCacheStats: repositories.enrichments.cacheStats(),
     };
@@ -586,7 +589,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
       adminSection: "visit-questions",
       ...adminSidebarLocals(),
       styles: ["/public/css/admin-visit-questions.css"],
-      view: buildQuestionsAdminView(visitQuestionsConfig.get()),
+      view: buildQuestionsAdminView(visitQuestionsConfig.getCatalog()),
     });
   });
 
@@ -595,7 +598,7 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     if (!parsed.success) {
       return next(HttpError.badRequest("Classement des questions invalide."));
     }
-    visitQuestionsConfig.save(parsed.data);
+    visitQuestionsConfig.saveLevelsAndOrder(parsed.data);
     logActivity(logger, req, "questions de visite reclassées");
     req.session.flash = { type: "success", message: "Classement des questions enregistré." };
     return redirectAdmin(res, "visite");
@@ -606,6 +609,96 @@ export default function createAdminRouter({ repositories, enrichment, logger }) 
     logActivity(logger, req, "questions de visite réinitialisées");
     req.session.flash = { type: "success", message: "Classement du catalogue rétabli." };
     return redirectAdmin(res, "visite");
+  });
+
+  function renderQuestionEditor(res, { status = 200, question = null, draft, errors = {} }) {
+    return res.status(status).render("admin/visit-question-edit", {
+      title: question
+        ? "Administration — Modifier une question de visite"
+        : "Administration — Nouvelle question de visite",
+      adminSection: "visit-questions",
+      ...adminSidebarLocals(),
+      styles: ["/public/css/admin-visit-questions.css"],
+      scripts: ["/public/js/visit-question-editor.js"],
+      view: buildQuestionEditorView({ question, draft, errors }),
+    });
+  }
+
+  /** Question de l'URL (archivée comprise), sinon 404. */
+  function questionFromParams(req) {
+    const id = visitQuestionIdSchema.safeParse(req.params.id);
+    const question = id.success ? visitQuestionsConfig.question(id.data) : null;
+    if (!question) throw HttpError.notFound("Question introuvable.");
+    return question;
+  }
+
+  /** Brouillon du formulaire validé (forme) ou null. */
+  function readDraft(req) {
+    const parsed = visitQuestionFormSchema.safeParse(readQuestionForm(req.body));
+    return parsed.success ? parsed.data : null;
+  }
+
+  router.get("/admin/visite/questions/nouvelle", (req, res) => {
+    renderQuestionEditor(res, { draft: emptyQuestionDraft() });
+  });
+
+  router.post("/admin/visite/questions", (req, res, next) => {
+    const draft = readDraft(req);
+    if (!draft) return next(HttpError.unprocessable("Formulaire de question invalide."));
+    const result = visitQuestionsConfig.create(draft);
+    if (!result.ok) {
+      return renderQuestionEditor(res, { status: 422, draft, errors: result.errors });
+    }
+    logActivity(logger, req, "question de visite créée", { questionId: result.question.id });
+    req.session.flash = { type: "success", message: "Question ajoutée." };
+    return redirectAdmin(res, "visite");
+  });
+
+  router.get("/admin/visite/questions/:id", (req, res) => {
+    const question = questionFromParams(req);
+    renderQuestionEditor(res, { question, draft: draftFromQuestion(question) });
+  });
+
+  router.post("/admin/visite/questions/:id", (req, res, next) => {
+    const question = questionFromParams(req);
+    const draft = readDraft(req);
+    if (!draft) return next(HttpError.unprocessable("Formulaire de question invalide."));
+    const result = visitQuestionsConfig.update(question.id, draft);
+    if (!result.ok) {
+      return renderQuestionEditor(res, { status: 422, question, draft, errors: result.errors });
+    }
+    logActivity(logger, req, "question de visite modifiée", { questionId: question.id });
+    req.session.flash = { type: "success", message: "Question enregistrée." };
+    return redirectAdmin(res, "visite");
+  });
+
+  router.post("/admin/visite/questions/:id/archiver", (req, res) => {
+    const question = questionFromParams(req);
+    visitQuestionsConfig.archive(question.id);
+    logActivity(logger, req, "question de visite archivée", { questionId: question.id });
+    req.session.flash = {
+      type: "success",
+      message: "Question supprimée de la fiche de visite. Vous pouvez la restaurer depuis les questions archivées.",
+    };
+    return redirectAdmin(res, "visite");
+  });
+
+  router.post("/admin/visite/questions/:id/restaurer", (req, res) => {
+    const question = questionFromParams(req);
+    visitQuestionsConfig.restore(question.id);
+    logActivity(logger, req, "question de visite restaurée", { questionId: question.id });
+    req.session.flash = { type: "success", message: "Question restaurée en fin d'étape." };
+    return redirectAdmin(res, "visite");
+  });
+
+  router.post("/admin/visite/questions/:id/catalogue", (req, res, next) => {
+    const question = questionFromParams(req);
+    if (!visitQuestionsConfig.resetToBuiltin(question.id)) {
+      return next(HttpError.unprocessable("Cette question ne vient pas du catalogue d'origine."));
+    }
+    logActivity(logger, req, "question de visite rétablie", { questionId: question.id });
+    req.session.flash = { type: "success", message: "Version du catalogue rétablie." };
+    return res.redirect(`/admin/visite/questions/${question.id}`);
   });
 
   /* ------------------------ Paramétrage financement ------------------- */

@@ -2,18 +2,17 @@
  * Niveau (Essentiel / Expert) et ordre des questions de la fiche de visite.
  *
  * Le catalogue (visit-questions.js) fournit les valeurs par défaut : drapeau
- * `essential` et ordre de déclaration dans chaque étape. L'administration peut
- * les surcharger (clé `visit_questions` de `app_settings`) ; on fusionne ici,
+ * `essential` et ordre de déclaration dans chaque étape. Avant le passage en
+ * base (`visit_questions`), l'administration les surchargeait dans la clé
+ * `visit_questions` de `app_settings` : cette fusion ne sert plus qu'à
+ * reprendre ce classement lors de l'import initial. On fusionne ici,
  * sans jamais faire confiance au stockage : id inconnus ignorés, questions
- * absentes de l'ordre stocké ajoutées en fin d'étape.
+ * absentes de l'ordre stocké ajoutées en fin de leur étape du catalogue.
+ * Une question peut être rangée dans une autre étape que celle du catalogue :
+ * l'étape où elle figure dans l'ordre stocké l'emporte (première occurrence).
  */
 
-import {
-  VISIT_QUESTIONS,
-  VISIT_SECTIONS,
-  VISIT_THEME_BY_ID,
-  QUESTION_BY_ID,
-} from "./visit-questions.js";
+import { VISIT_QUESTIONS, VISIT_SECTIONS, QUESTION_BY_ID } from "./visit-questions.js";
 
 export const VISIT_LEVELS = ["essential", "expert"];
 export const VISIT_MODES = ["essential", "expert"];
@@ -36,7 +35,7 @@ export function catalogOrder() {
 
 /**
  * @param {object|null} stored { levels?: { [qid]: level }, order?: { [sectionId]: qid[] } }
- * @returns {{ levels: Record<string,string>, order: Record<string,string[]>, customized: boolean }}
+ * @returns {{ levels: Record<string,string>, order: Record<string,string[]>, sections: Record<string,string>, customized: boolean }}
  */
 export function resolveQuestionLevels(stored) {
   const src = stored && typeof stored === "object" ? stored : {};
@@ -54,24 +53,26 @@ export function resolveQuestionLevels(stored) {
 
   const defaults = catalogOrder();
   const order = {};
+  const sections = {};
   for (const sec of VISIT_SECTIONS) {
     const fromStore = Array.isArray(storedOrder[sec.id]) ? storedOrder[sec.id] : [];
-    const seen = new Set();
-    const ids = [];
+    order[sec.id] = [];
     for (const qid of fromStore) {
-      const q = QUESTION_BY_ID[qid];
-      if (!q || q.section !== sec.id || seen.has(qid)) continue;
-      seen.add(qid);
-      ids.push(qid);
+      if (!QUESTION_BY_ID[qid] || sections[qid]) continue;
+      sections[qid] = sec.id;
+      order[sec.id].push(qid);
     }
-    for (const qid of defaults[sec.id]) {
-      if (!seen.has(qid)) ids.push(qid);
-    }
-    if (ids.join(",") !== defaults[sec.id].join(",")) customized = true;
-    order[sec.id] = ids;
+  }
+  for (const q of VISIT_QUESTIONS) {
+    if (sections[q.id] || !order[q.section]) continue;
+    sections[q.id] = q.section;
+    order[q.section].push(q.id);
+  }
+  for (const sec of VISIT_SECTIONS) {
+    if (order[sec.id].join(",") !== defaults[sec.id].join(",")) customized = true;
   }
 
-  return { levels, order, customized };
+  return { levels, order, sections, customized };
 }
 
 /**
@@ -122,44 +123,6 @@ export function readQuestionLevelsForm(body) {
     else if (key.startsWith("order_")) order[key.slice(6)] = value;
   }
   return { level, order };
-}
-
-const AUDIENCE_LABELS = { copro: "Copropriété", house: "Maison", apartment: "Appartement" };
-
-/** View-model de la page admin : étapes et questions dans l'ordre résolu. */
-export function buildQuestionsAdminView(config) {
-  const resolved = config || resolveQuestionLevels(null);
-  const sections = VISIT_SECTIONS.map((sec, index) => {
-    const questions = (resolved.order[sec.id] || []).map((qid) => {
-      const q = QUESTION_BY_ID[qid];
-      const theme = VISIT_THEME_BY_ID[q.theme] || { label: q.theme, icon: "help" };
-      const parent = q.showWhen ? QUESTION_BY_ID[q.showWhen.questionId] : null;
-      return {
-        id: q.id,
-        question: q.question.replace(/\{(rooms|claims)\}/g, "…"),
-        theme,
-        level: resolved.levels[q.id],
-        catalogLevel: catalogLevel(q),
-        audienceLabel: q.audience ? AUDIENCE_LABELS[q.audience] || q.audience : null,
-        photo: q.photo ? (q.photo.required ? "required" : "hint") : null,
-        parentQuestion: parent ? parent.question : null,
-      };
-    });
-    return {
-      id: sec.id,
-      index: index + 1,
-      label: sec.label,
-      questions,
-      essentials: questions.filter((q) => q.level === "essential").length,
-    };
-  });
-  const all = sections.flatMap((s) => s.questions);
-  return {
-    sections,
-    total: all.length,
-    essentials: all.filter((q) => q.level === "essential").length,
-    customized: resolved.customized,
-  };
 }
 
 /** Mode d'affichage valide (repli sur le mode par défaut). */

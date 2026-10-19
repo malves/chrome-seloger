@@ -1,0 +1,391 @@
+<%
+  function vi(name) {
+    return '<svg class="wi" aria-hidden="true"><use href="#wi-' + name + '"></use></svg>';
+  }
+  var d = view.draft;
+  var err = view.errors || {};
+  var kindArg = {};
+  view.signalKinds.forEach(function (k) { kindArg[k.value] = k.arg; });
+  var ARG_HINTS = {
+    values: "Identifiants des options, séparés par des virgules",
+    number: "Nombre",
+    count: "clé:nombre (ex. refaire:1)",
+  };
+%>
+<% function optionRow(o, i) { %>
+  <li class="vq-opt" data-option-row>
+    <input type="hidden" data-name="opt_value" name="opt_value_<%= i %>" value="<%= o.value || '' %>" />
+    <div class="vq-opt__main">
+      <label class="visually-hidden" data-for="opt_label" for="opt_label_<%= i %>">Libellé de l'option</label>
+      <input class="input input--sm" type="text" maxlength="120" data-name="opt_label" id="opt_label_<%= i %>" name="opt_label_<%= i %>" value="<%= o.label || '' %>" placeholder="Libellé" />
+      <span class="vq-opt__value" data-choice-only>
+        <% if (o.value) { %>Identifiant&nbsp;: <code><%= o.value %></code><% } else { %>Nouvelle option<% } %>
+      </span>
+    </div>
+    <label class="vq-check" data-choice-only>
+      <input type="checkbox" value="1" data-name="opt_other" name="opt_other_<%= i %>" <%= o.other ? "checked" : "" %> />
+      <span>Ouvre un champ libre («&nbsp;Autre&nbsp;»)</span>
+    </label>
+    <span class="vq-row__moves">
+      <button type="button" class="vq-row__move" data-row-move="-1" aria-label="Monter l'option"><%- vi("chevron-up") %></button>
+      <button type="button" class="vq-row__move" data-row-move="1" aria-label="Descendre l'option"><%- vi("chevron-down") %></button>
+    </span>
+    <button type="button" class="btn btn--ghost btn--sm btn--icon-only" data-row-remove aria-label="Retirer l'option"><%- vi("trash") %></button>
+  </li>
+<% } %>
+<% function signalRow(s, i) { %>
+  <li class="vq-sig" data-signal-row>
+    <div class="vq-sig__grid">
+      <div class="field">
+        <label class="field__label" data-for="sig_kind" for="sig_kind_<%= i %>">Condition</label>
+        <select class="select" data-name="sig_kind" id="sig_kind_<%= i %>" name="sig_kind_<%= i %>" data-signal-kind>
+          <% view.signalKinds.forEach(function (k) { %>
+            <option value="<%= k.value %>" data-arg="<%= k.arg || '' %>" <%= s.kind === k.value ? "selected" : "" %>><%= k.label %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="field" data-signal-arg <%= kindArg[s.kind] ? "" : "hidden" %>>
+        <label class="field__label" data-for="sig_arg" for="sig_arg_<%= i %>">Valeur</label>
+        <input class="input" type="text" maxlength="200" data-name="sig_arg" id="sig_arg_<%= i %>" name="sig_arg_<%= i %>" value="<%= s.arg || '' %>" />
+        <p class="field__hint" data-signal-arg-hint><%= ARG_HINTS[kindArg[s.kind]] || "" %></p>
+      </div>
+      <div class="field">
+        <label class="field__label" data-for="sig_tone" for="sig_tone_<%= i %>">Tonalité</label>
+        <select class="select" data-name="sig_tone" id="sig_tone_<%= i %>" name="sig_tone_<%= i %>">
+          <% view.signalTones.forEach(function (t) { %>
+            <option value="<%= t.value %>" <%= (s.tone || "info") === t.value ? "selected" : "" %>><%= t.label %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="field vq-sig__text">
+        <label class="field__label" data-for="sig_text" for="sig_text_<%= i %>">Note affichée sous la question et au bilan</label>
+        <textarea class="textarea" rows="2" maxlength="400" data-name="sig_text" id="sig_text_<%= i %>" name="sig_text_<%= i %>"><%= s.text || '' %></textarea>
+      </div>
+      <div class="field">
+        <label class="field__label" data-for="sig_cost_min" for="sig_cost_min_<%= i %>">Travaux min. (€) <span class="field__optional">(facultatif)</span></label>
+        <div class="amount-stepper">
+          <input class="input" type="text" inputmode="numeric" autocomplete="off" data-name="sig_cost_min" id="sig_cost_min_<%= i %>" name="sig_cost_min_<%= i %>" value="<%= s.costMin || '' %>" data-step="500" data-min="0" data-max="10000000" data-decimals="0" />
+          <span class="amount-stepper__controls">
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter de 500 €"></button>
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer de 500 €"></button>
+          </span>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field__label" data-for="sig_cost_max" for="sig_cost_max_<%= i %>">Travaux max. (€) <span class="field__optional">(facultatif)</span></label>
+        <div class="amount-stepper">
+          <input class="input" type="text" inputmode="numeric" autocomplete="off" data-name="sig_cost_max" id="sig_cost_max_<%= i %>" name="sig_cost_max_<%= i %>" value="<%= s.costMax || '' %>" data-step="500" data-min="0" data-max="10000000" data-decimals="0" />
+          <span class="amount-stepper__controls">
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--up" data-amount-step="1" aria-label="Augmenter de 500 €"></button>
+            <button type="button" class="amount-stepper__btn amount-stepper__btn--down" data-amount-step="-1" aria-label="Diminuer de 500 €"></button>
+          </span>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field__label" data-for="sig_lever" for="sig_lever_<%= i %>">Levier de négociation</label>
+        <select class="select" data-name="sig_lever" id="sig_lever_<%= i %>" name="sig_lever_<%= i %>">
+          <% [["", "Aucun"], ["1", "Faible (1)"], ["2", "Moyen (2)"], ["3", "Fort (3)"]].forEach(function (l) { %>
+            <option value="<%= l[0] %>" <%= String(s.lever || "") === l[0] ? "selected" : "" %>><%= l[1] %></option>
+          <% }) %>
+        </select>
+      </div>
+    </div>
+    <div class="vq-sig__tools">
+      <span class="vq-row__moves">
+        <button type="button" class="vq-row__move" data-row-move="-1" aria-label="Monter la note"><%- vi("chevron-up") %></button>
+        <button type="button" class="vq-row__move" data-row-move="1" aria-label="Descendre la note"><%- vi("chevron-down") %></button>
+      </span>
+      <button type="button" class="btn btn--ghost btn--sm" data-row-remove><%- vi("trash") %>Retirer la note</button>
+    </div>
+  </li>
+<% } %>
+<%- include("../partials/works-icons") %>
+<div class="settings-layout">
+  <%- include("../partials/admin/sidebar") %>
+  <div class="settings-content vq-edit-page">
+    <p class="vq-back">
+      <a class="btn btn--ghost btn--sm" href="/admin/visite"><%- vi("chevron-left") %>Retour aux questions</a>
+    </p>
+
+    <form
+      id="vq-edit"
+      class="form vq-edit"
+      method="post"
+      action="<%= view.action %>"
+      data-question-editor
+      novalidate
+    >
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+      <% if (view.errorList.length) { %>
+        <div class="form-errors" role="alert">
+          <ul><% view.errorList.forEach(function (m) { %><li><%= m %></li><% }) %></ul>
+        </div>
+      <% } %>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div>
+            <p class="panel__eyebrow"><%= view.isNew ? "Nouvelle question" : "Modifier la question" %></p>
+            <h2 class="panel__title">Question</h2>
+          </div>
+          <% if (view.archived) { %>
+            <div class="panel__head-aside vq-edit__badges">
+              <span class="badge badge--muted">Archivée</span>
+            </div>
+          <% } %>
+        </div>
+
+        <div class="form">
+        <div class="field">
+          <label class="field__label" for="vq-question">Question posée</label>
+          <input class="input" id="vq-question" name="question" type="text" maxlength="300" required value="<%= d.question %>" />
+          <% if (err.question) { %><p class="field-error"><%= err.question %></p><% } %>
+          <% if (view.photoLinked) { %>
+            <p class="field__hint">Les repères <code>{rooms}</code> et <code>{claims}</code> sont remplacés par les pièces ou affirmations repérées sur les photos.</p>
+          <% } %>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="vq-tip">Conseil du pro</label>
+          <textarea class="textarea" id="vq-tip" name="pro_tip" rows="3" maxlength="800" required><%= d.proTip %></textarea>
+          <% if (err.proTip) { %><p class="field-error"><%= err.proTip %></p><% } %>
+        </div>
+
+        <div class="vq-edit__grid">
+          <div class="field">
+            <label class="field__label" for="vq-section">Étape</label>
+            <select class="select" id="vq-section" name="section">
+              <% view.sections.forEach(function (s, i) { %>
+                <option value="<%= s.id %>" <%= d.section === s.id ? "selected" : "" %>><%= i + 1 %>. <%= s.label %></option>
+              <% }) %>
+            </select>
+            <% if (err.section) { %><p class="field-error"><%= err.section %></p><% } %>
+          </div>
+          <div class="field">
+            <label class="field__label" for="vq-theme">Thème</label>
+            <select class="select" id="vq-theme" name="theme">
+              <% view.themes.forEach(function (t) { %>
+                <option value="<%= t.id %>" <%= d.theme === t.id ? "selected" : "" %>><%= t.label %></option>
+              <% }) %>
+            </select>
+            <% if (err.theme) { %><p class="field-error"><%= err.theme %></p><% } %>
+          </div>
+          <div class="field">
+            <label class="field__label" for="vq-audience">Biens concernés</label>
+            <select class="select" id="vq-audience" name="audience">
+              <% view.audiences.forEach(function (a) { %>
+                <option value="<%= a.value %>" <%= d.audience === a.value ? "selected" : "" %>><%= a.label %></option>
+              <% }) %>
+            </select>
+            <% if (err.audience) { %><p class="field-error"><%= err.audience %></p><% } %>
+          </div>
+          <fieldset class="field vq-edit__level">
+            <legend class="field__label">Niveau</legend>
+            <div class="vq-level">
+              <label class="vq-level__option">
+                <input type="radio" name="level" value="essential" <%= d.level === "essential" ? "checked" : "" %> />
+                <span><%- vi("star") %>Essentiel</span>
+              </label>
+              <label class="vq-level__option">
+                <input type="radio" name="level" value="expert" <%= d.level !== "essential" ? "checked" : "" %> />
+                <span><%- vi("microscope") %>Expert</span>
+              </label>
+            </div>
+            <% if (err.level) { %><p class="field-error"><%= err.level %></p><% } %>
+          </fieldset>
+        </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div>
+            <p class="panel__eyebrow">Ce que l'on répond</p>
+            <h2 class="panel__title">Réponse</h2>
+          </div>
+        </div>
+
+        <div class="form">
+        <div class="field">
+          <% if (view.typeLocked) { %>
+            <span class="field__label">Type de réponse</span>
+            <p class="vq-locked"><%- vi("lock") %><span><%= view.inputTypeLabel %></span></p>
+            <p class="field__hint">
+              <% if (view.fieldLabel) { %>
+                Réponse liée au champ «&nbsp;<%= view.fieldLabel %>&nbsp;» de l'annonce : son type ne peut pas changer.
+              <% } else { %>
+                Ce type de réponse est piloté par l'application et ne peut pas changer.
+              <% } %>
+            </p>
+            <input type="hidden" name="input_type" value="<%= view.inputType %>" data-input-type />
+          <% } else { %>
+            <label class="field__label" for="vq-type">Type de réponse</label>
+            <select class="select" id="vq-type" name="input_type" data-input-type>
+              <% view.inputTypes.forEach(function (t) { %>
+                <option value="<%= t.value %>" <%= view.inputType === t.value ? "selected" : "" %>><%= t.label %></option>
+              <% }) %>
+            </select>
+          <% } %>
+          <% if (err.inputType) { %><p class="field-error"><%= err.inputType %></p><% } %>
+        </div>
+
+        <% if (view.photoLinked || view.conditional) { %>
+          <p class="field__hint vq-locked-note">
+            <%- vi("lock") %>
+            <% if (view.photoRequired) { %>Question déclenchée par l'analyse photo. <% } else if (view.photoLinked) { %>Question annotée par l'analyse photo. <% } %>
+            <% if (view.conditional) { %>Affichée selon la réponse à une autre question.<% } %>
+            Ces réglages restent gérés par l'application.
+          </p>
+        <% } %>
+
+        <div class="vq-block" data-type-block data-types="<%= view.blockTypes.unknown %>" <%= view.blocks.unknown ? "" : "hidden" %>>
+          <label class="vq-check">
+            <input type="checkbox" name="unknown_option" value="1" <%= d.unknownOption ? "checked" : "" %> />
+            <span>Proposer une troisième réponse</span>
+          </label>
+          <div class="field">
+            <label class="field__label" for="vq-unknown-label">Libellé de la troisième réponse</label>
+            <input class="input input--narrow" id="vq-unknown-label" name="unknown_label" type="text" maxlength="40" value="<%= d.unknownLabel %>" placeholder="Je ne sais pas" />
+          </div>
+        </div>
+
+        <div class="vq-block vq-edit__grid" data-type-block data-types="<%= view.blockTypes.number %>" <%= view.blocks.number ? "" : "hidden" %>>
+          <div class="field">
+            <label class="field__label" for="vq-unit">Unité <span class="field__optional">(facultatif)</span></label>
+            <input class="input input--narrow" id="vq-unit" name="unit" type="text" maxlength="20" value="<%= d.unit %>" placeholder="€, m², min…" />
+          </div>
+          <div class="field">
+            <label class="field__label" for="vq-min">Minimum <span class="field__optional">(facultatif)</span></label>
+            <input class="input input--narrow" id="vq-min" name="min" type="text" inputmode="decimal" value="<%= d.min %>" />
+          </div>
+          <div class="field">
+            <label class="field__label" for="vq-max">Maximum <span class="field__optional">(facultatif)</span></label>
+            <input class="input input--narrow" id="vq-max" name="max" type="text" inputmode="decimal" value="<%= d.max %>" />
+            <% if (err.max || err.min) { %><p class="field-error"><%= err.max || err.min %></p><% } %>
+          </div>
+          <div class="field">
+            <label class="field__label" for="vq-decimals">Décimales <span class="field__optional">(facultatif)</span></label>
+            <input class="input input--narrow" id="vq-decimals" name="decimals" type="text" inputmode="numeric" value="<%= d.decimals %>" />
+            <% if (err.decimals) { %><p class="field-error"><%= err.decimals %></p><% } %>
+          </div>
+        </div>
+
+        <div class="vq-block" data-type-block data-types="<%= view.blockTypes.placeholder %>" <%= view.blocks.placeholder ? "" : "hidden" %>>
+          <div class="field">
+            <label class="field__label" for="vq-placeholder">
+              <span data-placeholder-label data-label-text="Texte d'aide dans le champ" data-label-amount="Libellé du montant"><%= view.inputType === "yesno_number" ? "Libellé du montant" : "Texte d'aide dans le champ" %></span>
+              <span class="field__optional">(facultatif)</span>
+            </label>
+            <input class="input" id="vq-placeholder" name="placeholder" type="text" maxlength="160" value="<%= d.placeholder %>" />
+          </div>
+        </div>
+
+        <div
+          class="vq-block vq-options <%= view.isScale ? 'is-scale' : '' %>"
+          data-type-block
+          data-types="<%= view.blockTypes.options %>"
+          data-options-block
+          <%= view.blocks.options ? "" : "hidden" %>
+        >
+          <h3 class="vq-block__title">
+            <span data-choice-only>Options proposées</span>
+            <span data-scale-only>Crans de l'échelle (du plus faible au plus fort)</span>
+          </h3>
+          <ol class="vq-opts" data-option-list>
+            <% d.options.forEach(function (o, i) { optionRow(o, i); }) %>
+          </ol>
+          <% if (!d.options.length) { %>
+            <p class="field__hint" data-option-empty>Aucune option pour l'instant.</p>
+          <% } %>
+          <% if (err.options) { %><p class="field-error"><%= err.options %></p><% } %>
+          <button type="button" class="btn btn--ghost btn--sm" data-option-add><%- vi("plus") %>Ajouter une option</button>
+          <template data-option-template><% optionRow({ value: "", label: "", other: false }, "x"); %></template>
+        </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div>
+            <p class="panel__eyebrow">Bilan de visite</p>
+            <h2 class="panel__title">Notes au bilan</h2>
+          </div>
+        </div>
+        <p class="field__hint vq-lead">
+          Une note s'affiche sous la question quand sa condition est remplie, et alimente le bilan :
+          alertes, budget travaux et levier de négociation.
+        </p>
+        <ol class="vq-sigs" data-signal-list>
+          <% d.signals.forEach(function (s, i) { signalRow(s, i); }) %>
+        </ol>
+        <% if (!d.signals.length) { %>
+          <p class="field__hint" data-signal-empty>Aucune note : la réponse est enregistrée sans commentaire.</p>
+        <% } %>
+        <% if (err.signals) { %><p class="field-error"><%= err.signals %></p><% } %>
+        <button type="button" class="btn btn--ghost btn--sm" data-signal-add><%- vi("plus") %>Ajouter une note</button>
+        <template data-signal-template><% signalRow({ kind: "yes", arg: "", tone: "info", text: "", costMin: "", costMax: "", lever: "" }, "x"); %></template>
+      </section>
+
+      <div class="form__actions">
+        <a class="btn btn--ghost" href="/admin/visite">Annuler</a>
+        <button type="submit" class="btn btn--green"><%= view.isNew ? "Ajouter la question" : "Enregistrer la question" %></button>
+      </div>
+    </form>
+
+    <% if (!view.isNew && view.builtin && view.modified) { %>
+      <form
+        class="vq-reset"
+        method="post"
+        action="/admin/visite/questions/<%= view.id %>/catalogue"
+        data-confirm="Rétablir le texte, les réponses et les notes du catalogue d'origine ? Vos modifications de cette question seront perdues."
+        data-confirm-title="Rétablir la version du catalogue"
+        data-confirm-label="Rétablir"
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button type="submit" class="btn btn--ghost"><%- vi("reset") %>Rétablir la version du catalogue</button>
+      </form>
+    <% } %>
+
+    <% if (!view.isNew) { %>
+      <% if (view.archived) { %>
+        <section class="panel">
+          <div class="panel__head">
+            <h2 class="panel__title">Question archivée</h2>
+          </div>
+          <p class="field__hint vq-lead">Elle n'apparaît plus sur les fiches de visite. Les réponses déjà saisies sont conservées.</p>
+          <form method="post" action="/admin/visite/questions/<%= view.id %>/restaurer">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+            <button type="submit" class="btn btn--ghost"><%- vi("undo") %>Restaurer la question</button>
+          </form>
+        </section>
+      <% } else { %>
+        <section class="panel danger-zone">
+          <div class="danger-zone__grid">
+            <div class="danger-zone__copy">
+              <div class="panel__head danger-zone__head">
+                <h2 class="panel__title">Supprimer cette question</h2>
+              </div>
+              <p class="field__hint">
+                Elle disparaît des fiches de visite. Les réponses déjà saisies sont conservées et
+                la question reste restaurable depuis les questions archivées.
+              </p>
+            </div>
+            <div class="danger-zone__actions">
+              <form
+                method="post"
+                action="/admin/visite/questions/<%= view.id %>/archiver"
+                data-confirm="Supprimer cette question des fiches de visite ?"
+                data-confirm-title="Supprimer la question"
+                data-confirm-label="Supprimer"
+              >
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                <button class="btn btn--danger" type="submit">Supprimer la question</button>
+              </form>
+            </div>
+          </div>
+        </section>
+      <% } %>
+    <% } %>
+  </div>
+</div>

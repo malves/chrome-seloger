@@ -1286,7 +1286,7 @@
       });
       modeHint.textContent = expert
         ? "Les " + items.length + " questions, pour ne rien laisser passer."
-        : "Les " + essentialCount + " questions clés. Passez en Expert pour les " + items.length + ".";
+        : "Les " + essentialCount + " questions clés sur " + items.length + ".";
       if (essentialFilter) essentialFilter.hidden = !expert;
     }
 
@@ -1314,11 +1314,11 @@
       state.expertNudgeSeen = true;
       scheduleSave();
       showToast(
-        "Les essentiels sont faits. Aller plus loin ?",
+        "Les questions clés sont faites. Aller plus loin\u00a0?",
         function () {
           setMode("expert");
         },
-        "Passer en Expert"
+        "Afficher toutes les questions"
       );
     }
 

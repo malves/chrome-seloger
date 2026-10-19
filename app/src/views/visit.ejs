@@ -70,30 +70,30 @@
   <section class="panel panel--flat visit-mode-panel" aria-label="Mode d'affichage des questions">
     <div class="panel__head visit-mode-panel__head">
       <div class="visit-mode" data-mode-root data-mode="<%= sheet.mode %>">
-        <span class="visit-mode__lead" id="visit-mode-label">Choisissez le mode de la visite&nbsp;:</span>
+        <span class="visit-mode__lead" id="visit-mode-label">Afficher&nbsp;:</span>
         <div class="mode-switch mode-switch--md<%= expert ? ' is-on' : '' %>" data-mode-switch role="group" aria-labelledby="visit-mode-label">
-          <button type="button" class="mode-switch__label" data-mode-set="essential" aria-pressed="<%= expert ? 'false' : 'true' %>">Essentiel</button>
+          <button type="button" class="mode-switch__label" data-mode-set="essential" aria-pressed="<%= expert ? 'false' : 'true' %>">Les questions clés</button>
           <button
             type="button"
             class="mode-switch__button"
             role="switch"
             aria-checked="<%= expert ? 'true' : 'false' %>"
-            aria-label="Mode expert : afficher toutes les questions"
+            aria-label="Afficher toutes les questions"
             data-mode-toggle
           >
             <span class="mode-switch__thumb" aria-hidden="true">
-              <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-star"></use></svg>
+              <svg class="wi mode-switch__icon mode-switch__icon--off" aria-hidden="true"><use href="#wi-key-round"></use></svg>
               <svg class="wi mode-switch__icon mode-switch__icon--on" aria-hidden="true"><use href="#wi-microscope"></use></svg>
             </span>
           </button>
-          <button type="button" class="mode-switch__label" data-mode-set="expert" aria-pressed="<%= expert ? 'true' : 'false' %>">Expert</button>
+          <button type="button" class="mode-switch__label" data-mode-set="expert" aria-pressed="<%= expert ? 'true' : 'false' %>">Toutes les questions</button>
         </div>
       </div>
       <p class="visit-mode__hint" data-mode-hint aria-live="polite">
         <% if (expert) { %>
           Les <%= sheet.counts.all %> questions, pour ne rien laisser passer.
         <% } else { %>
-          Les <%= sheet.counts.inEssential %> questions clés. Passez en Expert pour les <%= sheet.counts.all %>.
+          Les <%= sheet.counts.inEssential %> questions clés sur <%= sheet.counts.all %>.
         <% } %>
       </p>
     </div>
@@ -106,7 +106,7 @@
         Tout <span class="visit-filter__count" data-filter-count="all"><%= sheet.counts.total %></span>
       </button>
       <button type="button" class="visit-filter visit-filter--star" data-filter="essential" aria-pressed="false" <%= expert ? "" : "hidden" %>>
-        <%- vi("star") %> Essentiels <span class="visit-filter__count" data-filter-count="essential"><%= sheet.counts.essentials %></span>
+        <%- vi("key-round") %> Essentiels <span class="visit-filter__count" data-filter-count="essential"><%= sheet.counts.essentials %></span>
       </button>
       <% sheet.themes.forEach(function (t) { %>
         <button type="button" class="visit-filter" data-filter="<%= t.id %>" aria-pressed="false">
@@ -164,7 +164,7 @@
                 <article class="visit-q__card">
                   <div class="visit-q__head">
                     <span class="visit-tag visit-tag--theme" data-theme-tag="<%= it.theme %>"><%- vi(theme.icon) %><%= theme.label %></span>
-                    <% if (it.essential) { %><span class="visit-tag visit-tag--essential"><%- vi("star") %>Essentiel</span><% } %>
+                    <% if (it.essential) { %><span class="visit-tag visit-tag--essential"><%- vi("key-round") %>Essentiel</span><% } %>
                     <% if (it.photoTriggered || it.photoHint) { %><span class="visit-tag visit-tag--ai"><%- vi("camera") %>Photos</span><% } %>
                     <span class="visit-tag visit-tag--mode"><%= it.known ? "À confirmer" : "À découvrir" %></span>
                     <span class="visit-q__done" data-done aria-hidden="true"><%- vi("check") %></span>
