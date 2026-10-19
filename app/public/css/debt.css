@@ -18,7 +18,7 @@
 }
 
 .debt__head {
-  align-items: flex-start;
+  align-items: center;
 }
 
 .debt__intro {
@@ -207,13 +207,29 @@
 
 /* ------------------------------- Lignes ------------------------------- */
 
+/* Le projet n'est pas un conteneur : il doit rester sous les calendriers ouverts. */
+.debt-section:has(> .debt-list) {
+  container: debt-section / inline-size;
+}
+
 .debt-list {
+  display: grid;
+  column-gap: var(--space-3);
+  align-items: start;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/* Deux cartes par ligne seulement si chacune garde la place de ses champs. */
+@container debt-section (min-width: 640px) {
+  .debt-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .debt-row {
+  container: debt-row / inline-size;
   display: grid;
   grid-template-rows: 1fr;
   transition: grid-template-rows 0.32s var(--debt-ease), opacity 0.25s ease,
@@ -682,6 +698,23 @@
 
 .debt-seg:has(> .debt-seg__opt:nth-of-type(3) input:checked) {
   --i: 2;
+}
+
+.debt-seg:has(> .debt-seg__opt:nth-of-type(4)) {
+  --n: 4;
+}
+
+.debt-seg:has(> .debt-seg__opt:nth-of-type(4) input:checked) {
+  --i: 3;
+}
+
+.debt-retained[hidden] {
+  display: none;
+}
+
+.debt-retained .debt-seg__opt span {
+  padding-inline: var(--space-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .debt-seg__opt {
@@ -1423,7 +1456,8 @@
   }
 }
 
-@media (max-width: 600px) {
+/* Carte étroite : une des deux colonnes de la liste, ou téléphone. */
+@container debt-row (max-width: 504px) {
   .debt-row__card {
     padding: var(--space-3);
   }
@@ -1455,8 +1489,31 @@
     justify-self: end;
   }
 
-  .debt-row__body,
-  .debt-row__body--3,
+  .debt-row__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .debt-row__body--3 {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .debt-row__body--3 > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  /* Unités courtes (ans, %) : laisser la place au texte d'exemple. */
+  .debt-row__body--3 > :not(:first-child) .input {
+    padding-right: var(--space-7);
+  }
+}
+
+@container debt-row (max-width: 300px) {
+  .debt-row__body--3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
   .debt-project {
     grid-template-columns: minmax(0, 1fr);
   }

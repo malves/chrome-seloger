@@ -20,6 +20,9 @@ export const ESTIMATE_INSURANCE_RATE = 0.003;
 
 const MAX_ITEMS = 30;
 const MAX_AMOUNT = 10_000_000;
+/** Bornes de la part retenue réglable (loyers) : jamais moins de la moitié. */
+const MIN_RETAINED = 0.5;
+const MAX_RETAINED = 1;
 
 export const INCOME_TYPES = {
   salary: {
@@ -38,7 +41,8 @@ export const INCOME_TYPES = {
     label: "Loyers perçus",
     frequency: "month",
     retained: 0.7,
-    hint: "Loyers hors charges. Les banques n'en retiennent que 70 % (vacance, travaux, impayés).",
+    adjustable: true,
+    hint: "Loyers hors charges, tels qu'ils figurent sur vos baux.",
   },
   pension: {
     label: "Retraite, pension",
@@ -158,6 +162,12 @@ function frequency(value, fallback) {
   return value === "year" || value === "month" ? value : fallback;
 }
 
+function retained(value, fallback) {
+  const n = amount(value);
+  if (n === null) return fallback;
+  return Math.round(Math.min(Math.max(n, MIN_RETAINED), MAX_RETAINED) * 100) / 100;
+}
+
 /** Nettoie un état reçu du navigateur ou relu en base. */
 export function sanitizeDebtState(input, defaults = {}) {
   const raw = input && typeof input === "object" ? input : {};
@@ -166,7 +176,7 @@ export function sanitizeDebtState(input, defaults = {}) {
     .map((item, index) => {
       const type = Object.hasOwn(INCOME_TYPES, item?.type) ? item.type : "other";
       const meta = INCOME_TYPES[type];
-      return {
+      const income = {
         id: id(item?.id, index),
         type,
         label: text(item?.label),
@@ -175,6 +185,8 @@ export function sanitizeDebtState(input, defaults = {}) {
         counted:
           typeof item?.counted === "boolean" ? item.counted : meta.countedByDefault !== false,
       };
+      if (meta.adjustable) income.retained = retained(item?.retained, meta.retained);
+      return income;
     });
 
   const charges = (Array.isArray(raw.charges) ? raw.charges : [])
@@ -256,7 +268,8 @@ function perMonth(value, freq) {
 export function evaluateIncome(item) {
   const meta = INCOME_TYPES[item.type] || INCOME_TYPES.other;
   const gross = perMonth(item.amount, item.frequency);
-  const retainedRate = item.counted ? meta.retained : 0;
+  const share = meta.adjustable ? retained(item.retained, meta.retained) : meta.retained;
+  const retainedRate = item.counted ? share : 0;
   return {
     id: item.id,
     gross,

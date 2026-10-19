@@ -35,7 +35,6 @@
         <span class="debt-save__dot" aria-hidden="true"></span>
         <span data-save-text>Enregistré automatiquement</span>
       </span>
-      <button type="button" class="btn btn--ghost btn--sm" data-reset>Tout effacer</button>
     </div>
   </div>
 
@@ -271,6 +270,15 @@
               </div>
             </fieldset>
           </div>
+          <fieldset class="debt-field debt-retained" data-only="rental">
+            <legend class="field__label">Part retenue par votre banque</legend>
+            <div class="debt-seg" data-seg>
+              <% [["0.7", "70\u00a0%"], ["0.8", "80\u00a0%"], ["0.9", "90\u00a0%"], ["1", "100\u00a0%"]].forEach(function ([value, label]) { %>
+                <label class="debt-seg__opt"><input type="radio" value="<%= value %>" data-field="retained" /><span><%= label %></span></label>
+              <% }) %>
+              <span class="debt-seg__thumb" aria-hidden="true"></span>
+            </div>
+          </fieldset>
           <label class="debt-check" data-only="benefits">
             <input type="checkbox" data-field="counted" />
             <span>Ma banque les prend en compte</span>

@@ -223,7 +223,7 @@
       el.querySelectorAll("[data-field]").forEach(function (input) {
         var field = input.getAttribute("data-field");
         var value = item[field];
-        if (input.type === "radio") input.checked = value === input.value;
+        if (input.type === "radio") input.checked = value != null && String(value) === input.value;
         else if (input.type === "checkbox") input.checked = Boolean(value);
         else if (field === "rate") input.value = rateInput(value);
         else if (field === "years") input.value = value == null ? "" : String(value).replace(".", ",");
@@ -335,6 +335,7 @@
               end: "",
               settled: false,
             };
+      if (list === "incomes" && meta.adjustable) item.retained = meta.retained;
       state[list].push(item);
       insertRow(list, item, state[list].length - 1, { animate: true, focus: true });
       update({ save: true });
@@ -368,6 +369,7 @@
     function readField(input) {
       var field = input.getAttribute("data-field");
       if (input.type === "checkbox") return input.checked;
+      if (field === "retained") return Number(input.value);
       if (input.type === "radio") return input.value;
       if (field === "rate") {
         var r = parseAmount(input.value);
@@ -1195,27 +1197,6 @@
       var endUnknown = t.closest("[data-end-unknown]");
       if (endUnknown) {
         clearDebtDayPicker(endUnknown.closest(".debt-end").querySelector("[data-debt-day-picker]"));
-        return;
-      }
-      if (t.closest("[data-reset]")) {
-        if (!state.incomes.length && !state.charges.length && state.project.monthly == null) return;
-        var snapshot = JSON.parse(JSON.stringify(state));
-        state.incomes.concat(state.charges).forEach(function (item) {
-          var el = rows.get(item.id);
-          if (el) leave(el, function () { el.remove(); });
-        });
-        rows.clear();
-        state = lib.emptyDebtState(defaults);
-        fillProject();
-        update({ save: true });
-        showToast("Tout a été effacé", function () {
-          lists.incomes.textContent = "";
-          lists.charges.textContent = "";
-          state = snapshot;
-          renderAllRows(true);
-          fillProject();
-          update({ save: true });
-        });
         return;
       }
       if (t.closest("[data-dock]")) {

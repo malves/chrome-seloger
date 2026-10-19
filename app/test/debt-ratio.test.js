@@ -51,6 +51,18 @@ test("les loyers sont retenus à 70 % et les montants annuels ramenés au mois",
   assert.equal(result.income, 3000 + 700);
 });
 
+test("la part retenue des loyers suit le réglage de la banque, bornée", () => {
+  const rental = (retained) => ({ id: "b", type: "rental", amount: 1000, retained });
+  const income = (retained) => computeDebt(state({ incomes: [rental(retained)] })).income;
+  assert.equal(income(1), 1000);
+  assert.equal(income(0.9), 900);
+  assert.equal(income(0.2), 500);
+  assert.equal(income(3), 1000);
+  assert.equal(income("n'importe quoi"), 700);
+  assert.equal(state({ incomes: [rental(undefined)] }).incomes[0].retained, 0.7);
+  assert.equal("retained" in state().incomes[0], false);
+});
+
 test("les allocations ne sont comptées que si l'utilisateur le demande", () => {
   const base = { id: "b", type: "benefits", amount: 400 };
   assert.equal(computeDebt(state({ incomes: [base] })).income, 0);
