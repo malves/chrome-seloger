@@ -100,15 +100,20 @@ test("GET /visite : page dédiée avec étapes, cartes, bilan et état initial",
   }
   assert.match(html, /class="visit-step" aria-hidden="true">5</);
 
-  // Étapes en accordéon exclusif : toutes repliables, seule la première ouverte.
+  // Étapes en accordéon exclusif : toutes fermées par défaut (y compris « Avant la visite »).
   const collapses = html.match(/<details class="visit-section__collapse"[^>]*>/g) || [];
   assert.equal(collapses.length, 5);
   assert.ok(collapses.every((tag) => /name="visit-steps"/.test(tag)), "même groupe d'accordéon");
-  assert.deepEqual(
-    collapses.map((tag) => /\sopen(\s|>)/.test(tag)),
-    [true, false, false, false, false],
-    "seule la première étape est ouverte"
+  assert.ok(
+    collapses.every((tag) => !/\sopen(\s|>)/.test(tag)),
+    "aucune étape ouverte au chargement"
   );
+
+  // Filtres par thème dans un bandeau défilant : flèches des deux côtés, pilotées par app.js.
+  assert.match(html, /class="scroll-rail visit-filters__rail" data-scroll-rail/);
+  assert.match(html, /data-scroll-rail-nav="prev"[\s\S]*?#wi-chevron-left/);
+  assert.match(html, /data-scroll-rail-nav="next"[\s\S]*?#wi-chevron-right/);
+  assert.match(html, /class="scroll-rail__viewport visit-filters__scroll" data-scroll-rail-viewport/);
 
   // Cartes : questions phares, conseils du pro, pastilles.
   assert.match(html, /Pourquoi les vendeurs vendent-ils/);
@@ -117,6 +122,18 @@ test("GET /visite : page dédiée avec étapes, cartes, bilan et état initial",
   assert.match(html, /visit-tag--essential/);
   assert.match(text, /À confirmer · déjà renseigné par l'annonce/);
   assert.match(text, /Selon l'annonce[\s\S]{0,200}?120 m²/, "valeur connue à confirmer affichée");
+
+  // Mode interactif : bouton d'entrée + surface plein écran (pilotée côté client).
+  assert.match(html, /Lancer le mode interactif/);
+  assert.match(html, /visit-mode__deck-icon[\s\S]*?<polygon points="10 8 16 12 10 16 10 8"/, "icône lecture (play) inlinée");
+  assert.match(html, /id="wi-lecture"/, "symbole lecture dans le sprite");
+  assert.match(html, /data-deck-open/, "bouton d'entrée dans le mode interactif");
+  assert.match(html, /class="visit-deck"[^>]*data-deck[^>]*hidden/, "surface repliée par défaut");
+  assert.match(html, /data-deck-stage/);
+  assert.match(html, /data-deck-act="ask"/);
+  assert.match(html, /data-deck-act="later"/);
+  assert.match(html, /data-deck-act="next"/);
+  assert.match(html, /data-deck-confetti/, "canvas de confettis présent");
 
   // Bilan : anneau, levier, interrupteur, modale de consentement au 1er lancement.
   assert.match(html, /Bilan de visite/);
@@ -162,7 +179,7 @@ test("GET /visite : réponses enregistrées rendues, bandeau de consentement rep
   assert.deepEqual(Object.keys(initial.answers).sort(), ["crush", "humidity", "quiet"]);
   assert.equal(initial.answers.crush.value, 4);
   assert.match(res.text, /data-consent-modal[^>]*hidden/, "choix déjà fait → modale masquée");
-  // Bilan rendu côté serveur : une alerte bloquante (humidité) et un point à demander.
+  // Bilan rendu côté serveur : une alerte bloquante (humidité) et un point à confirmer.
   assert.match(res.text, /Un point bloquant/);
   assert.match(res.text, /data-out="todo">1</);
 });

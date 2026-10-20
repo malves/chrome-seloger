@@ -8062,4 +8062,85 @@
     }
   })();
 
+  /* ---- Bandeau défilant horizontal : fondus et flèches selon le débordement ---- */
+  (function initScrollRails() {
+    var EDGE = 2;
+    var STEP = 0.75;
+
+    function prefersReducedMotion() {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    }
+
+    function bind(rail) {
+      if (rail.hasAttribute("data-scroll-rail-ready")) return;
+      var viewport = rail.querySelector("[data-scroll-rail-viewport]");
+      if (!viewport) return;
+      rail.setAttribute("data-scroll-rail-ready", "");
+      var frame = 0;
+
+      function update() {
+        frame = 0;
+        var max = viewport.scrollWidth - viewport.clientWidth;
+        var x = viewport.scrollLeft;
+        rail.classList.toggle("is-overflow-start", max > EDGE && x > EDGE);
+        rail.classList.toggle("is-overflow-end", max > EDGE && x < max - EDGE);
+      }
+
+      function schedule() {
+        if (!frame) frame = window.requestAnimationFrame(update);
+      }
+
+      rail.querySelectorAll("[data-scroll-rail-nav]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var dir = btn.getAttribute("data-scroll-rail-nav") === "prev" ? -1 : 1;
+          viewport.scrollBy({
+            left: dir * viewport.clientWidth * STEP,
+            behavior: prefersReducedMotion() ? "auto" : "smooth",
+          });
+        });
+      });
+
+      /* Un élément à moitié sous le fondu revient entièrement en vue quand on le choisit. */
+      viewport.addEventListener("click", function (event) {
+        var item = event.target;
+        while (item && item.parentElement !== viewport) item = item.parentElement;
+        if (!item) return;
+        item.scrollIntoView({
+          block: "nearest",
+          inline: "nearest",
+          behavior: prefersReducedMotion() ? "auto" : "smooth",
+        });
+      });
+
+      viewport.addEventListener("scroll", schedule, { passive: true });
+      if (typeof ResizeObserver === "function") {
+        /* Les enfants aussi : un filtre masqué ou affiché change la largeur à défiler. */
+        var observer = new ResizeObserver(schedule);
+        observer.observe(viewport);
+        Array.prototype.forEach.call(viewport.children, function (child) {
+          observer.observe(child);
+        });
+      } else {
+        window.addEventListener("resize", schedule);
+      }
+      update();
+    }
+
+    function init(root) {
+      (root || document).querySelectorAll("[data-scroll-rail]").forEach(bind);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () {
+        init();
+      });
+    } else {
+      init();
+    }
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      init(event.target);
+    });
+  })();
+
 })();

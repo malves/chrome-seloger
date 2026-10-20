@@ -129,6 +129,7 @@ test("prix + travaux : second positionnement sur chaque référence", () => {
   });
   assert.equal(pos.works, 60000);
   assert.deepEqual(pos.works_range, { min: 40000, max: 80000 });
+  assert.equal(pos.works_edited, false);
   const ww = pos.primary.with_works;
   assert.equal(ww.price, 810000);
   assert.equal(ww.price_m2, 6750);
@@ -142,6 +143,19 @@ test("prix + travaux : second positionnement sur chaque référence", () => {
   const heavy = buildPricePosition({ listing, commune, dvf, works: 200000 });
   assert.equal(heavy.primary.with_works.index, 111);
   assert.equal(heavy.primary.with_works.tone, "high");
+});
+
+test("prix + travaux : montant saisi au financement signalé", () => {
+  const pos = buildPricePosition({
+    listing,
+    commune,
+    dvf,
+    works: 35000,
+    worksRange: { min: 34000, max: 68000 },
+    worksEdited: true,
+  });
+  assert.equal(pos.works, 35000);
+  assert.equal(pos.works_edited, true);
 });
 
 test("prix + travaux : sans budget, pas de second positionnement", () => {

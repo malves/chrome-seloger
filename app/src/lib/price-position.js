@@ -106,6 +106,8 @@ function buildReference(base, listing, listingM2, works) {
  *   positionnement « prix + travaux » à chaque référence
  * @param {{ min: number, max: number }|null} [args.worksRange] fourchette du
  *   plan des pièces, pour information
+ * @param {boolean} [args.worksEdited] montant travaux saisi par l'utilisateur
+ *   dans le tableau financement (hors milieu de fourchette par défaut)
  * @returns {object|null}
  */
 export function buildPricePosition({
@@ -116,6 +118,7 @@ export function buildPricePosition({
   market,
   works = 0,
   worksRange = null,
+  worksEdited = false,
 }) {
   const listingM2 = listingPricePerM2(listing);
   const type = listingRealtyType(listing);
@@ -245,6 +248,7 @@ export function buildPricePosition({
     references,
     works: worksAmount,
     works_range: range,
+    works_edited: Boolean(worksEdited),
     has_address: Boolean(address),
     has_radius: references.some((r) => r.key === "radius"),
   };

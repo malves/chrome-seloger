@@ -5,7 +5,7 @@
  *
  * À partir des items de la fiche (catalogue + valeurs connues) et des réponses,
  * il évalue les signaux déclaratifs des questions puis en déduit : alertes,
- * corrections de l'annonce, points à demander, levier de négociation, coûts
+ * corrections de l'annonce, points à confirmer, levier de négociation, coûts
  * annuels cachés, budget travaux probable, verdict et phase.
  *
  * Réponse : { response: "yes"|"no"|"unknown"|null, value: any, answeredAt }
@@ -14,7 +14,7 @@
  *   - confirm_letter  : idem, value = lettre
  *   - number/scale    : value numérique
  *   - choice/text     : value chaîne
- *   - "unknown"       : « je demanderai » (point à poser)
+ *   - "unknown"       : « à confirmer » (point à lever pendant la visite)
  */
 
 export const LEVER_LABELS = ["Faible", "Modéré", "Bon", "Fort", "Très fort"];
@@ -65,7 +65,7 @@ export function questionInMode(item, answers, mode) {
   return Boolean(answers && answers[item.id]);
 }
 
-/** Une réponse compte-t-elle comme « répondue » (hors « je demanderai ») ? */
+/** Une réponse compte-t-elle comme « répondue » (hors « à confirmer ») ? */
 export function isAnswered(item, answer) {
   if (!answer) return false;
   if (answer.response === "unknown") return false;
@@ -175,7 +175,7 @@ export function triggeredSignals(item, answer) {
 /** Note à afficher sous la question : le signal le plus grave déclenché. */
 export function noteFor(item, answer) {
   if (isUnknown(answer)) {
-    return { tone: "muted", text: "Noté : à demander pendant la visite. Retrouvez la liste dans le bilan." };
+    return { tone: "muted", text: "Noté : à confirmer. Retrouvez la liste dans le bilan." };
   }
   const sigs = triggeredSignals(item, answer);
   if (!sigs.length) return null;

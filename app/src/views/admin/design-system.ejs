@@ -116,6 +116,22 @@
   </label>
 </div>`;
 
+  S.scrollRail = `
+<div class="scroll-rail ds-scroll-rail-demo" data-scroll-rail>
+  <button type="button" class="scroll-rail__nav scroll-rail__nav--prev" data-scroll-rail-nav="prev" tabindex="-1" aria-hidden="true"><svg class="wi" aria-hidden="true"><use href="#wi-chevron-left"></use></svg></button>
+  <div class="scroll-rail__viewport" data-scroll-rail-viewport role="group" aria-label="Thème">
+    <a class="pill is-active" href="#pattern-filter-scroll-rail" aria-current="true">Tout <span class="pill__count">69</span></a>
+    <a class="pill" href="#pattern-filter-scroll-rail">Négociation <span class="pill__count">12</span></a>
+    <a class="pill" href="#pattern-filter-scroll-rail">Juridique <span class="pill__count">9</span></a>
+    <a class="pill" href="#pattern-filter-scroll-rail">Copropriété <span class="pill__count">8</span></a>
+    <a class="pill" href="#pattern-filter-scroll-rail">Énergie <span class="pill__count">7</span></a>
+    <a class="pill" href="#pattern-filter-scroll-rail">Structure <span class="pill__count">10</span></a>
+    <a class="pill" href="#pattern-filter-scroll-rail">Quartier <span class="pill__count">6</span></a>
+    <a class="pill" href="#pattern-filter-scroll-rail">Ressenti <span class="pill__count">5</span></a>
+  </div>
+  <button type="button" class="scroll-rail__nav scroll-rail__nav--next" data-scroll-rail-nav="next" tabindex="-1" aria-hidden="true"><svg class="wi" aria-hidden="true"><use href="#wi-chevron-right"></use></svg></button>
+</div>`;
+
   S.issueChips = `
 <div class="works-modal">
   <div class="btn-row">
@@ -1152,6 +1168,13 @@
         html: S.pills,
       }) %>
       <%- include("../partials/design-system/spec", {
+        patternId: "filter-scroll-rail",
+        title: "Bandeau défilant horizontal", cls: ".scroll-rail · __viewport · __nav",
+        usage: "Quand une rangée de pastilles dépasse sa largeur (filtres par thème de la fiche de visite) : un fondu et une flèche ronde n'apparaissent que du côté où il reste du contenu, puis disparaissent en butée. La flèche fait défiler des trois quarts de la largeur ; une pastille à moitié sous le fondu revient en vue quand on la choisit. Flèches hors tabulation (tabindex=\"-1\", aria-hidden) : au clavier, le focus d'une pastille suffit à la faire défiler. Fondu sur var(--bg) par défaut, à adapter avec --scroll-rail-fade-color sur un autre fond. Initialisation : app.js ([data-scroll-rail]), aussi après un échange htmx.",
+        html: S.scrollRail,
+        demoClass: "ds-spec__demo--stack",
+      }) %>
+      <%- include("../partials/design-system/spec", {
         patternId: "filter-issue-chips",
         title: "Points à signaler", cls: ".works-issue · .is-on · .is-included",
         usage: "Bascule d'un point de travaux dans le planificateur (aria-pressed). « Inclus » (bordure pointillée) : point compris dans un forfait coché, comme le sol, les murs et le plafond d'une salle d'eau à refaire ; il n'est pas chiffré à part et le modifier retire le forfait.",
@@ -1445,7 +1468,7 @@
       <%- include("../partials/design-system/spec", {
         patternId: "layout-collapse",
         title: "Bloc repliable", cls: "details.delinquance__details",
-        usage: "Classes historiques du bloc délinquance, à réutiliser telles quelles en attendant un composant .collapse (voir Écarts connus). Compteur facultatif à côté du chevron. Accordéon exclusif : même attribut name sur chaque <details>, ouvrir l'un referme l'autre sans JS (étapes de la fiche de visite, la première ouverte par défaut).",
+        usage: "Classes historiques du bloc délinquance, à réutiliser telles quelles en attendant un composant .collapse (voir Écarts connus). Compteur facultatif à côté du chevron. Accordéon exclusif : même attribut name sur chaque <details>, ouvrir l'un referme l'autre sans JS (étapes de la fiche de visite, toutes fermées par défaut).",
         html: S.collapse,
         demoClass: "ds-spec__demo--stack",
       }) %>

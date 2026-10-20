@@ -358,7 +358,7 @@ test("bilan : confirm_yesno — oui sans saisie si pas d'annonce, non exige un n
   assert.equal(isAnswered(q, { response: "no", value: 3 }), true);
 });
 
-test("bilan : note la plus grave sous la question, « je demanderai » = note neutre", () => {
+test("bilan : note la plus grave sous la question, « à confirmer » = note neutre", () => {
   const q = item({
     signals: [
       { when: "no", tone: "info", text: "info" },
@@ -368,6 +368,7 @@ test("bilan : note la plus grave sous la question, « je demanderai » = note ne
   assert.equal(noteFor(q, { response: "no" }).text, "grave");
   assert.equal(noteFor(q, { response: "yes" }), null);
   assert.equal(noteFor(q, { response: "unknown" }).tone, "muted");
+  assert.match(noteFor(q, { response: "unknown" }).text, /Noté : à confirmer/);
 });
 
 test("bilan : raison de vente — pas de +1 systématique, levier selon le motif", () => {

@@ -90,7 +90,7 @@ export const VISIT_THEME_BY_ID = Object.fromEntries(VISIT_THEMES.map((t) => [t.i
 
 const YESNO = { type: "yesno" };
 
-/** Oui / Non / Je ne sais pas (réponse `unknown`, même sémantique que « Je demanderai sur place »). */
+/** Oui / Non / Je ne sais pas (réponse `unknown`, même sémantique que le lien « À confirmer »). */
 const YESNO_UNKNOWN = { type: "yesno", unknownOption: true, unknownLabel: "Je ne sais pas" };
 
 /** Oui / Non / À confirmer (réponse `unknown`) — point juridique à lever avant ou pendant la visite. */

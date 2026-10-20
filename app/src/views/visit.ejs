@@ -92,20 +92,23 @@
           <input type="checkbox" data-hide-answered />
           <span>Masquer les questions traitées</span>
         </label>
+        <button type="button" class="btn btn--lime btn--sm visit-mode__deck" data-deck-open>
+          <%# Icône lecture (play) inlinée : plus fiable que <use> sur tous les navigateurs. %>
+          <svg class="visit-mode__deck-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><%- iconSprite.lecture %></svg>
+          <span class="visit-mode__deck-label">Lancer le mode interactif</span>
+        </button>
       </div>
-      <p class="visit-mode__hint" data-mode-hint aria-live="polite">
-        <% if (expert) { %>
-          Les <%= sheet.counts.all %> questions, pour ne rien laisser passer.
-        <% } else { %>
-          Les <%= sheet.counts.inEssential %> questions clés sur <%= sheet.counts.all %>.
-        <% } %>
-      </p>
     </div>
   </section>
 
   <!-- ------------------------------ Filtres ------------------------------ -->
   <nav class="visit-filters" aria-label="Filtrer les questions">
-    <div class="visit-filters__scroll" role="group" aria-label="Thème">
+    <div class="scroll-rail visit-filters__rail" data-scroll-rail>
+    <%# Flèches hors tabulation : au clavier, le focus d'une pastille la fait défiler. %>
+    <button type="button" class="scroll-rail__nav scroll-rail__nav--prev" data-scroll-rail-nav="prev" tabindex="-1" aria-hidden="true">
+      <%- vi("chevron-left") %>
+    </button>
+    <div class="scroll-rail__viewport visit-filters__scroll" data-scroll-rail-viewport role="group" aria-label="Thème">
       <button type="button" class="visit-filter is-active" data-filter="all" aria-pressed="true">
         Tout <span class="visit-filter__count" data-filter-count="all"><%= sheet.counts.total %></span>
       </button>
@@ -118,6 +121,10 @@
         </button>
       <% }) %>
     </div>
+    <button type="button" class="scroll-rail__nav scroll-rail__nav--next" data-scroll-rail-nav="next" tabindex="-1" aria-hidden="true">
+      <%- vi("chevron-right") %>
+    </button>
+    </div>
   </nav>
 
   <div class="visit__grid">
@@ -129,8 +136,8 @@
           var ordered = discover.concat(confirm);
         %>
         <section class="panel visit-section" id="visit-<%= sec.id %>" data-section="<%= sec.id %>" aria-labelledby="visit-<%= sec.id %>-title">
-          <%# Accordéon exclusif : ouvrir une étape referme la précédente (attribut name). %>
-          <details class="visit-section__collapse" name="visit-steps" data-section-collapse <%= sec.index === 1 ? "open" : "" %>>
+          <%# Accordéon exclusif : toutes les étapes fermées par défaut (attribut name). %>
+          <details class="visit-section__collapse" name="visit-steps" data-section-collapse>
           <summary class="visit-section__summary">
             <div class="visit-section__head">
               <span class="visit-step" aria-hidden="true"><%= sec.index %></span>
@@ -141,7 +148,17 @@
               <output class="visit-section__total" data-section-total="<%= sec.id %>">
                 <span data-section-done>0</span><span class="visit-section__total-sep">/</span><span data-section-count><%= sec.total %></span>
               </output>
-              <span class="delinquance__summary-chevron visit-section__chevron" aria-hidden="true"></span>
+              <span class="visit-section__actions">
+                <button
+                  type="button"
+                  class="visit-section__play"
+                  data-section-deck-open="<%= sec.id %>"
+                  aria-label="Lancer le mode interactif pour l'étape « <%= sec.label %> »"
+                >
+                  <svg class="visit-section__play-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><%- iconSprite.lecture %></svg>
+                </button>
+                <span class="delinquance__summary-chevron visit-section__chevron" aria-hidden="true"></span>
+              </span>
             </div>
             <div class="visit-section__bar" aria-hidden="true"><span data-section-bar></span></div>
           </summary>
@@ -189,7 +206,7 @@
                   <div class="visit-q__control" data-control></div>
                   <div class="visit-q__foot">
                     <button type="button" class="visit-link" data-ask>
-                      <%- vi("message") %><span data-ask-label>Je demanderai sur place</span>
+                      <%- vi("message") %><span data-ask-label>À confirmer</span>
                     </button>
                     <% if (it.proTip) { %>
                       <button type="button" class="visit-link visit-link--tip" data-tip-toggle aria-expanded="false">
@@ -222,7 +239,7 @@
       <% }) %>
 
       <div class="visit-end">
-        <p class="visit-end__text">Vous avez fait le tour ? Le bilan récapitule vos arguments et ce qu'il reste à demander.</p>
+        <p class="visit-end__text">Vous avez fait le tour ? Le bilan récapitule vos arguments et ce qu'il reste à confirmer.</p>
         <a class="btn btn--green" href="/listings/<%= L.id %>">Retour à l'annonce</a>
       </div>
     </div>
@@ -268,7 +285,7 @@
             <dd data-out="corrections"><%= ins.counts.corrections %></dd>
           </div>
           <div class="visit-stats__row">
-            <dt>À demander sur place</dt>
+            <dt>À confirmer</dt>
             <dd data-out="todo"><%= ins.counts.todo %></dd>
           </div>
         </dl>
@@ -305,7 +322,7 @@
         <ul class="visit-tips" data-alerts aria-label="Alertes"></ul>
 
         <div class="visit-todo" data-todo hidden>
-          <p class="visit-bilan__title">À demander sur place</p>
+          <p class="visit-bilan__title">À confirmer</p>
           <ul class="visit-todo__list" data-todo-list></ul>
         </div>
 
@@ -329,7 +346,7 @@
             </p>
             <% [
               { label: "À vérifier sur place", items: pn.checks },
-              { label: "À demander", items: pn.questions },
+              { label: "À confirmer", items: pn.questions },
               { label: "Arguments possibles", items: pn.negotiation },
             ].forEach(function (group) { if (!group.items.length) return; %>
               <p class="visit-photo-notes__label"><%= group.label %></p>
@@ -404,6 +421,79 @@
   <div class="visit-toast" data-toast role="status" aria-live="polite">
     <span data-toast-text></span>
     <button type="button" class="visit-toast__undo" data-toast-undo>Annuler</button>
+  </div>
+
+  <!-- ---------------------------- Mode cartes ---------------------------- -->
+  <!--
+    Surface plein écran, façon pile de cartes : une question à la fois, le reste
+    du site flouté derrière. On répond dans la carte (contrôles habituels, réels)
+    ou d'un geste : glisser à droite/gauche (Oui/Non sur les cartes binaires),
+    vers le bas (à confirmer) ou vers le haut (passer pour l'instant).
+    Pilotée par visit-sheet.js : les cartes réelles y sont déplacées, l'état et
+    l'enregistrement restent partagés avec la liste.
+  -->
+  <div class="visit-deck" data-deck hidden>
+    <div class="visit-deck__backdrop" data-deck-close aria-hidden="true"></div>
+    <div
+      class="visit-deck__dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="visit-deck-title"
+      aria-describedby="visit-deck-hint"
+    >
+      <header class="visit-deck__bar">
+        <h2 id="visit-deck-title" class="visually-hidden">Répondre aux questions en mode interactif</h2>
+        <div class="visit-deck__progress" aria-hidden="true">
+          <span class="visit-deck__count"><span data-deck-pos>1</span><span class="visit-deck__count-sep">/</span><span data-deck-total>0</span></span>
+          <div class="visit-deck__track"><span data-deck-bar></span></div>
+        </div>
+        <button type="button" class="visit-deck__close" data-deck-close aria-label="Fermer le mode interactif">
+          <%- vi("close") %>
+        </button>
+      </header>
+
+      <div class="visit-deck__stage" data-deck-stage>
+        <!-- La carte réelle (li[data-q]) est déplacée ici par visit-sheet.js. -->
+        <div class="visit-deck__hand" data-deck-hand hidden aria-hidden="true">
+          <span class="visit-deck__hand-badge visit-deck__hand-badge--yes" data-deck-badge="yes"><%- vi("check") %>Oui</span>
+          <span class="visit-deck__hand-badge visit-deck__hand-badge--no" data-deck-badge="no"><%- vi("close") %>Non</span>
+          <span class="visit-deck__hand-badge visit-deck__hand-badge--later" data-deck-badge="later"><%- vi("chevron-up") %>Plus tard</span>
+          <span class="visit-deck__hand-badge visit-deck__hand-badge--ask" data-deck-badge="ask"><%- vi("message") %>À confirmer</span>
+          <span class="visit-deck__hand-badge visit-deck__hand-badge--select" data-deck-badge="select">Impossible de swiper, il faut sélectionner une valeur</span>
+        </div>
+      </div>
+
+      <p class="visit-deck__hint" id="visit-deck-hint" data-deck-hint aria-live="polite">
+        Répondez dans la carte, ou glissez-la.
+      </p>
+
+      <div class="visit-deck__actions" role="group" aria-label="Actions sur la carte">
+        <button type="button" class="visit-deck__act visit-deck__act--later" data-deck-act="later">
+          <%- vi("chevron-up") %><span>Plus tard</span>
+        </button>
+        <button type="button" class="visit-deck__act visit-deck__act--ask" data-deck-act="ask">
+          <%- vi("message") %><span>À confirmer</span>
+        </button>
+        <button type="button" class="visit-deck__act visit-deck__act--next" data-deck-act="next" disabled>
+          <%- vi("check") %><span data-deck-next-label>Valider</span>
+        </button>
+      </div>
+      <button type="button" class="visit-deck__back" data-deck-act="back" hidden>
+        <%- vi("undo") %><span>Revenir à la précédente</span>
+      </button>
+
+      <div class="visit-deck__done" data-deck-done hidden>
+        <span class="visit-deck__done-icon" aria-hidden="true"><%- vi("sparkles") %></span>
+        <h3 class="visit-deck__done-title">Vous avez fait le tour&nbsp;!</h3>
+        <p class="visit-deck__done-text" data-deck-done-text></p>
+        <div class="visit-deck__done-actions">
+          <button type="button" class="btn btn--ghost" data-deck-close>Fermer</button>
+          <button type="button" class="btn btn--green" data-deck-bilan>Voir le bilan</button>
+        </div>
+      </div>
+
+      <canvas class="visit-deck__confetti" data-deck-confetti hidden aria-hidden="true"></canvas>
+    </div>
   </div>
 
   <script type="application/json" id="visit-initial"><%- JSON.stringify({

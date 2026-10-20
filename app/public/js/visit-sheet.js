@@ -4,7 +4,7 @@
  * La structure (étapes, cartes, bilan) est rendue par le serveur ; ce script
  * pose les contrôles de réponse dans chaque carte, tient le bilan à jour à
  * chaque geste (anneau, verdict, levier de négociation, coûts, travaux,
- * alertes, points à demander, corrections) et enregistre en continu.
+ * alertes, points à confirmer, corrections) et enregistre en continu.
  *
  * Pensé pour le téléphone pendant une visite : gros OUI / NON, clavier
  * numérique pour les chiffres, « conseil du pro » dépliable, filtre par thème,
@@ -127,6 +127,7 @@
       cards[li.getAttribute("data-q")] = li;
     });
     var sections = Array.prototype.slice.call(root.querySelectorAll("section[data-section]"));
+    var deck = null; // contrôleur du mode cartes (initialisé au démarrage)
 
     /* ----------------------------- Formats ----------------------------- */
 
@@ -1054,7 +1055,7 @@
       if (ask) {
         var unknown = lib.isUnknown(answer);
         ask.setAttribute("aria-pressed", unknown ? "true" : "false");
-        ask.querySelector("[data-ask-label]").textContent = unknown ? "Noté : à demander" : "Je demanderai sur place";
+        ask.querySelector("[data-ask-label]").textContent = unknown ? "Noté : à confirmer" : "À confirmer";
       }
       if (card._sync) card._sync();
       renderNote(item, card, animate);
@@ -1089,9 +1090,10 @@
       pruneHiddenAnswers();
       refreshCard(qid, true);
       update({ save: true });
+      if (deck) deck.notifyAnswer(qid);
     }
 
-    /* Délégation : « je demanderai », conseil du pro, aller à une question. */
+    /* Délégation : « à confirmer », conseil du pro, aller à une question. */
     root.addEventListener("click", function (e) {
       var t = e.target;
       var ask = t.closest("[data-ask]");
@@ -1170,7 +1172,7 @@
         applyFilters();
       }
       var collapse = card.closest("[data-section-collapse]");
-      if (collapse) collapse.open = true;
+      setSectionExpanded(collapse, true);
       card.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
       restart(card, "is-pulsing");
       var focusable = card.querySelector("input, button.visit-letter, button.visit-choice, textarea");
@@ -1270,14 +1272,23 @@
 
     /* ----------------------- Étapes en accordéon ------------------------ */
 
+    function setSectionExpanded(collapse, expanded) {
+      if (!collapse || collapse.tagName !== "DETAILS") return;
+      collapse.open = expanded;
+    }
+
+    function isSectionExpanded(collapse) {
+      return Boolean(collapse && collapse.tagName === "DETAILS" && collapse.open);
+    }
+
     /* Un filtre peut masquer l'étape ouverte : ouvrir alors la première visible. */
     function ensureOpenSection() {
       var hiddenOpen = sections.some(function (section) {
-        return section.hidden && section.querySelector("[data-section-collapse]").open;
+        return section.hidden && isSectionExpanded(section.querySelector("[data-section-collapse]"));
       });
       if (!hiddenOpen) return;
       var visible = sections.find(function (section) { return !section.hidden; });
-      if (visible) visible.querySelector("[data-section-collapse]").open = true;
+      if (visible) setSectionExpanded(visible.querySelector("[data-section-collapse]"), true);
     }
 
     /* Refermer l'étape précédente remonte la page : garder l'étape ouverte en vue. */
@@ -1301,7 +1312,6 @@
     var modeRoot = root.querySelector("[data-mode-root]");
     var modeSwitch = root.querySelector("[data-mode-switch]");
     var modeToggle = root.querySelector("[data-mode-toggle]");
-    var modeHint = root.querySelector("[data-mode-hint]");
     var essentialFilter = root.querySelector('[data-filter="essential"]');
     var essentialCount = items.filter(function (it) {
       return lib.questionInMode(it, {}, "essential");
@@ -1315,9 +1325,6 @@
       root.querySelectorAll("[data-mode-set]").forEach(function (b) {
         b.setAttribute("aria-pressed", b.getAttribute("data-mode-set") === state.mode ? "true" : "false");
       });
-      modeHint.textContent = expert
-        ? "Les " + items.length + " questions, pour ne rien laisser passer."
-        : "Les " + essentialCount + " questions clés sur " + items.length + ".";
       if (essentialFilter) essentialFilter.hidden = !expert;
     }
 
@@ -1539,7 +1546,7 @@
         }
       );
 
-      /* À demander */
+      /* À confirmer */
       todoBox.hidden = !ins.todo.length;
       renderList(
         todoList,
@@ -1807,8 +1814,552 @@
     renderMode();
     applyFilters();
     update();
+
+    deck = setupDeck();
+
     requestAnimationFrame(function () {
       root.classList.add("is-ready");
     });
+
+    /* ------------------------------ Mode cartes ------------------------------
+     * Pile plein écran : une question à la fois, le reste du site flouté. On
+     * déplace la carte réelle (li[data-q]) dans la scène, puis on la remet à sa
+     * place ; l'état et l'enregistrement restent ceux de la liste. On répond
+     * dans la carte (contrôles réels) ou d'un geste : droite/gauche = Oui/Non
+     * sur les cartes binaires, bas = à confirmer, haut = plus tard.
+     */
+    function setupDeck() {
+      var deckEl = root.querySelector("[data-deck]");
+      if (!deckEl) return null;
+
+      var openBtn = root.querySelector("[data-deck-open]");
+      var stage = deckEl.querySelector("[data-deck-stage]");
+      var hand = deckEl.querySelector("[data-deck-hand]");
+      var hintEl = deckEl.querySelector("[data-deck-hint]");
+      var posEl = deckEl.querySelector("[data-deck-pos]");
+      var totalEl = deckEl.querySelector("[data-deck-total]");
+      var barEl = deckEl.querySelector("[data-deck-bar]");
+      var nextBtn = deckEl.querySelector('[data-deck-act="next"]');
+      var nextLabel = deckEl.querySelector("[data-deck-next-label]");
+      var backBtn = deckEl.querySelector('[data-deck-act="back"]');
+      var doneEl = deckEl.querySelector("[data-deck-done]");
+      var doneText = deckEl.querySelector("[data-deck-done-text]");
+      var confetti = deckEl.querySelector("[data-deck-confetti]");
+
+      var wrap = el("div", "visit-deck__card");
+      wrap.setAttribute("data-deck-current", "");
+      /* Pastilles Oui/Non : calque calé sur la carte (pas la scène), elles suivent le drag. */
+      wrap.appendChild(hand);
+      stage.appendChild(wrap);
+
+      var queue = [];
+      var pos = -1;
+      var shown = []; // indices de queue réellement affichés (pour « Revenir »)
+      var current = null; // { qid, li, home:{parent,next}, kind }
+      var open = false;
+      var busy = false; // pendant un envol / une transition
+      var committing = false; // pour ne pas réagir deux fois à setAnswer
+      var soonTimer = null;
+      var lastFocus = null;
+      var scopeSection = null; // id d'étape : limite la pile à une seule section
+
+      /* ------------------------------ File ------------------------------- */
+
+      function isTreated(qid) {
+        var a = state.answers[qid] || null;
+        return lib.isAnswered(byId[qid], a) || lib.isUnknown(a);
+      }
+
+      function eligible() {
+        var out = [];
+        sections.forEach(function (section) {
+          if (scopeSection && section.getAttribute("data-section") !== scopeSection) return;
+          section.querySelectorAll("[data-q]").forEach(function (li) {
+            var qid = li.getAttribute("data-q");
+            var item = byId[qid];
+            if (!item || !inMode(item) || !matchesFilter(item)) return;
+            if (!lib.questionVisible(item, state.answers)) return;
+            out.push(qid);
+          });
+        });
+        return out;
+      }
+
+      function buildQueue() {
+        var elig = eligible();
+        var untreated = elig.filter(function (q) { return !isTreated(q); });
+        var treatedList = elig.filter(isTreated);
+        queue = untreated.concat(treatedList);
+      }
+
+      /* De nouvelles questions peuvent apparaître (showWhen) : les ajouter. */
+      function syncQueueTail() {
+        var have = {};
+        queue.forEach(function (q) { have[q] = true; });
+        eligible().forEach(function (q) {
+          if (!have[q] && !isTreated(q)) queue.push(q);
+        });
+      }
+
+      /* ---------------------------- Cartes ------------------------------- */
+
+      function cardKind(li) {
+        var host = li.querySelector("[data-control]");
+        return host && host.querySelector(".visit-seg--yesno, .visit-seg--confirm")
+          ? "binary"
+          : "other";
+      }
+
+      function revealOpen() {
+        var host = current && current.li.querySelector("[data-control]");
+        return !!(host && host.querySelector(".visit-reveal.is-open"));
+      }
+
+      function hasTapControl() {
+        var host = current && current.li.querySelector("[data-control]");
+        return !!(host && host.querySelector(".visit-seg, .visit-letters, .visit-choices, .visit-scale"));
+      }
+
+      function mount(qid) {
+        var li = cards[qid];
+        if (!li) { next(); return; }
+        current = { qid: qid, li: li, home: { parent: li.parentNode, next: li.nextSibling }, kind: cardKind(li) };
+        wrap.className = "visit-deck__card";
+        wrap.style.cssText = "";
+        wrap.appendChild(li);
+        deckEl.classList.toggle("is-binary", current.kind === "binary");
+        if (!reduceMotion) restart(wrap, "is-entering");
+        updateChrome();
+        focusCard();
+      }
+
+      function unmount(entry) {
+        if (!entry) return;
+        entry.home.parent.insertBefore(entry.li, entry.home.next);
+      }
+
+      function focusCard() {
+        var f = current && current.li.querySelector("[data-control] input, [data-control] textarea, [data-control] button");
+        if (f) setTimeout(function () { try { f.focus({ preventScroll: true }); } catch (_e) {} }, reduceMotion ? 0 : 80);
+      }
+
+      function focusField() {
+        var f = current && current.li.querySelector("[data-control] input, [data-control] textarea");
+        if (f) setTimeout(function () { try { f.focus({ preventScroll: true }); } catch (_e) {} }, reduceMotion ? 0 : 60);
+      }
+
+      /* --------------------------- Progression --------------------------- */
+
+      function updateChrome() {
+        var total = queue.length;
+        posEl.textContent = String(Math.min(pos + 1, total));
+        totalEl.textContent = String(total);
+        barEl.style.width = (total ? Math.round(((pos + 1) / total) * 100) : 0) + "%";
+        backBtn.hidden = shown.length < 2;
+        var terminal = current && isTreated(current.qid);
+        nextBtn.disabled = !terminal;
+        if (nextLabel) nextLabel.textContent = terminal ? "Suivant" : "Valider";
+        if (current && current.kind === "binary") {
+          hintEl.textContent = "Glissez à droite pour Oui, à gauche pour Non · bas : à confirmer · haut : plus tard.";
+        } else {
+          hintEl.textContent = "Répondez dans la carte · bas : à confirmer · haut : plus tard.";
+        }
+      }
+
+      /* ---------------------------- Gestes ------------------------------- */
+
+      function dirFor(qid) {
+        var a = state.answers[qid] || null;
+        if (lib.isUnknown(a)) return "down";
+        if (a && a.response === "no") return "left";
+        return "right";
+      }
+
+      function pickSeg(action) {
+        var host = current.li.querySelector("[data-control]");
+        var seg = host.querySelector(".visit-seg--yesno, .visit-seg--confirm");
+        if (!seg) return false;
+        var input = seg.querySelector('input[value="' + (action === "yes" ? "yes" : "no") + '"]');
+        if (!input) return false;
+        input._visitWasChecked = false;
+        input.click();
+        return true;
+      }
+
+      function commit(action) {
+        if (busy || !current) return;
+        cancelSoon();
+        var qid = current.qid;
+        if (action === "back") { goBack(); return; }
+        if (action === "later") { laterCurrent(); fly("up"); return; }
+        if (action === "ask") {
+          committing = true;
+          setAnswer(qid, { response: "unknown", value: null });
+          committing = false;
+          fly("down");
+          return;
+        }
+        if (action === "yes" || action === "no") {
+          if (current.kind !== "binary") { bounce(); return; }
+          committing = true;
+          pickSeg(action);
+          committing = false;
+          if (revealOpen()) { recenter(); focusField(); updateChrome(); return; }
+          if (isTreated(qid)) fly(dirFor(qid));
+          else { recenter(); updateChrome(); }
+          return;
+        }
+        if (action === "next") {
+          if (!isTreated(qid)) { bounce(); focusField(); return; }
+          fly(dirFor(qid));
+          return;
+        }
+      }
+
+      /* Réponse tapée directement dans la carte (choix, étoile, Oui/Non…). */
+      function notifyAnswer(qid) {
+        if (!open || committing || busy || !current || current.qid !== qid) return;
+        updateChrome();
+        if (!hasTapControl() || revealOpen()) return;
+        if (isTreated(qid)) flySoon(dirFor(qid));
+      }
+
+      function flySoon(dir) {
+        cancelSoon();
+        soonTimer = setTimeout(function () {
+          soonTimer = null;
+          if (open && !busy && current && isTreated(current.qid)) fly(dir);
+        }, reduceMotion ? 0 : 300);
+      }
+      function cancelSoon() {
+        if (soonTimer) { clearTimeout(soonTimer); soonTimer = null; }
+      }
+
+      function laterCurrent() {
+        if (current && !isTreated(current.qid)) queue.push(current.qid);
+      }
+
+      function bounce() {
+        recenter();
+        hintEl.textContent = "Choisissez une réponse, ou « À confirmer ».";
+      }
+
+      function recenter() {
+        wrap.classList.add("is-recenter");
+        wrap.style.transform = "";
+        setTimeout(function () { wrap.classList.remove("is-recenter"); }, 240);
+      }
+
+      function fly(dir) {
+        if (busy || !current) return;
+        busy = true;
+        cancelSoon();
+        hideHand();
+        var entry = current;
+        current = null;
+        function finish() {
+          unmount(entry);
+          wrap.className = "visit-deck__card";
+          wrap.style.cssText = "";
+          busy = false;
+          next();
+        }
+        if (reduceMotion) {
+          wrap.style.transition = "opacity 0.12s ease";
+          wrap.style.opacity = "0";
+          setTimeout(finish, 130);
+          return;
+        }
+        var done = false;
+        function onEnd(e) {
+          if (done || (e && e.propertyName && e.propertyName !== "transform")) return;
+          done = true;
+          wrap.removeEventListener("transitionend", onEnd);
+          finish();
+        }
+        wrap.addEventListener("transitionend", onEnd);
+        wrap.classList.add("is-flying", "is-fly-" + dir);
+        setTimeout(onEnd, 520); // repli si transitionend manque
+      }
+
+      /* -------------------------- Navigation ----------------------------- */
+
+      function next() {
+        syncQueueTail();
+        while (true) {
+          pos += 1;
+          if (pos >= queue.length) { showDone(); return; }
+          var qid = queue[pos];
+          var item = byId[qid];
+          if (!item || !lib.questionVisible(item, state.answers)) continue;
+          shown.push(pos);
+          mount(qid);
+          return;
+        }
+      }
+
+      function goBack() {
+        if (busy || shown.length < 2) return;
+        var entry = current;
+        current = null;
+        unmount(entry);
+        wrap.className = "visit-deck__card";
+        wrap.style.cssText = "";
+        shown.pop();
+        pos = shown[shown.length - 1];
+        mount(queue[pos]);
+      }
+
+      /* ---------------------------- Final -------------------------------- */
+
+      function countBy() {
+        var answered = 0, ask = 0;
+        Object.keys(state.answers).forEach(function (id) {
+          if (!byId[id]) return;
+          var a = state.answers[id];
+          if (lib.isUnknown(a)) ask += 1;
+          else if (lib.isAnswered(byId[id], a)) answered += 1;
+        });
+        return { answered: answered, ask: ask };
+      }
+
+      function plural(n, s) { return n + " " + s + (n > 1 ? "s" : ""); }
+
+      function showDone() {
+        current = null;
+        deckEl.classList.add("is-done");
+        deckEl.classList.remove("is-binary");
+        hideHand();
+        var c = countBy();
+        var parts = [plural(c.answered, "question") + " renseignée" + (c.answered > 1 ? "s" : "")];
+        if (c.ask) parts.push(plural(c.ask, "question") + " à confirmer");
+        doneText.textContent = parts.join(" · ") + ".";
+        doneEl.hidden = false;
+        fireConfetti();
+        var b = doneEl.querySelector("[data-deck-bilan]");
+        if (b) setTimeout(function () { try { b.focus({ preventScroll: true }); } catch (_e) {} }, reduceMotion ? 0 : 120);
+      }
+
+      /* --------------------------- Confettis ----------------------------- */
+
+      var confettiRAF = null;
+      function fireConfetti() {
+        if (reduceMotion || !confetti || !confetti.getContext) return;
+        confetti.hidden = false;
+        var w = (confetti.width = confetti.clientWidth || deckEl.clientWidth);
+        var h = (confetti.height = confetti.clientHeight || deckEl.clientHeight);
+        var cs = getComputedStyle(document.documentElement);
+        var colors = ["--lime", "--green-600", "--gold", "--lime-dark"].map(function (nm) {
+          return (cs.getPropertyValue(nm) || "").trim() || "#c8f751";
+        });
+        var N = Math.min(160, Math.round(w / 4));
+        var parts = [];
+        for (var i = 0; i < N; i += 1) {
+          parts.push({
+            x: Math.random() * w,
+            y: -10 - Math.random() * h * 0.25,
+            r: 5 + Math.random() * 6,
+            c: colors[i % colors.length],
+            vy: 3.5 + Math.random() * 4,
+            vx: -1.4 + Math.random() * 2.8,
+            a: Math.random() * Math.PI,
+            va: -0.3 + Math.random() * 0.6,
+          });
+        }
+        var ctx = confetti.getContext("2d");
+        var t0 = performance.now();
+        var DUR = 2800;
+        function frame(now) {
+          var elapsed = now - t0;
+          ctx.clearRect(0, 0, w, h);
+          for (var j = 0; j < parts.length; j += 1) {
+            var p = parts[j];
+            p.y += p.vy;
+            p.x += p.vx;
+            p.a += p.va;
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.a);
+            ctx.globalAlpha = Math.max(0, 1 - elapsed / DUR);
+            ctx.fillStyle = p.c;
+            ctx.fillRect(-p.r / 2, -p.r / 2, p.r, p.r * 0.55);
+            ctx.restore();
+          }
+          if (elapsed < DUR) confettiRAF = requestAnimationFrame(frame);
+          else stopConfetti();
+        }
+        confettiRAF = requestAnimationFrame(frame);
+      }
+      function stopConfetti() {
+        if (confettiRAF) cancelAnimationFrame(confettiRAF);
+        confettiRAF = null;
+        if (confetti && confetti.getContext) {
+          confetti.getContext("2d").clearRect(0, 0, confetti.width, confetti.height);
+          confetti.hidden = true;
+        }
+      }
+
+      /* ---------------------------- Drag --------------------------------- */
+
+      function hideHand() {
+        hand.hidden = true;
+        hand.removeAttribute("data-active");
+        setSwipeTint(null, 0);
+      }
+      /* Liseré de la carte : couleur du côté (Oui vert, Non rouge), intensité 0 à 1. */
+      function setSwipeTint(side, progress) {
+        if (!side || !progress) {
+          wrap.style.removeProperty("--swipe-progress");
+          wrap.style.removeProperty("--swipe-color");
+          return;
+        }
+        wrap.style.setProperty("--swipe-progress", progress.toFixed(2));
+        wrap.style.setProperty("--swipe-color", side === "yes" ? "var(--green-600)" : "var(--danger)");
+      }
+      function showHand(dir) {
+        hand.hidden = false;
+        if (dir) hand.setAttribute("data-active", dir);
+        else hand.removeAttribute("data-active");
+      }
+
+      var drag = null;
+      wrap.addEventListener("pointerdown", function (e) {
+        if (busy || !current) return;
+        if (e.target.closest("input, textarea, select, button, label, a")) return;
+        drag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
+        wrap.classList.add("is-dragging");
+        try { wrap.setPointerCapture(e.pointerId); } catch (_e) {}
+      });
+      wrap.addEventListener("pointermove", function (e) {
+        if (!drag || e.pointerId !== drag.id) return;
+        drag.dx = e.clientX - drag.x;
+        drag.dy = e.clientY - drag.y;
+        var ax = Math.abs(drag.dx), ay = Math.abs(drag.dy);
+        var horizontal = ax > ay;
+        var dx = drag.dx;
+        var dy = drag.dy;
+        if (horizontal && current.kind !== "binary") dx = drag.dx * 0.22;
+        wrap.style.transform = "translate(" + dx + "px," + dy + "px) rotate(" + dx * 0.04 + "deg)";
+        var TH = 60;
+        var binaryHorizontal = horizontal && current.kind === "binary";
+        setSwipeTint(binaryHorizontal ? (drag.dx > 0 ? "yes" : "no") : null, Math.min(1, ax / 90));
+        if (binaryHorizontal && ax > TH) showHand(drag.dx > 0 ? "yes" : "no");
+        else if (horizontal && current.kind !== "binary" && ax > TH) showHand("select");
+        else if (!horizontal && dy < -TH) showHand("later");
+        else if (!horizontal && dy > TH) showHand("ask");
+        else showHand(null);
+      });
+      function release(e) {
+        if (!drag || e.pointerId !== drag.id) return;
+        var dx = drag.dx, dy = drag.dy;
+        drag = null;
+        wrap.classList.remove("is-dragging");
+        try { wrap.releasePointerCapture(e.pointerId); } catch (_e) {}
+        hideHand();
+        var ax = Math.abs(dx), ay = Math.abs(dy);
+        var TH = 90;
+        var action = null;
+        if (ax > ay) {
+          if (current && current.kind === "binary" && ax > TH) action = dx > 0 ? "yes" : "no";
+          else if (current && ax > TH) hintEl.textContent = "Impossible de swiper, il faut sélectionner une valeur.";
+        } else if (dy < -TH) action = "later";
+        else if (dy > TH) action = "ask";
+        if (action) commit(action);
+        else recenter();
+      }
+      wrap.addEventListener("pointerup", release);
+      wrap.addEventListener("pointercancel", release);
+
+      /* --------------------------- Ouverture ----------------------------- */
+
+      function openDeck(sectionId) {
+        if (open) return;
+        scopeSection = typeof sectionId === "string" && sectionId ? sectionId : null;
+        if (consentModal && !consentModal.hidden) { openConsentModal(); return; }
+        buildQueue();
+        open = true;
+        pos = -1;
+        shown = [];
+        current = null;
+        deckEl.hidden = false;
+        deckEl.classList.remove("is-done");
+        doneEl.hidden = true;
+        document.body.classList.add("is-modal-open");
+        lastFocus = document.activeElement;
+        requestAnimationFrame(function () { deckEl.classList.add("is-open"); });
+        next();
+      }
+
+      function closeDeck(toBilan) {
+        if (!open) return;
+        cancelSoon();
+        stopConfetti();
+        if (current) { unmount(current); current = null; }
+        wrap.className = "visit-deck__card";
+        wrap.style.cssText = "";
+        open = false;
+        deckEl.classList.remove("is-open", "is-done", "is-binary");
+        deckEl.hidden = true;
+        doneEl.hidden = true;
+        document.body.classList.remove("is-modal-open");
+        if (toBilan && result) {
+          result.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+        } else if (lastFocus && lastFocus.focus) {
+          try { lastFocus.focus({ preventScroll: true }); } catch (_e) {}
+        }
+      }
+
+      if (openBtn) openBtn.addEventListener("click", function () { openDeck(); });
+
+      /* Bouton lecture d'une étape : même pile, limitée aux questions de cette section. */
+      root.addEventListener("click", function (e) {
+        var play = e.target.closest("[data-section-deck-open]");
+        if (!play) return;
+        e.preventDefault(); // ne pas replier/déplier le <details> parent
+        e.stopPropagation();
+        openDeck(play.getAttribute("data-section-deck-open"));
+      });
+
+      deckEl.addEventListener("click", function (e) {
+        if (e.target.closest("[data-deck-bilan]")) { closeDeck(true); return; }
+        if (e.target.closest("[data-deck-close]")) { closeDeck(false); return; }
+        var act = e.target.closest("[data-deck-act]");
+        if (act) commit(act.getAttribute("data-deck-act"));
+      });
+
+      /* Clavier : flèches = gestes, Entrée = valider, Échap = fermer. */
+      document.addEventListener("keydown", function (e) {
+        if (!open) return;
+        if (e.key === "Escape") { e.preventDefault(); closeDeck(false); return; }
+        if (!doneEl.hidden) return;
+        var inField = e.target && e.target.closest("input, textarea, select");
+        if (inField) {
+          if (e.key === "Enter") { e.preventDefault(); commit("next"); }
+          return;
+        }
+        if (e.key === "ArrowUp") { e.preventDefault(); commit("later"); }
+        else if (e.key === "ArrowDown") { e.preventDefault(); commit("ask"); }
+        else if (e.key === "ArrowRight") { e.preventDefault(); commit(current && current.kind === "binary" ? "yes" : "next"); }
+        else if (e.key === "ArrowLeft") { e.preventDefault(); if (current && current.kind === "binary") commit("no"); }
+        else if (e.key === "Enter") { e.preventDefault(); commit("next"); }
+      });
+
+      /* Piège de focus simple : garder le focus dans la surface. */
+      document.addEventListener("focusin", function (e) {
+        if (open && !deckEl.contains(e.target)) {
+          var f = deckEl.querySelector("button:not([disabled]), input, textarea");
+          if (f) try { f.focus({ preventScroll: true }); } catch (_e) {}
+        }
+      });
+
+      window.addEventListener("resize", function () {
+        if (open && confettiRAF && confetti) {
+          confetti.width = confetti.clientWidth;
+          confetti.height = confetti.clientHeight;
+        }
+      });
+
+      return { notifyAnswer: notifyAnswer };
+    }
   }
 })();

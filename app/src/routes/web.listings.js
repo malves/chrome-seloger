@@ -611,11 +611,16 @@ export default function createListingsRouter({ repositories, enrichment, logger 
    *   valeurs déjà calculées par la route appelante (évite de recalculer)
    */
   function worksOptionsFor(listing, fmt, known = {}) {
-    if (listing.transaction_type === "rent") return { works: 0, worksRange: null };
+    if (listing.transaction_type === "rent") {
+      return { works: 0, worksRange: null, worksEdited: false };
+    }
+    const financing = known.financing ?? financingFor(listing);
     const works =
       known.works != null
         ? Number(known.works) || 0
-        : Number((known.financing || financingFor(listing)).params.works) || 0;
+        : Number(financing.params.works) || 0;
+    const worksEdited =
+      Array.isArray(financing.edited) && financing.edited.includes("works");
     let summary = known.worksSummary;
     if (summary === undefined) {
       summary = repositories.listings.listPhotos(listing.id).length
@@ -626,7 +631,7 @@ export default function createListingsRouter({ repositories, enrichment, logger 
       summary && !summary.unavailableReason && Number(summary.max) > 0
         ? { min: summary.min, max: summary.max }
         : null;
-    return { works, worksRange };
+    return { works, worksRange, worksEdited };
   }
 
   /**

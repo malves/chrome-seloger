@@ -299,31 +299,10 @@
   }
 }
 
-.visit-mode-panel__head .visit-mode__hint {
-  margin: 0;
-  margin-left: auto;
-  max-width: 36rem;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-strong);
-  background: var(--surface-sunken);
-  font-size: 15px;
-  line-height: 1.45;
-  font-weight: 600;
-  color: var(--ink);
-  text-align: right;
-  text-wrap: balance;
-}
-
 @media (max-width: 720px) {
   .visit-mode-panel__head {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .visit-mode-panel__head .visit-mode__hint {
-    margin-left: 0;
-    text-align: left;
   }
 }
 
@@ -350,13 +329,11 @@
   border-radius: var(--radius-md);
 }
 
+.visit-filters__rail {
+  flex: 1 1 auto;
+}
+
 .visit-filters__scroll {
-  display: flex;
-  gap: var(--space-2);
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 2px;
-  min-width: 0;
   cursor: grab;
   touch-action: pan-x;
 }
@@ -368,10 +345,6 @@
 
 .visit-filters__scroll.is-dragging .visit-filter {
   pointer-events: none;
-}
-
-.visit-filters__scroll::-webkit-scrollbar {
-  display: none;
 }
 
 .visit-filter {
@@ -460,17 +433,9 @@
   margin-top: 0;
 }
 
+/* Le bilan suit le flux de la page : pas de défilement interne, c'est la page qui défile. */
 .visit__aside {
-  position: sticky;
-  top: var(--v-sticky-top);
-  max-height: calc(100vh - var(--v-sticky-top) - var(--space-3));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-  /* Marge pour l'ombre et l'anneau de focus du bilan. */
-  padding: 4px;
-  margin: -4px;
+  min-width: 0;
 }
 
 /* Modale de consentement (1er lancement) */
@@ -538,6 +503,67 @@
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* Lecture (mode interactif de l'étape) à gauche du chevron, même gabarit. */
+.visit-section__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.visit-section__play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--summary-chevron-size);
+  height: var(--summary-chevron-size);
+  padding: 0;
+  border-radius: var(--radius-sm);
+  /* Même couleur que « Mode interactif » (.btn--lime) pour relier les deux boutons. */
+  background: var(--lime);
+  border: 1px solid var(--border-strong); /* même bordure que le chevron */
+  color: var(--green-900);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.visit-section__play:hover,
+.visit-section__play:focus-visible {
+  background: var(--lime-dark);
+  border-color: var(--green-600);
+}
+
+.visit-section__play:focus-visible {
+  outline: 2px solid var(--green-600);
+  outline-offset: 2px;
+}
+
+.visit-section__play:active {
+  transform: scale(0.94);
+}
+
+.visit-section__play-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.visit-section__play-icon circle {
+  fill: none;
+}
+
+.visit-section__play-icon polygon {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* Recentrage de la flèche : le « v » (deux bordures d'un carré tourné de 45°) a son
+   centre visuel ~2,8 px sous celui du carré. On remonte avant la rotation pour que
+   le décalage soit purement vertical (l'ancien translateY après rotate déportait
+   aussi la flèche vers la droite). */
+.visit-section__chevron::before {
+  transform: translateY(-2.8px) rotate(45deg);
 }
 
 .visit-section__collapse[open] .visit-section__chevron {
@@ -1882,7 +1908,7 @@
   animation: v-slide-in 0.35s var(--v-ease);
 }
 
-/* À demander / corrections */
+/* À confirmer / corrections */
 .visit-todo,
 .visit-fixes {
   margin-bottom: var(--space-4);
@@ -2149,14 +2175,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .visit__aside {
-    position: static;
-    max-height: none;
-    overflow: visible;
-    padding: 0;
-    margin: 0;
-  }
-
   .visit-dock {
     position: fixed;
     z-index: 30;
@@ -2289,7 +2307,7 @@
     grid-column: 2;
   }
 
-  .visit-section__chevron {
+  .visit-section__actions {
     grid-column: 3;
     grid-row: 1;
   }
@@ -2368,5 +2386,729 @@
   .visit *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================== Mode cartes ============================= */
+
+/* Bouton d'entrée, dans la barre du mode d'affichage. */
+.visit-mode__deck {
+  position: relative;
+  isolation: isolate;
+  margin-left: var(--space-2);
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Mise en évidence au chargement : un point vert foncé fait quatre tours du liseré du
+   bouton dans le sens des aiguilles d'une montre, puis s'efface (voir pattern
+   action-btn-attention). On anime l'angle d'un conic-gradient (@property) : faire
+   pivoter un pseudo-élément déborde du bouton arrondi dans Chrome. */
+.visit-mode__deck::before,
+.visit-mode__deck::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Angle du dégradé, animable : la forme du bouton reste fixe, seul le secteur tourne. */
+@property --visit-deck-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* Fond du liseré : un secteur de 18° forme le point. */
+.visit-mode__deck::before {
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--visit-deck-angle),
+    transparent 0deg 324deg,
+    var(--green-900) 324deg 342deg,
+    transparent 342deg
+  );
+  animation:
+    visit-deck-orbit 2.4s linear 4,
+    visit-deck-fade-out 0.6s ease 9s forwards;
+}
+
+/* Intérieur : recouvre le bouton pour que le point ne passe que par le liseré de 2 px. */
+.visit-mode__deck::after {
+  inset: 2px;
+  border-radius: inherit;
+  background: inherit;
+}
+
+@keyframes visit-deck-orbit {
+  to { --visit-deck-angle: 360deg; }
+}
+
+@keyframes visit-deck-fade-out {
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .visit-mode__deck::before {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+.visit-mode__deck-label {
+  line-height: 1;
+}
+
+/* Même gabarit que .wi dans un .btn--sm, sans vertical-align inline (-0,2em). */
+.visit-mode__deck-icon {
+  display: block;
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+  color: var(--green-900);
+  /* .btn--sm : padding bas +2px pour le texte (Segoe UI) — abaisse l’icône pour l’aligner au libellé. */
+  transform: translateY(1px);
+}
+
+/* Cercle au trait, triangle plein : comme un bouton lecture classique. */
+.visit-mode__deck-icon circle {
+  fill: none;
+}
+
+.visit-mode__deck-icon polygon {
+  fill: currentColor;
+  stroke: none;
+}
+
+@media (max-width: 420px) {
+  .visit-mode__deck {
+    margin-left: 0;
+  }
+}
+
+/* Surface plein écran : le reste du site est flouté derrière. */
+.visit-deck {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+}
+
+.visit-deck[hidden] {
+  display: none;
+}
+
+.visit-deck__backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--green-900) 62%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.visit-deck.is-open .visit-deck__backdrop {
+  opacity: 1;
+}
+
+.visit-deck__dialog {
+  position: relative;
+  z-index: 1;
+  margin: auto;
+  width: min(600px, 100%);
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  gap: var(--space-3);
+  padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4)
+    calc(var(--space-4) + env(safe-area-inset-bottom));
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.25s ease, transform 0.25s var(--v-ease);
+}
+
+.visit-deck.is-open .visit-deck__dialog {
+  opacity: 1;
+  transform: none;
+}
+
+/* Barre : progression + fermeture. */
+.visit-deck__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.visit-deck__progress {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--ink-inverse);
+}
+
+.visit-deck__count {
+  font-weight: 800;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.visit-deck__count-sep {
+  margin: 0 3px;
+  opacity: 0.55;
+}
+
+.visit-deck__track {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ink-inverse) 28%, transparent);
+  overflow: hidden;
+}
+
+.visit-deck__track span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--lime);
+  transition: width 0.3s var(--v-ease);
+}
+
+.visit-deck__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--ink-inverse) 35%, transparent);
+  background: transparent;
+  color: var(--ink-inverse);
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.visit-deck__close:hover {
+  background: color-mix(in srgb, var(--ink-inverse) 16%, transparent);
+}
+
+.visit-deck__close:active {
+  transform: scale(0.94);
+}
+
+.visit-deck__close .wi {
+  width: 20px;
+  height: 20px;
+}
+
+/* Scène : la carte seule, centrée. */
+.visit-deck__stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+}
+
+.visit-deck__card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 440px;
+  /* Format portrait : la carte occupe toute la hauteur de la scène (mobile),
+     plafonnée pour rester élégante sur grand écran. */
+  height: 100%;
+  max-height: 720px;
+  overflow: auto;
+  touch-action: none;
+  cursor: grab;
+  will-change: transform;
+}
+
+.visit-deck__card.is-dragging {
+  cursor: grabbing;
+}
+
+.visit-deck__card.is-recenter {
+  transition: transform 0.22s var(--v-ease);
+}
+
+.visit-deck__card.is-entering {
+  animation: visit-deck-in 0.28s var(--v-ease);
+}
+
+@keyframes visit-deck-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Envol : la carte part dans la direction de la réponse. */
+.visit-deck__card.is-flying {
+  transition: transform 0.4s var(--v-ease), opacity 0.4s ease;
+}
+
+.visit-deck__card.is-fly-right {
+  transform: translate(140%, 4%) rotate(18deg);
+  opacity: 0;
+}
+
+.visit-deck__card.is-fly-left {
+  transform: translate(-140%, 4%) rotate(-18deg);
+  opacity: 0;
+}
+
+.visit-deck__card.is-fly-up {
+  transform: translateY(-130%) scale(0.95);
+  opacity: 0;
+}
+
+.visit-deck__card.is-fly-down {
+  transform: translateY(130%) scale(0.95);
+  opacity: 0;
+}
+
+.visit-deck__card .visit-q {
+  margin: 0;
+  list-style: none;
+}
+
+.visit-deck__card .visit-q {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* La carte s'étire sur toute la hauteur : étiquettes en haut, question
+   (grande, centrée) au milieu, réponses en bas. Les marges automatiques
+   répartissent l'espace libre de part et d'autre du bloc question. */
+.visit-deck__card .visit-q__card {
+  flex: 1;
+  padding: var(--space-5) var(--space-4);
+  gap: var(--space-4);
+}
+
+.visit-deck__card .visit-q__title {
+  margin-top: auto;
+  font-size: 26px;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.visit-deck__card .visit-q__hint,
+.visit-deck__card .visit-q__known {
+  align-self: center;
+  margin-top: 0;
+}
+
+.visit-deck__card .visit-q__control,
+.visit-deck__card .visit-q__control:empty + .visit-q__foot {
+  margin-top: auto;
+}
+
+/* Réponses : zones de toucher généreuses, pensées pour le pouce. */
+.visit-deck__card .visit-q__control {
+  gap: var(--space-4);
+}
+
+.visit-deck__card .visit-seg {
+  padding: 4px;
+}
+
+.visit-deck__card .visit-seg__thumb {
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--n));
+}
+
+.visit-deck__card .visit-seg__opt span {
+  min-height: 60px;
+  padding: 16px 14px;
+  font-size: 18px;
+}
+
+.visit-deck__card .visit-letters {
+  gap: 6px;
+}
+
+.visit-deck__card .visit-letter {
+  min-height: 64px;
+  font-size: 20px;
+}
+
+.visit-deck__card .visit-choices {
+  gap: 10px;
+}
+
+.visit-deck__card .visit-choice {
+  min-height: 56px;
+  padding: 12px 20px;
+  font-size: 16px;
+}
+
+.visit-deck__card .visit-scale {
+  gap: 8px;
+}
+
+.visit-deck__card .visit-scale__opt {
+  min-height: 88px;
+  gap: 8px;
+  padding: 12px 4px;
+}
+
+.visit-deck__card .visit-scale__opt .wi {
+  width: 28px;
+  height: 28px;
+}
+
+.visit-deck__card .visit-scale__opt small {
+  font-size: 12px;
+}
+
+.visit-deck__card .visit-num .input,
+.visit-deck__card .visit-num--compact .input {
+  min-height: 60px;
+  font-size: 22px;
+}
+
+.visit-deck__card .visit-text {
+  min-height: 120px;
+  padding: 14px 16px;
+  font-size: 16px;
+}
+
+.visit-deck__card .visit-q__foot {
+  justify-content: center;
+}
+
+.visit-deck__card .visit-link {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.visit-deck__card .visit-q[hidden] {
+  display: flex; /* dans la pile, la carte courante est toujours visible */
+}
+
+/* Badges « sens du glissement », calés sur visit-deck__card (inset 0), pas la scène. */
+.visit-deck__hand {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  border-radius: inherit;
+}
+
+/* Pastille « verdict » : icône dans un rond + libellé, sur fond plein, ombrée
+   pour se détacher de la carte. Elle monte en place avec un léger rebond. */
+.visit-deck__hand-badge {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5) var(--space-3) var(--space-3);
+  border-radius: var(--radius-pill);
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ink-inverse);
+  box-shadow: var(--shadow-raised);
+  opacity: 0;
+  transform: translateY(8px) scale(0.85);
+  transition: opacity 0.15s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.visit-deck__hand-badge .wi {
+  flex-shrink: 0;
+  box-sizing: content-box;
+  width: 24px;
+  height: 24px;
+  padding: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ink-inverse) 24%, transparent);
+  stroke-width: 2.4;
+}
+
+/* Oui / Non : centrés verticalement sur la carte, du côté où l'on glisse. */
+.visit-deck__hand-badge--yes {
+  top: 50%;
+  right: var(--space-4);
+  transform: translateY(calc(-50% + 8px)) scale(0.85);
+  background: var(--green-800);
+}
+
+.visit-deck__hand-badge--no {
+  top: 50%;
+  left: var(--space-4);
+  transform: translateY(calc(-50% + 8px)) scale(0.85);
+  background: var(--danger);
+}
+
+.visit-deck__hand-badge--later {
+  top: var(--space-4);
+  left: 50%;
+  transform: translate(-50%, 8px) scale(0.85);
+  background: var(--ink);
+}
+
+.visit-deck__hand-badge--ask {
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translate(-50%, -8px) scale(0.85);
+  background: var(--gold-ink);
+}
+
+/* Carte à choix : un glissement horizontal ne répond pas, on invite à choisir. */
+.visit-deck__hand-badge--select {
+  top: 50%;
+  left: 50%;
+  width: max-content;
+  max-width: 80%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  line-height: 1.35;
+  text-align: center;
+  transform: translate(-50%, -50%) scale(0.85);
+  background: var(--ink);
+}
+
+.visit-deck__hand[data-active="select"] .visit-deck__hand-badge--select {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.visit-deck.is-binary .visit-deck__hand-badge--select {
+  display: none;
+}
+
+.visit-deck__hand[data-active="yes"] .visit-deck__hand-badge--yes,
+.visit-deck__hand[data-active="no"] .visit-deck__hand-badge--no {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+.visit-deck__hand[data-active="later"] .visit-deck__hand-badge--later,
+.visit-deck__hand[data-active="ask"] .visit-deck__hand-badge--ask {
+  opacity: 1;
+  transform: translateX(-50%);
+}
+
+/* Liseré intérieur de la carte : il se remplit à mesure qu'on glisse vers Oui
+   (vert) ou Non (rouge), pour sentir l'engagement avant même le seuil. Variables
+   posées sur la carte par visit-sheet.js (--swipe-progress de 0 à 1). */
+.visit-deck__card .visit-q__card {
+  box-shadow:
+    inset 0 0 0 calc(var(--swipe-progress, 0) * 4px) var(--swipe-color, transparent),
+    inset 0 0 calc(var(--swipe-progress, 0) * 56px) calc(var(--swipe-progress, 0) * 6px)
+      color-mix(in srgb, var(--swipe-color, transparent) 40%, transparent),
+    var(--shadow-raised);
+}
+
+/* Aide. */
+.visit-deck__hint {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--ink-inverse) 82%, transparent);
+}
+
+/* Actions : plus tard · à confirmer · valider. */
+.visit-deck__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: var(--space-2);
+}
+
+.visit-deck__act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 52px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--ink-inverse) 30%, transparent);
+  background: color-mix(in srgb, var(--surface) 10%, transparent);
+  color: var(--ink-inverse);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+
+.visit-deck__act:hover {
+  background: color-mix(in srgb, var(--ink-inverse) 16%, transparent);
+}
+
+.visit-deck__act:active {
+  transform: scale(0.97);
+}
+
+.visit-deck__act .wi {
+  width: 18px;
+  height: 18px;
+}
+
+.visit-deck__act--next {
+  background: var(--green-600);
+  border-color: var(--green-600);
+}
+
+.visit-deck__act--next:hover {
+  background: var(--green-800);
+}
+
+.visit-deck__act--next:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: color-mix(in srgb, var(--surface) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ink-inverse) 22%, transparent);
+}
+
+.visit-deck__back {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, var(--ink-inverse) 80%, transparent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.visit-deck__back[hidden] {
+  display: none;
+}
+
+.visit-deck__back:hover {
+  color: var(--ink-inverse);
+  text-decoration: underline;
+}
+
+.visit-deck__back .wi {
+  width: 15px;
+  height: 15px;
+}
+
+/* Cartes binaires : masquer le bouton « À confirmer » si redondant ? non,
+   on le garde ; mais on masque les gestes horizontaux sur les autres cartes. */
+.visit-deck:not(.is-binary) .visit-deck__hand-badge--yes,
+.visit-deck:not(.is-binary) .visit-deck__hand-badge--no {
+  display: none;
+}
+
+/* Écran de fin : félicitations + résumé. */
+.visit-deck__done {
+  grid-row: 1 / -1;
+  align-self: center;
+  justify-self: center;
+  max-width: 420px;
+  margin: auto;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  text-align: center;
+  animation: visit-deck-in 0.3s var(--v-ease);
+}
+
+.visit-deck__done[hidden] {
+  display: none;
+}
+
+.visit-deck__done-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--green-900);
+  color: var(--lime);
+  margin-bottom: var(--space-3);
+}
+
+.visit-deck__done-icon .wi {
+  width: 28px;
+  height: 28px;
+}
+
+.visit-deck__done-title {
+  margin: 0 0 var(--space-2);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--green-900);
+}
+
+.visit-deck__done-text {
+  margin: 0 0 var(--space-4);
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.visit-deck__done-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+/* Confettis : canvas en superposition, non interactif. */
+.visit-deck__confetti {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.visit-deck__confetti[hidden] {
+  display: none;
+}
+
+/* Quand l'écran de fin est affiché, cacher barre/actions/aide. */
+.visit-deck.is-done .visit-deck__bar,
+.visit-deck.is-done .visit-deck__stage,
+.visit-deck.is-done .visit-deck__hint,
+.visit-deck.is-done .visit-deck__actions,
+.visit-deck.is-done .visit-deck__back {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .visit-deck__dialog {
+    gap: var(--space-2);
+  }
+
+  .visit-deck__act span {
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .visit-deck__backdrop,
+  .visit-deck__dialog,
+  .visit-deck__card,
+  .visit-deck__hand-badge {
+    transition: none;
   }
 }

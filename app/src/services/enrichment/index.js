@@ -494,6 +494,7 @@ export default function createEnrichmentService({
       market: marketSeriesFor(data, listing),
       works: worksOptions.works || 0,
       worksRange: worksOptions.worksRange || null,
+      worksEdited: Boolean(worksOptions.worksEdited),
     });
   }
 

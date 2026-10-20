@@ -4974,6 +4974,11 @@ body.is-modal-open {
   text-align: left;
   line-height: 1.35;
 }
+/* Sous-ligne explicite (ex. montant retenu au financement). */
+.pricepos__kpi-sub[data-tooltip].pricepos__tip--wrap::after {
+  white-space: pre-line;
+  max-width: 26rem;
+}
 
 /* Trois repères chiffrés : prix affiché, prix + travaux, estimation. */
 .pricepos__kpis {
@@ -9589,6 +9594,139 @@ body.is-modal-open {
   .scroll-progress:focus-visible .scroll-progress__icon {
     animation: none;
     transform: translateY(-2px);
+  }
+}
+
+/* ------------------ Bandeau défilant horizontal ------------------------- */
+
+/* Fondu et flèche n'apparaissent que du côté où il reste du contenu
+   (classes posées par app.js, [data-scroll-rail]). */
+.scroll-rail {
+  --scroll-rail-nav-size: 40px;
+  --scroll-rail-fade: var(--space-7);
+  --scroll-rail-fade-color: var(--bg);
+  position: relative;
+  min-width: 0;
+}
+
+.scroll-rail__viewport {
+  display: flex;
+  gap: var(--space-2);
+  padding: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  scroll-padding-inline: var(--scroll-rail-fade);
+}
+
+.scroll-rail__viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-rail__viewport > * {
+  flex-shrink: 0;
+}
+
+.scroll-rail::before,
+.scroll-rail::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: var(--scroll-rail-fade);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.scroll-rail::before {
+  left: 0;
+  background: linear-gradient(to right, var(--scroll-rail-fade-color) 30%, transparent);
+}
+
+.scroll-rail::after {
+  right: 0;
+  background: linear-gradient(to left, var(--scroll-rail-fade-color) 30%, transparent);
+}
+
+.scroll-rail.is-overflow-start::before,
+.scroll-rail.is-overflow-end::after {
+  opacity: 1;
+}
+
+.scroll-rail__nav {
+  --scroll-rail-shift: 0px;
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: var(--scroll-rail-nav-size);
+  height: var(--scroll-rail-nav-size);
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--green-900);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(var(--scroll-rail-shift), -50%);
+  transition:
+    opacity 0.2s ease,
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    visibility 0s linear 0.25s;
+}
+
+.scroll-rail__nav--prev {
+  --scroll-rail-shift: calc(var(--space-1) * -1);
+  left: 0;
+}
+
+.scroll-rail__nav--next {
+  --scroll-rail-shift: var(--space-1);
+  right: 0;
+}
+
+.scroll-rail.is-overflow-start .scroll-rail__nav--prev,
+.scroll-rail.is-overflow-end .scroll-rail__nav--next {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate(0, -50%);
+  transition:
+    opacity 0.2s ease,
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    visibility 0s;
+}
+
+.scroll-rail__nav:hover {
+  background: var(--green-100);
+  border-color: var(--green-600);
+}
+
+.scroll-rail__nav:active {
+  transform: translate(0, -50%) scale(0.94);
+}
+
+.scroll-rail__nav .wi {
+  width: 22px;
+  height: 22px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-rail__nav,
+  .scroll-rail.is-overflow-start .scroll-rail__nav--prev,
+  .scroll-rail.is-overflow-end .scroll-rail__nav--next {
+    transform: translate(0, -50%);
+    transition: opacity 0.15s ease, visibility 0s;
   }
 }
 

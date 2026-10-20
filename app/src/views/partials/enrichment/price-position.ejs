@@ -180,8 +180,13 @@
             <span class="pricepos__badge pricepos__badge--<%= deltaTone(ww.delta_pct) %>"
               title="Écart au prix du marché, travaux compris : <%= signedPct(ww.delta_pct) %>"><%= signedPct(ww.delta_pct) %></span>
           </span>
-          <span class="pricepos__kpi-sub"
-            <% if (pp.works_range) { %>data-tooltip="Fourchette du plan des pièces : <%= eur(pp.works_range.min) %> – <%= eur(pp.works_range.max) %>" tabindex="0"<% } %>
+          <% var worksRangeTooltip = pp.works_range
+            ? 'Fourchette du plan des pièces : ' + eur(pp.works_range.min) + ' – ' + eur(pp.works_range.max)
+              + (pp.works_edited ? '\nMontant retenu du tableau de financement : ' + eur(pp.works) : '')
+            : '';
+          var worksRangeTipClass = pp.works_range && pp.works_edited ? ' pricepos__tip--wrap' : ''; %>
+          <span class="pricepos__kpi-sub<%= worksRangeTipClass %>"
+            <% if (worksRangeTooltip) { %>data-tooltip="<%= worksRangeTooltip %>" tabindex="0"<% } %>
           >dont <%= eur(pp.works) %> de travaux · <%= eur(ww.price_m2) %>/m²</span>
         </dd>
       </div>

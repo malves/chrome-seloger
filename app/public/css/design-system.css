@@ -283,6 +283,11 @@
   animation: none;
 }
 
+/* Largeur réduite pour que la démonstration déborde et montre fondus et flèches. */
+.ds-scroll-rail-demo {
+  max-width: 26rem;
+}
+
 /* Spinner de bouton affiché en permanence pour la démonstration. */
 .ds-spec__demo .btn__spinner {
   display: inline-block;
