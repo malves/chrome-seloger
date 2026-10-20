@@ -157,7 +157,7 @@ export const DESIGN_PATTERNS = [
     classes: ".detail--sticky-head · .is-head-stuck · .detail-lead__head · .detail-lead__collapsible",
     referenceFile: "partials/listing-lead.ejs, partials/detail-header.ejs",
     usage:
-      "Fiche annonce, à partir de 721 px : dès que le panneau d'en-tête touche la barre haute, il colle ; titre, badges et prix se replient (grid-template-rows 1fr → 0fr, fondu et translateY −8 px, 0,5 s, plus lent que les 300 ms de l'interface pour un repli de grande hauteur) ; fond var(--green-900) et ombre apparaissent en fondu (pseudo-éléments), boutons inversés (fantômes en contour clair, « Écarter » en pastille blanche, focus lime). Seules les actions restent ; la barre de suivi défile avec la page et remonte en douceur pendant le repli.",
+      "Fiche annonce, à partir de 721 px : dès que le panneau d'en-tête touche la barre haute, il colle ; titre, badges et prix se replient (grid-template-rows 1fr → 0fr, fondu et translateY −8 px, 0,5 s, plus lent que les 300 ms de l'interface pour un repli de grande hauteur) ; fond var(--green-900) et ombre apparaissent en fondu (pseudo-éléments), boutons inversés (fantômes en contour clair, « Écarter » en pastille blanche, focus lime). Seules les actions restent ; la barre de suivi défile avec la page et remonte en douceur pendant le repli. La barre haute du site (logo, navigation, compte) glisse hors de l'écran (translateY −100 %, 0,5 s) et l'en-tête prend sa place en haut de la fenêtre (top var(--space-2)) ; en revenant en haut de page, tout reprend sa place. Un focus clavier dans la barre haute la ramène.",
     script: "app.js (initStickyListingHead)",
     hasSpec: true,
     catalogOnly: true,

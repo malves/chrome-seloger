@@ -7880,7 +7880,9 @@
 
     function topOffset() {
       var topbar = document.querySelector(".topbar");
-      return (topbar ? topbar.offsetHeight : 0) + stickyListingHeadHeight() + 16;
+      // Barre haute masquée tant que l'en-tête de la fiche est condensé.
+      var stuck = document.querySelector(".detail.detail--sticky-head.is-head-stuck");
+      return (topbar && !stuck ? topbar.offsetHeight : 0) + stickyListingHeadHeight() + 16;
     }
 
     function visibleSections() {

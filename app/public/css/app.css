@@ -2108,10 +2108,17 @@ body.is-modal-open {
   display: contents;
 }
 
+/* Condensé, l'en-tête prend la place de la barre haute (masquée) : il colle
+   en haut de la fenêtre. */
+.detail--sticky-head.is-head-stuck {
+  --detail-head-stick: var(--space-2);
+}
+
+/* Un saut d'ancre aboutit toujours à l'état condensé : barre haute masquée. */
 .detail--sticky-head > [id],
 .detail--sticky-head .detail-lead > [id] {
   scroll-margin-top: calc(
-    var(--detail-head-stick) + var(--detail-head-compact, 0px) + var(--space-4)
+    var(--space-2) + var(--detail-head-compact, 0px) + var(--space-4)
   );
 }
 
@@ -2119,7 +2126,25 @@ body.is-modal-open {
   position: sticky;
   top: var(--detail-head-stick);
   z-index: 15;
-  transition: padding var(--detail-head-duration) var(--detail-head-ease);
+  transition:
+    padding var(--detail-head-duration) var(--detail-head-ease),
+    top var(--detail-head-duration) var(--detail-head-ease);
+}
+
+/* Barre haute (logo, navigation, compte) : glisse hors de l'écran pendant que
+   l'en-tête est condensé et revient avec lui. Un focus clavier la ramène. */
+body:has(.detail--sticky-head) .topbar {
+  transition:
+    transform var(--detail-head-duration, 0.5s) cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
+}
+
+body:has(.detail--sticky-head.is-head-stuck) .topbar:not(:focus-within) {
+  transform: translateY(-100%);
+  visibility: hidden;
+  transition:
+    transform var(--detail-head-duration, 0.5s) cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear var(--detail-head-duration, 0.5s);
 }
 
 /* Teinte et ombre vivent sur des pseudo-éléments pour n'animer que leur opacité.
@@ -2257,6 +2282,8 @@ body.is-modal-open {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  body:has(.detail--sticky-head) .topbar,
+  body:has(.detail--sticky-head.is-head-stuck) .topbar:not(:focus-within),
   .detail--sticky-head .detail-lead__head,
   .detail--sticky-head .detail-lead__head::before,
   .detail--sticky-head .detail-lead__head::after,
